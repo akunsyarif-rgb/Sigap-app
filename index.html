@@ -115,37 +115,64 @@
             const todayLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() === todayStr);
             const archiveLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() !== todayStr);
 
+            // Menyiapkan Data Grafik 5 Hari Terakhir
+            const getLast5DaysData = () => {
+                const days = [];
+                for (let i = 4; i >= 0; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    const dateString = d.toDateString();
+                    const label = d.toLocaleDateString('id-ID', { weekday: 'short' });
+                    
+                    const count = allLogs.filter(log => new Date(log.timestamp).toDateString() === dateString).length;
+                    days.push({ label, count });
+                }
+                return days;
+            };
+
+            const chartData = getLast5DaysData();
+            const maxChartCount = Math.max(...chartData.map(d => d.count), 1); // Hindari pembagian 0
+
             if (!user) {
                 return (
                     <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100 overflow-y-auto">
-                        <div className="text-center mb-6">
-                            {/* Logo Diperbesar Menjadi Hampir Setengah Tampilan (w-48 h-48) */}
-                            <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="w-48 h-48 object-contain rounded-3xl mx-auto mb-4 shadow-2xl bg-white/5 p-2 border-2 border-emerald-500/50" />
-                            <h1 className="text-2xl font-bold text-emerald-400">SIGAP</h1>
-                            <p className="text-xs text-gray-400 mt-1">SMAN 2 Tarakan • Sistem Gerbang & Catat Cepat</p>
+                        <div className="text-center mb-8 mt-2">
+                            {/* Logo Diperbesar dengan Konsep Plakat Putih & Glow Biru */}
+                            <div className="relative inline-block mb-6">
+                                <div className="absolute inset-0 bg-blue-600 blur-[30px] opacity-40 rounded-[40px]"></div>
+                                <img 
+                                    src="IMG_1966.jpeg" 
+                                    alt="Logo SMAN 2 Tarakan" 
+                                    className="relative w-56 h-56 sm:w-64 sm:h-64 object-contain bg-white rounded-[40px] mx-auto shadow-2xl p-3 border-4 border-gray-800" 
+                                />
+                            </div>
+                            <h1 className="text-3xl font-extrabold text-blue-500 tracking-tight">SIGAP</h1>
+                            <p className="text-sm text-gray-400 mt-2 font-medium max-w-[280px] mx-auto leading-snug">
+                                Sistem Informasi Gerbang dan Absensi Pelanggaran
+                            </p>
                         </div>
 
-                        <form onSubmit={handleLogin} className="space-y-4 bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl">
+                        <form onSubmit={handleLogin} className="space-y-5 bg-gray-800/80 p-6 rounded-3xl border border-gray-700 shadow-xl backdrop-blur-sm">
                             <div>
-                                <label className="text-xs text-gray-400 font-medium mb-1 block">Password Guru (contoh: budi2026):</label>
+                                <label className="text-xs text-gray-400 font-medium mb-1.5 block">Password Petugas:</label>
                                 <input 
                                     type="password"
                                     value={passwordInput}
                                     onChange={(e) => setPasswordInput(e.target.value)}
                                     placeholder="Masukkan password..."
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                                    className="w-full bg-gray-900/50 border border-gray-600 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                     required
                                 />
                             </div>
 
-                            {loginError && <div className="text-xs text-rose-400 font-medium text-center">{loginError}</div>}
+                            {loginError && <div className="text-xs text-rose-400 font-medium text-center bg-rose-950/50 py-2 rounded-lg">{loginError}</div>}
 
                             <button 
                                 type="submit"
                                 disabled={loadingLogin}
-                                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-semibold text-sm shadow transition active:scale-95 disabled:opacity-50"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl font-bold text-sm shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] transition active:scale-95 disabled:opacity-50"
                             >
-                                {loadingLogin ? 'Memeriksa...' : 'Masuk Aplikasi'}
+                                {loadingLogin ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
                             </button>
                         </form>
                     </div>
@@ -156,17 +183,17 @@
                 <div className="flex flex-col h-full bg-gray-900 text-gray-100 relative select-none">
                     
                     {/* Header */}
-                    <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
+                    <div className="bg-gray-800/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-700 z-30">
                         <div className="flex items-center space-x-3">
-                            <img src="IMG_1966.jpeg" alt="Logo" className="w-10 h-10 object-contain rounded-xl bg-white/5 p-0.5 border border-gray-700" />
+                            <img src="IMG_1966.jpeg" alt="Logo" className="w-10 h-10 object-contain rounded-xl bg-white p-1 border border-gray-600" />
                             <div>
-                                <h1 className="font-bold text-xs uppercase tracking-wider text-emerald-400">SMAN 2 Tarakan</h1>
+                                <h1 className="font-bold text-xs uppercase tracking-wider text-blue-400">SMAN 2 Tarakan</h1>
                                 <p className="text-[10px] text-gray-400">Petugas: <span className="text-white font-medium">{user.name}</span></p>
                             </div>
                         </div>
                         <button 
                             onClick={() => setUser(null)}
-                            className="text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 px-2.5 py-1.5 rounded-lg border border-gray-600 transition"
+                            className="text-[10px] font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-xl border border-gray-600 transition shadow-sm"
                         >
                             Keluar
                         </button>
@@ -174,115 +201,139 @@
 
                     {/* Toast Notification */}
                     {toast && (
-                        <div className="absolute top-16 left-4 right-4 z-50 bg-emerald-600 text-white text-xs px-4 py-3 rounded-xl shadow-lg flex items-center justify-between animate-bounce">
+                        <div className="absolute top-16 left-4 right-4 z-50 bg-blue-600 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-bounce border border-blue-400">
                             <span>{toast}</span>
-                            <span className="font-bold bg-emerald-700 px-2 py-0.5 rounded">OK</span>
+                            <span className="font-bold bg-blue-700 px-2 py-1 rounded-lg">OK</span>
                         </div>
                     )}
 
                     {/* Konten Berdasarkan Tab Menu */}
-                    <div className="flex-1 overflow-y-auto p-4 pb-20">
+                    <div className="flex-1 overflow-y-auto p-4 pb-24">
+                        
                         {activeTab === 'scan' && (
-                            <div className="space-y-4">
-                                <div className="bg-gray-800 border-2 border-dashed border-gray-600 rounded-2xl p-4 flex flex-col items-center justify-center relative">
-                                    <div className="w-48 h-32 border-2 border-emerald-500 rounded-xl flex items-center justify-center relative overflow-hidden bg-gray-900/50 shadow-inner">
-                                        <div className="absolute inset-x-0 h-0.5 bg-emerald-400 animate-pulse top-1/2"></div>
-                                        <span className="text-xs text-gray-400 text-center px-2">Arahkan kartu siswa ke area kotak</span>
+                            <div className="space-y-5">
+                                {/* Search Bar Dinaikkan Ke Atas */}
+                                <div>
+                                    <label className="text-xs text-gray-400 font-medium mb-1.5 block">Cari Manual:</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Ketik Nama atau Kelas (misal: XI C)..."
+                                            className="w-full bg-gray-800 border-2 border-gray-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 shadow-sm transition"
+                                        />
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute right-4 top-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                    </div>
+                                </div>
+
+                                {searchQuery.trim() !== '' && (
+                                    <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-xl animate-in fade-in slide-in-from-top-2">
+                                        <div className="px-4 py-2.5 bg-gray-750 border-b border-gray-700 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                            Hasil Pencarian ({filteredStudents.length})
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto">
+                                            {filteredStudents.length > 0 ? (
+                                                filteredStudents.map(student => (
+                                                    <div 
+                                                        key={student.nisn}
+                                                        onClick={() => setSelectedStudent(student)}
+                                                        className="px-4 py-3.5 border-b border-gray-700/50 flex items-center justify-between hover:bg-gray-750 active:bg-gray-700 cursor-pointer transition"
+                                                    >
+                                                        <div>
+                                                            <div className="font-bold text-sm text-white">{student.name}</div>
+                                                            <div className="text-xs text-blue-400 font-medium mt-0.5">{student.class} <span className="text-gray-500 font-normal">| NISN: {student.nisn}</span></div>
+                                                        </div>
+                                                        <span className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm">Pilih</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="p-6 text-center text-xs text-gray-500 font-medium">Siswa tidak ditemukan</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="relative flex items-center py-2">
+                                    <div className="flex-grow border-t border-gray-700"></div>
+                                    <span className="flex-shrink-0 mx-4 text-gray-500 text-[10px] font-bold uppercase tracking-widest">ATAU</span>
+                                    <div className="flex-grow border-t border-gray-700"></div>
+                                </div>
+
+                                {/* Area Scan Diperbarui Visualnya */}
+                                <div className="bg-gray-800/50 border-2 border-dashed border-gray-600 rounded-3xl p-5 flex flex-col items-center justify-center relative">
+                                    <div className="w-56 h-36 border-[3px] border-blue-500 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-gray-900/80 shadow-[inset_0_0_20px_rgba(37,99,235,0.2)]">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                        </svg>
+                                        <div className="absolute inset-x-0 h-[2px] bg-blue-400 animate-[pulse_1.5s_ease-in-out_infinite] top-1/2 shadow-[0_0_8px_rgba(96,165,250,1)]"></div>
+                                        <span className="text-[11px] text-gray-400 text-center px-4 font-medium">Arahkan kartu RFID ke alat</span>
                                     </div>
                                     {students.length > 0 && (
                                         <button 
                                             onClick={() => setSelectedStudent(students[0])}
-                                            className="mt-3 w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-semibold shadow transition active:scale-95"
+                                            className="mt-4 w-full bg-gray-700 hover:bg-gray-600 text-blue-300 py-3 rounded-2xl text-xs font-semibold shadow-sm transition active:scale-95 border border-gray-600 flex items-center justify-center gap-2"
                                         >
-                                            ⚡ Simulasi Scan ({students[0].name})
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                            </svg>
+                                            Simulasi Scan ({students[0].name})
                                         </button>
                                     )}
                                 </div>
-
-                                <div>
-                                    <label className="text-xs text-gray-400 font-medium mb-1 block">Cari Nama / Kelas Siswa:</label>
-                                    <input 
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Ketik nama siswa..."
-                                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
-                                    />
-                                </div>
-
-                                {searchQuery.trim() !== '' && (
-                                    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-lg">
-                                        <div className="px-3 py-2 bg-gray-750 border-b border-gray-700 text-xs text-gray-400 font-medium">
-                                            Hasil Pencarian ({filteredStudents.length})
-                                        </div>
-                                        {filteredStudents.length > 0 ? (
-                                            filteredStudents.map(student => (
-                                                <div 
-                                                    key={student.nisn}
-                                                    onClick={() => setSelectedStudent(student)}
-                                                    className="px-4 py-3 border-b border-gray-700/50 flex items-center justify-between hover:bg-gray-750 active:bg-gray-700 cursor-pointer transition"
-                                                >
-                                                    <div>
-                                                        <div className="font-semibold text-sm text-white">{student.name}</div>
-                                                        <div className="text-xs text-gray-400">{student.class} • NISN: {student.nisn}</div>
-                                                    </div>
-                                                    <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-1 rounded-lg font-medium">Pilih</span>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="p-4 text-center text-xs text-gray-500">Siswa tidak ditemukan</div>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         )}
 
                         {activeTab === 'today' && (
                             <div className="space-y-3">
-                                <div className="flex justify-between items-center mb-1">
-                                    <h2 className="text-xs font-bold text-gray-300 uppercase tracking-wider">Terlambat Hari Ini ({todayLogs.length})</h2>
-                                    <button onClick={fetchData} className="text-[10px] text-emerald-400 underline">Refresh</button>
+                                <div className="flex justify-between items-end mb-2">
+                                    <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Terlambat Hari Ini ({todayLogs.length})</h2>
+                                    <button onClick={fetchData} className="text-[10px] text-blue-400 font-medium bg-blue-900/30 px-2 py-1 rounded-md">Refresh</button>
                                 </div>
                                 {loadingLogs ? (
                                     <div className="text-center py-10 text-xs text-gray-500">Memuat data...</div>
                                 ) : todayLogs.length > 0 ? (
                                     todayLogs.map((log, idx) => (
-                                        <div key={idx} className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl shadow space-y-1">
+                                        <div key={idx} className="bg-gray-800 border-l-4 border-l-blue-500 border-y border-r border-gray-700 p-3.5 rounded-r-xl shadow-sm space-y-1">
                                             <div className="flex items-center justify-between">
-                                                <div className="font-semibold text-sm text-white">{log.name}</div>
-                                                <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded-full font-medium">
+                                                <div className="font-bold text-sm text-white">{log.name}</div>
+                                                <span className="text-[9px] bg-rose-950/80 text-rose-400 border border-rose-800/50 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
                                                     {log.type}
                                                 </span>
                                             </div>
-                                            <div className="text-[11px] text-gray-400 flex justify-between">
-                                                <span>{log.class} • {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                                <span className="italic text-emerald-400">Petugas: {log.logged_by}</span>
+                                            <div className="text-[11px] text-gray-400 flex justify-between items-center">
+                                                <span>{log.class} • <span className="text-gray-300 font-medium">{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></span>
+                                                <span className="text-[9px] text-gray-500">Petugas: {log.logged_by}</span>
                                             </div>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="text-center py-12 text-gray-500 text-xs">Belum ada data tercatat hari ini.</div>
+                                    <div className="text-center py-16 bg-gray-800/50 rounded-2xl border border-gray-700 border-dashed">
+                                        <div className="text-4xl mb-2">🏆</div>
+                                        <div className="text-gray-400 text-xs font-medium">Belum ada siswa terlambat hari ini.</div>
+                                    </div>
                                 )}
                             </div>
                         )}
 
                         {activeTab === 'archive' && (
                             <div className="space-y-3">
-                                <h2 className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Riwayat Hari Sebelumnya ({archiveLogs.length})</h2>
+                                <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Riwayat Keseluruhan ({archiveLogs.length})</h2>
                                 {loadingLogs ? (
                                     <div className="text-center py-10 text-xs text-gray-500">Memuat data...</div>
                                 ) : archiveLogs.length > 0 ? (
                                     archiveLogs.map((log, idx) => (
-                                        <div key={idx} className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl shadow space-y-1">
+                                        <div key={idx} className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl space-y-1 opacity-90">
                                             <div className="flex items-center justify-between">
-                                                <div className="font-semibold text-sm text-white">{log.name}</div>
-                                                <span className="text-[10px] bg-blue-950 text-blue-400 border border-blue-800 px-2 py-0.5 rounded-full font-medium">
+                                                <div className="font-semibold text-sm text-gray-200">{log.name}</div>
+                                                <span className="text-[9px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full font-semibold">
                                                     {log.type}
                                                 </span>
                                             </div>
-                                            <div className="text-[11px] text-gray-400 flex justify-between">
-                                                <span>{log.class} • {new Date(log.timestamp).toLocaleDateString()}</span>
-                                                <span className="italic text-emerald-400">Petugas: {log.logged_by}</span>
+                                            <div className="text-[10px] text-gray-500 flex justify-between">
+                                                <span>{log.class} • {new Date(log.timestamp).toLocaleDateString('id-ID', {day:'numeric', month:'short', year:'numeric'})}</span>
                                             </div>
                                         </div>
                                     ))
@@ -293,104 +344,145 @@
                         )}
 
                         {activeTab === 'stats' && (
-                            <div className="space-y-4">
-                                <h2 className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Statistik & Kelola Data</h2>
+                            <div className="space-y-5">
+                                <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Statistik Keterlambatan</h2>
                                 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl text-center">
-                                        <div className="text-2xl font-bold text-emerald-400">{todayLogs.length}</div>
-                                        <div className="text-[10px] text-gray-400 mt-1">Total Hari Ini</div>
-                                    </div>
-                                    <div className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl text-center">
-                                        <div className="text-2xl font-bold text-blue-400">{allLogs.length}</div>
-                                        <div className="text-[10px] text-gray-400 mt-1">Total Keseluruhan</div>
+                                {/* Grafik Batang (Bar Chart) CSS Murni */}
+                                <div className="bg-gray-800 border border-gray-700 p-4 rounded-2xl shadow-lg">
+                                    <h3 className="text-xs font-bold text-white mb-4 text-center">Tren 5 Hari Terakhir</h3>
+                                    <div className="flex items-end justify-between h-36 gap-2">
+                                        {chartData.map((data, i) => (
+                                            <div key={i} className="flex flex-col items-center flex-1 h-full">
+                                                <span className="text-[10px] text-blue-400 font-bold mb-1.5">{data.count > 0 ? data.count : '-'}</span>
+                                                <div className="w-full max-w-[32px] bg-gray-700/50 rounded-t-lg relative flex items-end justify-center h-full overflow-hidden">
+                                                    <div 
+                                                        className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all duration-1000 ease-out" 
+                                                        style={{ height: `${(data.count / maxChartCount) * 100}%`, minHeight: data.count > 0 ? '10%' : '0%' }}
+                                                    ></div>
+                                                </div>
+                                                <span className="text-[9px] text-gray-400 mt-2 uppercase font-medium">{data.label}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
-                                <div className="bg-gray-800 border border-gray-700 p-4 rounded-xl space-y-3">
-                                    <h3 className="text-xs font-semibold text-white">📁 Unduh & Lihat Data Master</h3>
-                                    <p className="text-[11px] text-gray-400">Semua data tersimpan otomatis di Google Sheets sekolah. Anda dapat melihat rekap penuh atau mengunduhnya langsung dalam format Excel/CSV.</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-2xl text-center shadow-sm">
+                                        <div className="text-3xl font-extrabold text-blue-400">{todayLogs.length}</div>
+                                        <div className="text-[10px] text-gray-400 mt-1 font-medium uppercase">Hari Ini</div>
+                                    </div>
+                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-2xl text-center shadow-sm">
+                                        <div className="text-3xl font-extrabold text-gray-300">{allLogs.length}</div>
+                                        <div className="text-[10px] text-gray-400 mt-1 font-medium uppercase">Total Data</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-900/20 border border-blue-900 p-4 rounded-2xl space-y-3">
+                                    <h3 className="text-xs font-bold text-blue-400 flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                        Unduh Data Master
+                                    </h3>
+                                    <p className="text-[11px] text-gray-400 leading-relaxed">Seluruh log tersimpan di Google Sheets. Buka tautan di bawah untuk melihat rekapitulasi, filter per kelas, atau mengunduhnya dalam format Excel.</p>
                                     <a 
                                         href="https://docs.google.com/spreadsheets" 
                                         target="_blank" 
-                                        className="block w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-semibold transition shadow"
+                                        className="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-xs font-bold transition shadow-md"
                                     >
-                                        📊 Buka Google Spreadsheet
+                                        Buka Google Spreadsheet
                                     </a>
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Modal Konfirmasi Pelanggaran */}
+                    {/* Modal Konfirmasi Pelanggaran Diperhalus */}
                     {selectedStudent && (
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                            <div className="bg-gray-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl p-5 border border-gray-700 shadow-2xl space-y-3 animate-in">
+                            <div className="bg-gray-800 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-gray-700 shadow-2xl space-y-5 animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
                                 <div className="text-center">
-                                    <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-2 sm:hidden"></div>
-                                    <h3 className="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold">Pilih Keterangan Alasan</h3>
-                                    <div className="text-lg font-bold text-white mt-0.5">{selectedStudent.name}</div>
-                                    <div className="text-xs text-gray-400">{selectedStudent.class}</div>
+                                    <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-4 sm:hidden"></div>
+                                    <h3 className="text-[10px] text-blue-400 uppercase tracking-widest font-bold">Catat Keterlambatan</h3>
+                                    <div className="text-xl font-extrabold text-white mt-1">{selectedStudent.name}</div>
+                                    <div className="text-xs text-gray-400 font-medium bg-gray-900 inline-block px-3 py-1 rounded-full mt-2 border border-gray-700">{selectedStudent.class}</div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => handleRecord('Terlambat bangun')} className="bg-amber-600 hover:bg-amber-500 text-white py-2.5 px-2 rounded-xl font-semibold text-xs shadow transition active:scale-95 text-center">
-                                        ⏰ Terlambat bangun
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <button onClick={() => handleRecord('Terlambat bangun')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 text-gray-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                        <span className="text-lg">⏰</span>
+                                        <span>Telat Bangun</span>
                                     </button>
-                                    <button onClick={() => handleRecord('Hujan')} className="bg-blue-600 hover:bg-blue-500 text-white py-2.5 px-2 rounded-xl font-semibold text-xs shadow transition active:scale-95 text-center">
-                                        🌧️ Hujan
+                                    <button onClick={() => handleRecord('Hujan')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 text-gray-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                        <span className="text-lg">🌧️</span>
+                                        <span>Hujan</span>
                                     </button>
-                                    <button onClick={() => handleRecord('Kendaraan bermasalah')} className="bg-purple-600 hover:bg-purple-500 text-white py-2.5 px-2 rounded-xl font-semibold text-xs shadow transition active:scale-95 text-center">
-                                        🏍️ Kendaraan bermasalah
+                                    <button onClick={() => handleRecord('Kendaraan bermasalah')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 text-gray-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                        <span className="text-lg">🏍️</span>
+                                        <span>Kendaraan</span>
                                     </button>
-                                    <button onClick={() => handleRecord('Keperluan mengantar org tua/saudara')} className="bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 px-2 rounded-xl font-semibold text-xs shadow transition active:scale-95 text-center text-[11px]">
-                                        👥 Mengantar keluarga
+                                    <button onClick={() => handleRecord('Keperluan keluarga')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 text-gray-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                        <span className="text-lg">👥</span>
+                                        <span>Urusan Keluarga</span>
                                     </button>
                                 </div>
 
-                                <div className="pt-1 border-t border-gray-700">
-                                    <label className="text-[10px] text-gray-400 font-medium mb-1 block">Atau Ketik Alasan Lainnya:</label>
+                                <div className="pt-2">
+                                    <label className="text-[10px] text-gray-400 font-bold mb-1.5 block uppercase tracking-wider">Atau Alasan Lainnya:</label>
                                     <div className="flex gap-2">
                                         <input 
                                             type="text"
                                             value={customReasonInput}
                                             onChange={(e) => setCustomReasonInput(e.target.value)}
-                                            placeholder="Tulis alasan khusus..."
-                                            className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                                            placeholder="Ketik spesifik..."
+                                            className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
                                         />
-                                        <button onClick={() => handleRecord('Custom')} disabled={!customReasonInput.trim()} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white px-3 py-2 rounded-xl text-xs font-semibold transition">
+                                        <button onClick={() => handleRecord('Custom')} disabled={!customReasonInput.trim()} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">
                                             Simpan
                                         </button>
                                     </div>
                                 </div>
 
-                                <button onClick={() => setSelectedStudent(null)} className="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 py-2 rounded-xl font-medium text-xs transition">
+                                <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-gray-600 text-gray-400 hover:text-white hover:border-gray-500 py-3 rounded-2xl font-bold text-xs transition">
                                     Batal
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Bottom Navigation */}
-                    <div className="absolute bottom-0 inset-x-0 bg-gray-800 border-t border-gray-700 flex justify-around py-2.5 px-2 z-40">
-                        <button onClick={() => setActiveTab('scan')} className={`flex flex-col items-center space-y-0.5 transition ${activeTab === 'scan' ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            <span className="text-base">⚡</span>
-                            <span className="text-[9px] font-medium">Gerbang</span>
+                    {/* Bottom Navigation dengan SVG & Blur */}
+                    <div className="absolute bottom-0 inset-x-0 bg-gray-800/90 backdrop-blur-md border-t border-gray-700 flex justify-around py-3 px-2 z-40 pb-safe">
+                        
+                        <button onClick={() => setActiveTab('scan')} className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === 'scan' ? 'text-blue-400 scale-110' : 'text-gray-400 hover:text-gray-300'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab === 'scan' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={activeTab === 'scan' ? "0" : "1.5"}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" />
+                            </svg>
+                            <span className="text-[10px] font-bold">Gerbang</span>
                         </button>
-                        <button onClick={() => setActiveTab('today')} className={`flex flex-col items-center space-y-0.5 transition ${activeTab === 'today' ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            <span className="text-base">📋</span>
-                            <span className="text-[9px] font-medium">Hari Ini</span>
-                        </button>
-                        <button onClick={() => setActiveTab('archive')} className={`flex flex-col items-center space-y-0.5 transition ${activeTab === 'archive' ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            <span className="text-base">📅</span>
-                            <span className="text-[9px] font-medium">Sebelumnya</span>
-                        </button>
-                        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center space-y-0.5 transition ${activeTab === 'stats' ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            <span className="text-base">📊</span>
-                            <span className="text-[9px] font-medium">Statistik</span>
-                        </button>
-                    </div>
 
+                        <button onClick={() => setActiveTab('today')} className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === 'today' ? 'text-blue-400 scale-110' : 'text-gray-400 hover:text-gray-300'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab === 'today' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={activeTab === 'today' ? "0" : "1.5"}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                            </svg>
+                            <span className="text-[10px] font-bold">Hari Ini</span>
+                        </button>
+
+                        <button onClick={() => setActiveTab('archive')} className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === 'archive' ? 'text-blue-400 scale-110' : 'text-gray-400 hover:text-gray-300'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab === 'archive' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={activeTab === 'archive' ? "0" : "1.5"}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="text-[10px] font-bold">Riwayat</span>
+                        </button>
+
+                        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === 'stats' ? 'text-blue-400 scale-110' : 'text-gray-400 hover:text-gray-300'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab === 'stats' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={activeTab === 'stats' ? "0" : "1.5"}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+                            </svg>
+                            <span className="text-[10px] font-bold">Statistik</span>
+                        </button>
+
+                    </div>
                 </div>
             );
         }
