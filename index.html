@@ -59,15 +59,6 @@
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
 
-       // ────────────────────────────────────────────────────────────
-       // ROLE & MENU CONFIG (Pilar 3 & 10 — Role Based Access)
-       // Backend saat ini belum mengirim field `role` pada respons login.
-       // Selama backend belum diperbarui, semua akun jatuh ke role "_legacy"
-       // yang punya akses penuh (perilaku sama seperti versi sebelumnya),
-       // supaya aplikasi tidak rusak untuk pengguna yang ada sekarang.
-       // Begitu Apps Script `login` mengembalikan `user.role` dengan salah
-       // satu key di bawah, menu & dashboard otomatis menyesuaikan.
-       // ────────────────────────────────────────────────────────────
        const ROLES = {
            guru_piket:     { label: 'Guru Piket',        menus: ['scan', 'dashboard'],             dashboardExpanded: false, canExport: false },
            wali_kelas:     { label: 'Wali Kelas',        menus: ['dashboard', 'log'],               dashboardExpanded: true,  canExport: false },
@@ -75,13 +66,13 @@
            wakasek:        { label: 'Wakasek Kesiswaan', menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
            kepala_sekolah: { label: 'Kepala Sekolah',    menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
            admin:          { label: 'Admin',             menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: true },
-           _legacy:        { label: 'Petugas',           menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: true },
+           _legacy:        { label: 'Petugas',           menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: false },
        };
 
        const NAV_ITEMS = {
            scan:      { label: 'Gerbang',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" /> },
            dashboard: { label: 'Beranda',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /> },
-           log:       { label: 'Log',        icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> },
+           log:       { label: 'Riwayat',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /> },
            stats:     { label: 'Statistik',  icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" /></React.Fragment> },
        };
 
@@ -93,15 +84,12 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // UTIL: tanggal, agregasi, semester
-       // ────────────────────────────────────────────────────────────
        const isSameDay = (a, b) => a.toDateString() === b.toDateString();
        const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 
        function getSemesterInfo(d) {
-           const m = d.getMonth(); // 0-11
+           const m = d.getMonth();
            if (m >= 6) return { label: 'Semester Ganjil', months: [6,7,8,9,10,11], year: d.getFullYear() };
            return { label: 'Semester Genap', months: [0,1,2,3,4,5], year: d.getFullYear() };
        }
@@ -116,15 +104,6 @@
            const map = {};
            logs.forEach(l => { const k = keyFn(l) || '—'; map[k] = (map[k] || 0) + 1; });
            return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
-       }
-
-       function peakHour(logs) {
-           if (logs.length === 0) return null;
-           const buckets = {};
-           logs.forEach(l => { const h = new Date(l.timestamp).getHours(); buckets[h] = (buckets[h] || 0) + 1; });
-           const [hour] = Object.entries(buckets).sort((a, b) => b[1] - a[1])[0];
-           const h = parseInt(hour, 10);
-           return `${String(h).padStart(2,'0')}.00–${String(h+1).padStart(2,'0')}.00`;
        }
 
        function buildPeriodSeries(period, logs) {
@@ -162,7 +141,6 @@
                    return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
                });
            }
-           // tahunan
            return Array.from({ length: 12 }, (_, m) => {
                const s = new Date(now.getFullYear(), m, 1); const e = new Date(now.getFullYear(), m + 1, 0, 23, 59, 59, 999);
                return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
@@ -186,9 +164,6 @@
            URL.revokeObjectURL(url);
        }
 
-       // ────────────────────────────────────────────────────────────
-       // KOMPONEN KECIL
-       // ────────────────────────────────────────────────────────────
        function Badge({ children, tone = 'sky' }) {
            const tones = { sky: 'bg-sky-dim/30 text-sky-light border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-ink-800 text-slate-300 border-ink-600' };
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
@@ -250,9 +225,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // LOGIN
-       // ────────────────────────────────────────────────────────────
        function LoginScreen({ onLogin, loading, error, password, setPassword }) {
            return (
                <div className="flex flex-col h-full justify-center p-6 bg-gradient-to-b from-navy-dark via-ink-950 to-ink-950 overflow-y-auto">
@@ -289,9 +261,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // HEADER + NAV
-       // ────────────────────────────────────────────────────────────
        function Header({ user, roleLabel, onLogout }) {
            return (
                <div className="bg-ink-900/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-ink-700 z-30">
@@ -329,21 +298,20 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // TAB: SCAN (Gerbang) — Pilar 2 & 7 Workflow First
-       // ────────────────────────────────────────────────────────────
        function ScanTab({ students, searchQuery, setSearchQuery, onSelect }) {
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
-               s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.class.toLowerCase().includes(searchQuery.toLowerCase())
+               s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
            );
            return (
                <div className="space-y-5 animate-rise">
                    <div>
-                       <label className="text-xs text-slate-400 font-semibold mb-1.5 block">Cari Manual</label>
+                       <label className="text-xs text-slate-400 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
                        <div className="relative">
                            <input
                                type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                               placeholder="Ketik nama atau kelas (mis. XI C)..."
+                               placeholder="Ketik nama, kelas, atau NISN..."
                                className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky shadow-sm transition"
                            />
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
@@ -392,9 +360,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // TAB: DASHBOARD (Beranda) — Pilar 4, pemisahan operasional/analitik (Pilar 3)
-       // ────────────────────────────────────────────────────────────
        function DashboardTab({ allLogs, expanded, onRefresh, loading }) {
            const now = new Date();
            const today = allLogs.filter(l => isSameDay(new Date(l.timestamp), now));
@@ -450,9 +415,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // TAB: LOG (dulu "Riwayat") — Pilar 6, pusat pencarian data
-       // ────────────────────────────────────────────────────────────
        function LogTab({ allLogs }) {
            const [filterClass, setFilterClass] = useState('');
            const [filterReason, setFilterReason] = useState('');
@@ -468,7 +430,7 @@
                if (filterClass && l.class !== filterClass) return false;
                if (filterReason && l.type !== filterReason) return false;
                if (filterDate && !isSameDay(new Date(l.timestamp), new Date(filterDate))) return false;
-               if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase())) return false;
+               if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
            });
 
@@ -478,7 +440,7 @@
                <div className="space-y-4 animate-rise">
                    <div className="flex gap-2">
                        <div className="relative flex-1">
-                           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama siswa..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky" />
+                           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky" />
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-500" />
                        </div>
                        <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${activeFilterCount > 0 ? 'bg-sky-dim/25 border-sky-dim text-sky-light' : 'bg-ink-850 border-ink-700 text-slate-400'}`}>
@@ -550,9 +512,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // TAB: STATISTIK — Pilar 5 (periode) + Pilar 11 Export (admin only)
-       // ────────────────────────────────────────────────────────────
        function StatsTab({ allLogs, canExport }) {
            const [period, setPeriod] = useState('5hari');
            const periods = [
@@ -568,7 +527,6 @@
                : period === 'semester' ? new Date(getSemesterInfo(new Date()).year, getSemesterInfo(new Date()).months[0], 1)
                : new Date(new Date().getFullYear(), 0, 1);
            const periodLogs = allLogs.filter(l => inRange(l.timestamp, periodStart, new Date()));
-           const peak = peakHour(periodLogs);
 
            return (
                <div className="space-y-5 animate-rise">
@@ -584,9 +542,8 @@
 
                    <BarChart data={series} title={`Tren ${periods.find(p => p.key === period).label}`} />
 
-                   <div className="grid grid-cols-2 gap-3">
-                       <StatCard value={periodLogs.length} label="Total Periode Ini" accent />
-                       <StatCard value={peak || '—'} label="Jam Tersibuk" />
+                   <div className="grid grid-cols-1 gap-3">
+                       <StatCard value={periodLogs.length} label={`Total Keterlambatan (${periods.find(p => p.key === period).label})`} accent />
                    </div>
 
                    <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.class, 5)} unit="siswa" />
@@ -631,9 +588,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // MODAL: Catat Keterlambatan
-       // ────────────────────────────────────────────────────────────
        function RecordModal({ student, customReason, setCustomReason, onRecord, onClose }) {
            const presets = [
                { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
@@ -670,9 +624,6 @@
            );
        }
 
-       // ────────────────────────────────────────────────────────────
-       // APP
-       // ────────────────────────────────────────────────────────────
        function App() {
            const [user, setUser] = useState(null);
            const [passwordInput, setPasswordInput] = useState('');
