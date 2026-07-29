@@ -86,16 +86,23 @@
 
        function parseTimestamp(ts) {
            if (!ts) return new Date();
-           if (typeof ts === 'string' && ts.includes('/')) {
-               const parts = ts.split(' ');
-               const dateParts = parts[0].split('/');
-               if (dateParts.length === 3) {
-                   const timePart = parts[1] || '00:00:00';
-                   return new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T${timePart}`);
+           if (typeof ts === 'string') {
+               if (ts.includes('/')) {
+                   const parts = ts.trim().split(' ');
+                   const dateParts = parts[0].split('/');
+                   if (dateParts.length === 3) {
+                       const day = dateParts[0].padStart(2, '0');
+                       const month = dateParts[1].padStart(2, '0');
+                       const year = dateParts[2];
+                       const timePart = parts[1] ? parts[1] + (parts[1].split(':').length === 2 ? ':00' : '') : '00:00:00';
+                       const formatted = `${year}-${month}-${day}T${timePart}`;
+                       const d = new Date(formatted);
+                       if (!isNaN(d.getTime())) return d;
+                   }
                }
            }
-           const d = new Date(ts);
-           return isNaN(d.getTime()) ? new Date() : d;
+           const fallback = new Date(ts);
+           return isNaN(fallback.getTime()) ? new Date() : fallback;
        }
 
        const isSameDay = (a, b) => a.toDateString() === b.toDateString();
@@ -549,11 +556,806 @@
                { key: 'tahunan', label: 'Tahunan' },
            ];
            const series = buildPeriodSeries(period, allLogs);
-           const periodStart = period === '5hari' || period === 'mingguan' ? startOfWeek(new Date())
-               : period === 'bulanan' ? startOfMonth(new Date())
-               : period === 'semester' ? new Date(getSemesterInfo(new Date()).year, getSemesterInfo(new Date()).months[0], 1)
-               : new Date(new Date().getFullYear(), 0, 1);
-           const periodLogs = allLogs.filter(l => inRange(l.timestamp, periodStart, new Date()));
+           
+           const periodLogs = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
+               const now = new Date();
+               if (period === '5hari') {
+                   const past = new Date();
+                   past.setDate(now.getDate() - 5);
+                   return dt >= past && dt <= now;
+               }
+               if (period === 'mingguan') {
+                   return inRange(l.timestamp, startOfWeek(now), now);
+               }
+               if (period === 'bulanan') {
+                   return inRange(l.timestamp, startOfMonth(now), now);
+               }
+               if (period === 'semester') {
+                   const semInfo = getSemesterInfo(now);
+                   const s = new Date(semInfo.year, semInfo.months[0], 1);
+                   return inRange(l.timestamp, s, now);
+               }
+               const s = new Date(now.getFullYear(), 0, 1);
+               return inRange(l.timestamp, s, now);
+           });
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Statistik Keterlambatan</h2>
+
+                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                       {periods.map(p => (
+                           <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-sky text-white shadow-md' : 'bg-ink-850 text-slate-400 border border-ink-700'}`}>
+                               {p.label}
+                           </button>
+                       ))}
+                   </div>
+
+                   <BarChart data={series} title={`Tren ${periods.find(p => p.key === period).label}`} />
+
+                   <div className="grid grid-cols-1 gap-3">
+                       <StatCard value={periodLogs.length} label={`Total Keterlambatan (${periods.find(p => p.key === period).label})`} accent />
+                   </div>
+
+                   <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.class, 5)} unit="siswa" />
+                   <TopList title="Alasan Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.type, 5)} unit="kali" />
+
+                   {canExport && (
+                       <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
+                           <h3 className="text-xs font-display font-bold text-sky-light flex items-center gap-2">
+                               <Icon path={<path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />} filled className="h-4 w-4" />
+                               Ekspor Data (Admin)
+                           </h3>
+                           <p className="text-[11px] text-slate-400 leading-relaxed">Seluruh log tersimpan di Google Sheets. Unduh sebagai CSV/Excel, cetak sebagai PDF, atau buka rekap lengkap di Spreadsheet.</p>
+                           <div className="grid grid-cols-2 gap-2">
+                               <button onClick={() => exportCSV(allLogs, 'LogLengkap')} className="bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">Unduh CSV</button>
+                               <button onClick={() => window.print()} className="bg-ink-800 border border-ink-600 hover:bg-ink-700 text-slate-200 py-2.5 rounded-xl text-[11px] font-bold transition">Cetak / PDF</button>
+                           </div>
+                           <a href="https://docs.google.com/spreadsheets" target="_blank" className="block w-full text-center bg-transparent border-2 border-sky-dim text-sky-light py-2.5 rounded-xl text-[11px] font-bold transition">
+                               Buka Google Spreadsheet
+                           </a>
+                       </div>
+                   )}
+
+                   <div className="print-report">
+                       <h2 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>Laporan Keterlambatan — SIGAP SMAN 2 Tarakan</h2>
+                       <p style={{ fontSize: '11px', marginBottom: '12px' }}>Dicetak: {new Date().toLocaleString('id-ID')}</p>
+                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                           <thead><tr>{['Nama', 'Kelas', 'Alasan', 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
+                           <tbody>
+                               {allLogs.map((l, i) => {
+                                   const dt = parseTimestamp(l.timestamp);
+                                   return (
+                                       <tr key={i}>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.type}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleDateString('id-ID')}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                                       </tr>
+                                   );
+                               })}
+                           </tbody>
+                       </table>
+                   </div>
+               </div>
+           );
+       }
+
+       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose }) {
+           const presets = [
+               { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
+               { type: 'Hujan', emoji: '🌧️', label: 'Hujan' },
+               { type: 'Kendaraan bermasalah', emoji: '🏍️', label: 'Kendaraan' },
+               { type: 'Keperluan keluarga', emoji: '👥', label: 'Urusan Keluarga' },
+           ];
+           return (
+               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                   <div className="bg-ink-850 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-5 animate-pop">
+                       <div className="text-center">
+                           <div className="w-12 h-1.5 bg-ink-600 rounded-full mx-auto mb-4 sm:hidden"></div>
+                           <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Catat Keterlambatan</h3>
+                           <div className="font-display text-xl font-extrabold text-white mt-1">{student.name}</div>
+                           <div className="text-xs text-slate-400 font-medium bg-ink-900 inline-block px-3 py-1 rounded-full mt-2 border border-ink-700">{student.class}</div>
+                       </div>
+                       <div className="grid grid-cols-2 gap-2.5">
+                           {presets.map(p => (
+                               <button key={p.type} onClick={() => onRecord(p.type)} className="bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                   <span className="text-lg">{p.emoji}</span><span>{p.label}</span>
+                               </button>
+                           ))}
+                       </div>
+                       <div className="pt-2">
+                           <label className="text-[10px] text-slate-400 font-bold mb-1.5 block uppercase tracking-wider">Atau Alasan Lainnya</label>
+                           <div className="flex gap-2">
+                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Ketik spesifik..." className="flex-1 bg-ink-900 border border-ink-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+                               <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
+                           </div>
+                       </div>
+                       <button onClick={onClose} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 hover:text-white hover:border-ink-500 py-3 rounded-2xl font-bold text-xs transition">Batal</button>
+                   </div>
+               </div>
+           );
+       }
+
+       function App() {
+           const [user, setUser] = useState(null);
+           const [passwordInput, setPasswordInput] = useState('');
+           const [loadingLogin, setLoadingLogin] = useState(false);
+           const [loginError, setLoginError] = useState('');
+
+           const [activeTab, setActiveTab] = useState(null);
+           const [searchQuery, setSearchQuery] = useState('');
+           const [selectedStudent, setSelectedStudent] = useState(null);
+           const [customReasonInput, setCustomReasonInput] = useState('');
+           const [toast, setToast] = useState(null);
+           const [students, setStudents] = useState([]);
+           const [allLogs, setAllLogs] = useState([]);
+           const [loadingLogs, setLoadingLogs] = useState(false);
+
+           const roleKey = user && ROLES[user.role] ? user.role : '_legacy';
+           const roleConfig = ROLES[roleKey];
+
+           useEffect(() => {
+               if (user) {
+                   fetchData();
+                   setActiveTab(roleConfig.menus[0]);
+               }
+           }, [user]);
+
+           const fetchData = () => {
+               setLoadingLogs(true);
+               fetch(`${API_URL}?action=getStudents`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
+               fetch(`${API_URL}?action=getLogs`).then(res => res.json()).then(data => {
+                   if (data.status === 'success') setAllLogs(data.logs);
+                   setLoadingLogs(false);
+               }).catch(() => setLoadingLogs(false));
+           };
+
+           const handleLogin = (e) => {
+               e.preventDefault();
+               setLoadingLogin(true);
+               setLoginError('');
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       setLoadingLogin(false);
+                       if (data.status === 'success') setUser(data.user);
+                       else setLoginError(data.message || 'Password salah!');
+                   })
+                   .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+           };
+
+           const handleRecord = (type) => {
+               const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
+               const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, logged_by: user.name };
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(() => fetchData()).catch(err => console.error('Gagal simpan:', err));
+               setToast(`Berhasil mencatat: ${selectedStudent.name}`);
+               setSelectedStudent(null); setSearchQuery(''); setCustomReasonInput('');
+               setTimeout(() => setToast(null), 3000);
+           };
+
+           if (!user) {
+               return <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />;
+           }
+
+           return (
+               <div className="flex flex-col h-full bg-ink-950 text-slate-100 relative select-none">
+                   <Header user={user} roleLabel={roleConfig.label} onLogout={() => setUser(null)} />
+
+                   {toast && (
+                       <div className="absolute top-16 left-4 right-4 z-50 bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
+                           <span>{toast}</span>
+                           <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
+                       </div>
+                   )}
+
+                   <div className="flex-1 overflow-y-auto p-4 pb-24">
+                       {activeTab === 'scan' && roleConfig.menus.includes('scan') && (
+                           <ScanTab students={students} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onSelect={setSelectedStudent} />
+                       )}
+                       {activeTab === 'dashboard' && (
+                           <DashboardTab allLogs={allLogs} expanded={roleConfig.dashboardExpanded} onRefresh={fetchData} loading={loadingLogs} />
+                       )}
+                       {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} />}
+                       {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
+                   </div>
+
+                   {selectedStudent && (
+                       <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} />
+                   )}
+
+                   <BottomNav menus={roleConfig.menus} activeTab={activeTab} setActiveTab={setActiveTab} />
+               </div>
+           );
+       }
+
+       ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+   </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <title>SIGAP - SMAN 2 Tarakan</title>
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <script>
+       tailwind.config = {
+           theme: {
+               extend: {
+                   fontFamily: {
+                       sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                       display: ['Sora', 'sans-serif'],
+                   },
+                   colors: {
+                       navy: { DEFAULT: '#0B2A55', light: '#123B72', dark: '#071A38' },
+                       sky: { DEFAULT: '#2E86D8', light: '#6FB3EA', dim: '#1D5C93' },
+                       crimson: { DEFAULT: '#E0473C', dim: '#B93A31' },
+                       ink: { 950: '#0A0D12', 900: '#10141B', 850: '#161B24', 800: '#1C222D', 700: '#262E3B', 600: '#3A4453' },
+                   },
+               }
+           }
+       }
+   </script>
+   <style>
+       * { font-family: 'Plus Jakarta Sans', sans-serif; }
+       .font-display { font-family: 'Sora', sans-serif; }
+       ::-webkit-scrollbar { width: 4px; height: 4px; }
+       ::-webkit-scrollbar-thumb { background: #262E3B; border-radius: 4px; }
+       ::-webkit-scrollbar-track { background: transparent; }
+       @keyframes scanline { 0% { top: 8%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 92%; opacity: 0; } }
+       .animate-scanline { animation: scanline 2.2s ease-in-out infinite; }
+       @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+       .animate-rise { animation: riseIn .28s ease-out; }
+       @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+       .animate-pop { animation: popIn .18s ease-out; }
+       .print-report { display: none; }
+       @media print {
+           body * { visibility: hidden; }
+           .print-report, .print-report * { visibility: visible; }
+           .print-report { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; color: #000; }
+       }
+   </style>
+</head>
+<body class="bg-ink-950 text-slate-100 flex items-center justify-center min-h-screen m-0">
+
+   <div id="root" class="w-full h-screen sm:h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border-[8px] sm:border-ink-900 bg-ink-950 flex flex-col overflow-hidden shadow-2xl relative"></div>
+
+   <script type="text/babel">
+       const { useState, useEffect, useMemo, useRef } = React;
+
+       // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
+       const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+
+       const ROLES = {
+           guru_piket:     { label: 'Guru Piket',        menus: ['scan', 'dashboard'],             dashboardExpanded: false, canExport: false },
+           wali_kelas:     { label: 'Wali Kelas',        menus: ['dashboard', 'log'],               dashboardExpanded: true,  canExport: false },
+           guru_bk:        { label: 'Guru BK',           menus: ['dashboard', 'log', 'stats'],      dashboardExpanded: true,  canExport: false },
+           wakasek:        { label: 'Wakasek Kesiswaan', menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
+           kepala_sekolah: { label: 'Kepala Sekolah',    menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
+           admin:          { label: 'Admin',             menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: true },
+           _legacy:        { label: 'Petugas',           menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: false },
+       };
+
+       const NAV_ITEMS = {
+           scan:      { label: 'Gerbang',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" /> },
+           dashboard: { label: 'Beranda',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /> },
+           log:       { label: 'Riwayat',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /> },
+           stats:     { label: 'Statistik',  icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" /></React.Fragment> },
+       };
+
+       function Icon({ path, className = "h-5 w-5", filled = false }) {
+           return (
+               <svg xmlns="http://www.w3.org/2000/svg" className={className} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={filled ? 0 : 1.6}>
+                   {path}
+               </svg>
+           );
+       }
+
+       function parseTimestamp(ts) {
+           if (!ts) return new Date();
+           if (typeof ts === 'string') {
+               if (ts.includes('/')) {
+                   const parts = ts.trim().split(' ');
+                   const dateParts = parts[0].split('/');
+                   if (dateParts.length === 3) {
+                       const day = dateParts[0].padStart(2, '0');
+                       const month = dateParts[1].padStart(2, '0');
+                       const year = dateParts[2];
+                       const timePart = parts[1] ? parts[1] + (parts[1].split(':').length === 2 ? ':00' : '') : '00:00:00';
+                       const formatted = `${year}-${month}-${day}T${timePart}`;
+                       const d = new Date(formatted);
+                       if (!isNaN(d.getTime())) return d;
+                   }
+               }
+           }
+           const fallback = new Date(ts);
+           return isNaN(fallback.getTime()) ? new Date() : fallback;
+       }
+
+       const isSameDay = (a, b) => a.toDateString() === b.toDateString();
+       const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
+       const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+       function getSemesterInfo(d) {
+           const m = d.getMonth();
+           if (m >= 6) return { label: 'Semester Ganjil', months: [6,7,8,9,10,11], year: d.getFullYear() };
+           return { label: 'Semester Genap', months: [0,1,2,3,4,5], year: d.getFullYear() };
+       }
+
+       function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
+
+       function countInRange(logs, start, end) {
+           return logs.filter(l => inRange(l.timestamp, start, end)).length;
+       }
+
+       function topN(logs, keyFn, n = 3) {
+           const map = {};
+           logs.forEach(l => { const k = keyFn(l) || '—'; map[k] = (map[k] || 0) + 1; });
+           return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
+       }
+
+       function buildPeriodSeries(period, logs) {
+           const now = new Date();
+           if (period === '5hari') {
+               const days = [];
+               let cursor = new Date(now);
+               while (days.length < 5) {
+                   if (cursor.getDay() !== 0 && cursor.getDay() !== 6) days.unshift(new Date(cursor));
+                   cursor.setDate(cursor.getDate() - 1);
+               }
+               return days.map(d => ({ label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length }));
+           }
+           if (period === 'mingguan') {
+               const start = startOfWeek(now);
+               return Array.from({ length: 7 }, (_, i) => {
+                   const d = new Date(start); d.setDate(start.getDate() + i);
+                   return { label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length };
+               });
+           }
+           if (period === 'bulanan') {
+               const start = startOfMonth(now);
+               const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+               const weeks = Math.ceil(daysInMonth / 7);
+               return Array.from({ length: weeks }, (_, i) => {
+                   const wStart = new Date(start); wStart.setDate(start.getDate() + i * 7);
+                   const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
+                   return { label: `M${i + 1}`, count: countInRange(logs, wStart, wEnd) };
+               });
+           }
+           if (period === 'semester') {
+               const info = getSemesterInfo(now);
+               return info.months.map(m => {
+                   const s = new Date(info.year, m, 1); const e = new Date(info.year, m + 1, 0, 23, 59, 59, 999);
+                   return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
+               });
+           }
+           return Array.from({ length: 12 }, (_, m) => {
+               const s = new Date(now.getFullYear(), m, 1); const e = new Date(now.getFullYear(), m + 1, 0, 23, 59, 59, 999);
+               return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
+           });
+       }
+
+       function exportCSV(logs, filenameHint) {
+           const header = ['Nama', 'NISN', 'Kelas', 'Alasan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
+           const rows = logs.map(l => {
+               const dt = parseTimestamp(l.timestamp);
+               return [
+                   l.name, l.nisn || '', l.class, l.type,
+                   dt.toLocaleDateString('id-ID'),
+                   dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                   l.logged_by || '',
+               ];
+           });
+           const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+           const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+           const url = URL.createObjectURL(blob);
+           const a = document.createElement('a');
+           a.href = url; a.download = `SIGAP_${filenameHint}_${new Date().toISOString().slice(0, 10)}.csv`;
+           document.body.appendChild(a); a.click(); document.body.removeChild(a);
+           URL.revokeObjectURL(url);
+       }
+
+       function Badge({ children, tone = 'sky' }) {
+           const tones = { sky: 'bg-sky-dim/30 text-sky-light border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-ink-800 text-slate-300 border-ink-600' };
+           return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
+       }
+
+       function StatCard({ value, label, accent = false }) {
+           return (
+               <div className={`p-4 rounded-2xl text-center border ${accent ? 'bg-sky-dim/15 border-sky-dim/40' : 'bg-ink-850 border-ink-700'}`}>
+                   <div className={`font-display text-3xl font-extrabold ${accent ? 'text-sky-light' : 'text-slate-200'}`}>{value}</div>
+                   <div className="text-[10px] text-slate-400 mt-1 font-semibold uppercase tracking-wide">{label}</div>
+               </div>
+           );
+       }
+
+       function BarChart({ data, title }) {
+           const max = Math.max(...data.map(d => d.count), 1);
+           return (
+               <div className="bg-ink-850 border border-ink-700 p-4 rounded-2xl shadow-lg">
+                   {title && <h3 className="text-xs font-display font-bold text-slate-200 mb-4 text-center">{title}</h3>}
+                   <div className="flex items-end justify-between h-36 gap-1.5">
+                       {data.map((d, i) => (
+                           <div key={i} className="flex flex-col items-center flex-1 h-full">
+                               <span className="text-[10px] text-sky-light font-bold mb-1.5">{d.count > 0 ? d.count : '·'}</span>
+                               <div className="w-full max-w-[28px] bg-ink-700/60 rounded-t-lg relative flex items-end justify-center h-full overflow-hidden">
+                                   <div className="w-full bg-gradient-to-t from-navy-light to-sky rounded-t-lg transition-all duration-700 ease-out" style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? '8%' : '0%' }}></div>
+                               </div>
+                               <span className="text-[9px] text-slate-500 mt-2 uppercase font-semibold">{d.label}</span>
+                           </div>
+                       ))}
+                   </div>
+               </div>
+           );
+       }
+
+       function TopList({ title, items, unit }) {
+           return (
+               <div className="bg-ink-850 border border-ink-700 rounded-2xl p-4">
+                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{title}</h3>
+                   {items.length === 0 && <div className="text-xs text-slate-500 py-2">Belum ada data.</div>}
+                   <div className="space-y-2.5">
+                       {items.map((it, i) => (
+                           <div key={i} className="flex items-center gap-3">
+                               <span className="w-5 h-5 rounded-full bg-navy-light text-sky-light text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                               <span className="text-xs text-slate-200 font-medium flex-1 truncate">{it.label}</span>
+                               <span className="text-[10px] text-slate-400 font-semibold">{it.count} {unit}</span>
+                           </div>
+                       ))}
+                   </div>
+               </div>
+           );
+       }
+
+       function EmptyState({ emoji, text }) {
+           return (
+               <div className="text-center py-16 bg-ink-850/50 rounded-2xl border border-dashed border-ink-700">
+                   <div className="text-4xl mb-2">{emoji}</div>
+                   <div className="text-slate-400 text-xs font-medium px-6">{text}</div>
+               </div>
+           );
+       }
+
+       function LoginScreen({ onLogin, loading, error, password, setPassword }) {
+           return (
+               <div className="flex flex-col h-full justify-center p-6 bg-gradient-to-b from-navy-dark via-ink-950 to-ink-950 overflow-y-auto">
+                   <div className="text-center mb-8 mt-2">
+                       <div className="relative inline-block mb-6">
+                           <div className="absolute inset-0 bg-sky blur-[34px] opacity-30 rounded-[40px]"></div>
+                           <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="relative w-52 h-52 object-contain bg-white rounded-[32px] mx-auto shadow-2xl p-3 border-4 border-ink-800" />
+                       </div>
+                       <h1 className="font-display text-3xl font-extrabold text-sky-light tracking-tight">SIGAP</h1>
+                       <p className="text-[11px] text-slate-400 mt-2 font-semibold max-w-[280px] mx-auto leading-snug uppercase tracking-wide">
+                           Sistem Informasi Gerbang &amp; Absensi Pelanggaran
+                       </p>
+                       <p className="text-[10px] text-slate-600 mt-1">SMAN 2 Tarakan</p>
+                   </div>
+
+                   <form onSubmit={onLogin} className="space-y-5 bg-ink-850/80 p-6 rounded-3xl border border-ink-700 shadow-xl backdrop-blur-sm">
+                       <div>
+                           <label className="text-xs text-slate-400 font-semibold mb-1.5 block">Password Petugas</label>
+                           <input
+                               type="password"
+                               value={password}
+                               onChange={(e) => setPassword(e.target.value)}
+                               placeholder="Masukkan password..."
+                               className="w-full bg-ink-900/70 border border-ink-600 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                               required
+                           />
+                       </div>
+                       {error && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2 rounded-lg">{error}</div>}
+                       <button type="submit" disabled={loading} className="w-full bg-sky hover:bg-sky-light text-white py-3.5 rounded-2xl font-bold text-sm shadow-[0_4px_14px_0_rgba(46,134,216,0.4)] transition active:scale-95 disabled:opacity-50">
+                           {loading ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
+                       </button>
+                   </form>
+               </div>
+           );
+       }
+
+       function Header({ user, roleLabel, onLogout }) {
+           return (
+               <div className="bg-ink-900/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-ink-700 z-30">
+                   <div className="flex items-center space-x-3 min-w-0">
+                       <img src="IMG_1966.jpeg" alt="Logo" className="w-10 h-10 object-contain rounded-xl bg-white p-1 border border-ink-600 flex-shrink-0" />
+                       <div className="min-w-0">
+                           <h1 className="font-display font-bold text-xs uppercase tracking-wider text-sky-light truncate">SMAN 2 Tarakan</h1>
+                           <div className="flex items-center gap-1.5 mt-0.5">
+                               <span className="text-[10px] text-slate-400 truncate">{user.name}</span>
+                               <Badge tone="sky">{roleLabel}</Badge>
+                           </div>
+                       </div>
+                   </div>
+                   <button onClick={onLogout} className="text-[10px] font-semibold bg-ink-800 hover:bg-ink-700 text-slate-300 px-3 py-1.5 rounded-xl border border-ink-600 transition shadow-sm flex-shrink-0">
+                       Keluar
+                   </button>
+               </div>
+           );
+       }
+
+       function BottomNav({ menus, activeTab, setActiveTab }) {
+           return (
+               <div className="absolute bottom-0 inset-x-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-700 flex justify-around py-3 px-2 z-40 pb-safe">
+                   {menus.map((key) => {
+                       const item = NAV_ITEMS[key];
+                       const active = activeTab === key;
+                       return (
+                           <button key={key} onClick={() => setActiveTab(key)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-light scale-110' : 'text-slate-500 hover:text-slate-300'}`}>
+                               <Icon path={item.icon()} filled={active} className="h-6 w-6" />
+                               <span className="text-[10px] font-bold">{item.label}</span>
+                           </button>
+                       );
+                   })}
+               </div>
+           );
+       }
+
+       function ScanTab({ students, searchQuery, setSearchQuery, onSelect }) {
+           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
+               s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
+           );
+           return (
+               <div className="space-y-5 animate-rise">
+                   <div>
+                       <label className="text-xs text-slate-400 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
+                       <div className="relative">
+                           <input
+                               type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                               placeholder="Ketik nama, kelas, atau NISN..."
+                               className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky shadow-sm transition"
+                           />
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
+                       </div>
+                   </div>
+
+                   {searchQuery.trim() !== '' && (
+                       <div className="bg-ink-850 rounded-2xl border border-ink-700 overflow-hidden shadow-xl animate-rise">
+                           <div className="px-4 py-2.5 bg-ink-800 border-b border-ink-700 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                               Hasil ({filtered.length})
+                           </div>
+                           <div className="max-h-60 overflow-y-auto">
+                               {filtered.length > 0 ? filtered.map(s => (
+                                   <div key={s.nisn} onClick={() => onSelect(s)} className="px-4 py-3.5 border-b border-ink-700/60 flex items-center justify-between hover:bg-ink-800 active:bg-ink-700 cursor-pointer transition">
+                                       <div>
+                                           <div className="font-bold text-sm text-white">{s.name}</div>
+                                           <div className="text-xs text-sky-light font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn}</span></div>
+                                       </div>
+                                       <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm">Pilih</span>
+                                   </div>
+                               )) : <div className="p-6 text-center text-xs text-slate-500 font-medium">Siswa tidak ditemukan</div>}
+                           </div>
+                       </div>
+                   )}
+
+                   <div className="relative flex items-center py-2">
+                       <div className="flex-grow border-t border-ink-700"></div>
+                       <span className="flex-shrink-0 mx-4 text-slate-600 text-[10px] font-bold uppercase tracking-widest">Atau</span>
+                       <div className="flex-grow border-t border-ink-700"></div>
+                   </div>
+
+                   <div className="bg-ink-850/60 border-2 border-dashed border-ink-600 rounded-3xl p-5 flex flex-col items-center justify-center relative">
+                       <div className="w-56 h-36 border-[3px] border-sky rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-ink-900/80 shadow-[inset_0_0_20px_rgba(46,134,216,0.25)]">
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />} className="h-8 w-8 text-sky mb-2 opacity-60" />
+                           <div className="absolute inset-x-0 h-[2px] bg-sky-light animate-scanline shadow-[0_0_10px_rgba(111,179,234,1)]" style={{ top: '8%' }}></div>
+                           <span className="text-[11px] text-slate-400 text-center px-4 font-medium">Arahkan kartu RFID ke alat</span>
+                       </div>
+                       {students.length > 0 && (
+                           <button onClick={() => onSelect(students[0])} className="mt-4 w-full bg-ink-800 hover:bg-ink-700 text-sky-light py-3 rounded-2xl text-xs font-semibold shadow-sm transition active:scale-95 border border-ink-600 flex items-center justify-center gap-2">
+                               <Icon path={<path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />} filled className="h-4 w-4" />
+                               Simulasi Scan ({students[0].name})
+                           </button>
+                       )}
+                   </div>
+               </div>
+           );
+       }
+
+       function DashboardTab({ allLogs, expanded, onRefresh, loading }) {
+           const now = new Date();
+           const today = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
+           const weekCount = countInRange(allLogs, startOfWeek(now), now);
+           const monthCount = countInRange(allLogs, startOfMonth(now), now);
+           const semInfo = getSemesterInfo(now);
+           const semStart = new Date(semInfo.year, semInfo.months[0], 1);
+           const semCount = countInRange(allLogs, semStart, now);
+           const topKelasToday = topN(today, l => l.class, 3);
+           const topAlasanToday = topN(today, l => l.type, 3);
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <div className="flex justify-between items-end">
+                       <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Ringkasan Hari Ini</h2>
+                       <button onClick={onRefresh} className="text-[10px] text-sky-light font-semibold bg-sky-dim/20 px-2 py-1 rounded-md">Refresh</button>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-3">
+                       <StatCard value={today.length} label="Terlambat Hari Ini" accent />
+                       <StatCard value={weekCount} label="Minggu Ini" />
+                       {expanded && <StatCard value={monthCount} label="Bulan Ini" />}
+                       {expanded && <StatCard value={semCount} label={semInfo.label} />}
+                   </div>
+
+                   {loading ? (
+                       <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
+                   ) : today.length > 0 ? (
+                       <div className="space-y-2.5">
+                           {today.slice(0, expanded ? 6 : 4).map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx} className="bg-ink-850 border-l-4 border-l-sky border-y border-r border-ink-700 p-3.5 rounded-r-xl shadow-sm space-y-1">
+                                       <div className="flex items-center justify-between">
+                                           <div className="font-bold text-sm text-white">{log.name}</div>
+                                           <span className="text-[9px] bg-crimson/15 text-crimson border border-crimson/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">{log.type}</span>
+                                       </div>
+                                       <div className="text-[11px] text-slate-400 flex justify-between items-center">
+                                           <span>{log.class} • <span className="text-slate-300 font-medium">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
+                                       </div>
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <EmptyState emoji="🏆" text="Belum ada siswa terlambat hari ini." />
+                   )}
+
+                   {expanded && (topKelasToday.length > 0 || topAlasanToday.length > 0) && (
+                       <div className="grid grid-cols-1 gap-3">
+                           <TopList title="Kelas Terbanyak Hari Ini" items={topKelasToday} unit="siswa" />
+                           <TopList title="Alasan Terbanyak Hari Ini" items={topAlasanToday} unit="kali" />
+                       </div>
+                   )}
+               </div>
+           );
+       }
+
+       function LogTab({ allLogs }) {
+           const [filterClass, setFilterClass] = useState('');
+           const [filterReason, setFilterReason] = useState('');
+           const [filterDate, setFilterDate] = useState('');
+           const [search, setSearch] = useState('');
+           const [expandedStudent, setExpandedStudent] = useState(null);
+           const [showFilters, setShowFilters] = useState(false);
+
+           const classes = useMemo(() => [...new Set(allLogs.map(l => l.class))].sort(), [allLogs]);
+           const reasons = useMemo(() => [...new Set(allLogs.map(l => l.type))].sort(), [allLogs]);
+
+           const filtered = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
+               if (filterClass && l.class !== filterClass) return false;
+               if (filterReason && l.type !== filterReason) return false;
+               if (filterDate && !isSameDay(dt, new Date(filterDate))) return false;
+               if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
+               return true;
+           });
+
+           const activeFilterCount = [filterClass, filterReason, filterDate].filter(Boolean).length;
+
+           return (
+               <div className="space-y-4 animate-rise">
+                   <div className="flex gap-2">
+                       <div className="relative flex-1">
+                           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky" />
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-500" />
+                       </div>
+                       <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${activeFilterCount > 0 ? 'bg-sky-dim/25 border-sky-dim text-sky-light' : 'bg-ink-850 border-ink-700 text-slate-400'}`}>
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
+                           {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+                       </button>
+                   </div>
+
+                   {showFilters && (
+                       <div className="bg-ink-850 border border-ink-700 rounded-2xl p-4 space-y-3 animate-pop">
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Kelas</label>
+                               <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky">
+                                   <option value="">Semua Kelas</option>
+                                   {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Alasan</label>
+                               <select value={filterReason} onChange={(e) => setFilterReason(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky">
+                                   <option value="">Semua Alasan</option>
+                                   {reasons.map(r => <option key={r} value={r}>{r}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Tanggal</label>
+                               <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky" />
+                           </div>
+                           {activeFilterCount > 0 && (
+                               <button onClick={() => { setFilterClass(''); setFilterReason(''); setFilterDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
+                           )}
+                       </div>
+                   )}
+
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{filtered.length} catatan</h2>
+
+                   {filtered.length > 0 ? (
+                       <div className="space-y-2.5">
+                           {filtered.map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx}>
+                                       <div onClick={() => setExpandedStudent(expandedStudent === log.nisn ? null : log.nisn)} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-ink-800 transition">
+                                           <div className="flex items-center justify-between">
+                                               <div className="font-semibold text-sm text-slate-100">{log.name}</div>
+                                               <span className="text-[9px] bg-ink-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">{log.type}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-500 flex justify-between">
+                                               <span>{log.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                               <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                           </div>
+                                       </div>
+                                       {expandedStudent === log.nisn && (
+                                           <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
+                                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Riwayat {log.name}</div>
+                                               {allLogs.filter(l => l.nisn === log.nisn).map((h, i) => {
+                                                   const hDt = parseTimestamp(h.timestamp);
+                                                   return (
+                                                       <div key={i} className="text-[11px] text-slate-400 flex justify-between bg-ink-900/60 rounded-lg px-2.5 py-1.5">
+                                                           <span>{h.type}</span>
+                                                           <span>{hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                       </div>
+                                                   );
+                                               })}
+                                           </div>
+                                       )}
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <EmptyState emoji="🔍" text="Tidak ada catatan yang cocok dengan filter ini." />
+                   )}
+               </div>
+           );
+       }
+
+       function StatsTab({ allLogs, canExport }) {
+           const [period, setPeriod] = useState('5hari');
+           const periods = [
+               { key: '5hari', label: '5 Hari' },
+               { key: 'mingguan', label: 'Mingguan' },
+               { key: 'bulanan', label: 'Bulanan' },
+               { key: 'semester', label: 'Semester' },
+               { key: 'tahunan', label: 'Tahunan' },
+           ];
+           const series = buildPeriodSeries(period, allLogs);
+           
+           const periodLogs = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
+               const now = new Date();
+               if (period === '5hari') {
+                   const past = new Date();
+                   past.setDate(now.getDate() - 5);
+                   return dt >= past && dt <= now;
+               }
+               if (period === 'mingguan') {
+                   return inRange(l.timestamp, startOfWeek(now), now);
+               }
+               if (period === 'bulanan') {
+                   return inRange(l.timestamp, startOfMonth(now), now);
+               }
+               if (period === 'semester') {
+                   const semInfo = getSemesterInfo(now);
+                   const s = new Date(semInfo.year, semInfo.months[0], 1);
+                   return inRange(l.timestamp, s, now);
+               }
+               const s = new Date(now.getFullYear(), 0, 1);
+               return inRange(l.timestamp, s, now);
+           });
 
            return (
                <div className="space-y-5 animate-rise">
