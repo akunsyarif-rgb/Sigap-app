@@ -23,7 +23,7 @@
             const [loadingLogin, setLoadingLogin] = React.useState(false);
             const [loginError, setLoginError] = React.useState('');
 
-            const [activeTab, setActiveTab] = React.useState('scan'); // 'scan', 'today', 'archive', 'stats'
+            const [activeTab, setActiveTab] = React.useState('scan');
             const [searchQuery, setSearchQuery] = React.useState('');
             const [selectedStudent, setSelectedStudent] = React.useState(null);
             const [customReasonInput, setCustomReasonInput] = React.useState('');
@@ -32,7 +32,6 @@
             const [allLogs, setAllLogs] = React.useState([]);
             const [loadingLogs, setLoadingLogs] = React.useState(false);
 
-            // Ambil data siswa & log saat login
             React.useEffect(() => {
                 if (user) {
                     fetchData();
@@ -41,14 +40,12 @@
 
             const fetchData = () => {
                 setLoadingLogs(true);
-                // Ambil Siswa
                 fetch(`${API_URL}?action=getStudents`)
                     .then(res => res.json())
                     .then(data => {
                         if (data.status === 'success') setStudents(data.students);
                     });
 
-                // Ambil Semua Log
                 fetch(`${API_URL}?action=getLogs`)
                     .then(res => res.json())
                     .then(data => {
@@ -103,7 +100,7 @@
                     method: 'POST',
                     body: JSON.stringify(payload)
                 }).then(() => {
-                    fetchData(); // Refresh data otomatis dari Sheets
+                    fetchData();
                 }).catch(err => console.error("Gagal simpan:", err));
 
                 setToast(`Berhasil mencatat: ${selectedStudent.name}`);
@@ -114,16 +111,16 @@
                 setTimeout(() => setToast(null), 3000);
             };
 
-            // Format tanggal helper
             const todayStr = new Date().toDateString();
             const todayLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() === todayStr);
             const archiveLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() !== todayStr);
 
             if (!user) {
                 return (
-                    <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100">
+                    <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100 overflow-y-auto">
                         <div className="text-center mb-6">
-                            <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="w-28 h-28 object-contain rounded-2xl mx-auto mb-3 shadow-lg bg-white/5 p-1 border border-gray-700" />
+                            {/* Logo Diperbesar Menjadi Hampir Setengah Tampilan (w-48 h-48) */}
+                            <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="w-48 h-48 object-contain rounded-3xl mx-auto mb-4 shadow-2xl bg-white/5 p-2 border-2 border-emerald-500/50" />
                             <h1 className="text-2xl font-bold text-emerald-400">SIGAP</h1>
                             <p className="text-xs text-gray-400 mt-1">SMAN 2 Tarakan • Sistem Gerbang & Catat Cepat</p>
                         </div>
@@ -374,7 +371,7 @@
                         </div>
                     )}
 
-                    {/* Bottom Navigation dengan 4 Menu Utama */}
+                    {/* Bottom Navigation */}
                     <div className="absolute bottom-0 inset-x-0 bg-gray-800 border-t border-gray-700 flex justify-around py-2.5 px-2 z-40">
                         <button onClick={() => setActiveTab('scan')} className={`flex flex-col items-center space-y-0.5 transition ${activeTab === 'scan' ? 'text-emerald-400' : 'text-gray-400'}`}>
                             <span className="text-base">⚡</span>
