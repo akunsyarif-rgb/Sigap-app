@@ -1,218 +1,326 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prototipe SIGAP UX</title>
-  
-  <!-- Memuat React, ReactDOM, dan Tailwind dari CDN untuk pengujian instan -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SIGAP - Sistem Gerbang & Catat Cepat</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-800 flex items-center justify-center min-h-screen">
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen m-0 font-sans">
 
-  <!-- Tempat Aplikasi Dirender -->
-  <div id="root" class="w-full h-screen sm:h-[800px] sm:max-w-md sm:rounded-[2.5rem] sm:border-[8px] border-black overflow-hidden shadow-2xl relative"></div>
+    <div id="root" class="w-full h-screen sm:h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border-[8px] sm:border-gray-800 bg-gray-900 flex flex-col overflow-hidden shadow-2xl relative"></div>
 
-  <!-- Kode Aplikasi SIGAP -->
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    <script type="text/babel">
+        // ⚠️ GANTI LINK DI BAWAH INI DENGAN URL WEB APP GOOGLE SCRIPT ANDA
+        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
 
-    // --- MOCK DATA ---
-    const mockStudents = [
-      { id: 'S01', nis: '1001', name: 'Fachri', class: 'X MIPA 1' },
-      { id: 'S02', nis: '1002', name: 'Budi Santoso', class: 'X MIPA 1' },
-      { id: 'S03', nis: '1003', name: 'Siti Aminah', class: 'XI IPS 2' },
-      { id: 'S04', nis: '1004', name: 'Fakhri', class: 'XII IPA 3' }
-    ];
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [passwordInput, setPasswordInput] = React.useState('');
+            const [loadingLogin, setLoadingLogin] = React.useState(false);
+            const [loginError, setLoginError] = React.useState('');
 
-    const mockReasons = [
-      { id: 'R1', label: 'Kesiangan', isDefault: true },
-      { id: 'R2', label: 'Ban Bocor / Kendaraan', isDefault: false },
-      { id: 'R3', label: 'Hujan / Cuaca', isDefault: false },
-    ];
+            const [activeTab, setActiveTab] = React.useState('scan');
+            const [searchQuery, setSearchQuery] = React.useState('');
+            const [selectedStudent, setSelectedStudent] = React.useState(null);
+            const [toast, setToast] = React.useState(null);
+            const [students, setStudents] = React.useState([]);
+            const [records, setRecords] = React.useState([]);
 
-    function SigapApp() {
-      const [searchQuery, setSearchQuery] = useState('');
-      const [searchResults, setSearchResults] = useState([]);
-      
-      const [selectedStudent, setSelectedStudent] = useState(null);
-      const [selectedReason, setSelectedReason] = useState(mockReasons.find(r => r.isDefault).id);
-      const [isDuplicateError, setIsDuplicateError] = useState(false);
-      const [toast, setToast] = useState({ show: false, message: '' });
+            // Ambil data siswa dari Google Sheets saat berhasil login
+            React.useEffect(() => {
+                if (user) {
+                    fetch(`${API_URL}?action=getStudents`)
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                setStudents(data.students);
+                            }
+                        })
+                        .catch(err => console.error("Gagal memuat data siswa:", err));
+                }
+            }, [user]);
 
-      // Efek Pencarian (Smart Search)
-      useEffect(() => {
-        if (searchQuery.trim().length > 0) {
-          const lowerQuery = searchQuery.toLowerCase();
-          const results = mockStudents.filter(s => 
-            s.name.toLowerCase().includes(lowerQuery) || 
-            s.class.toLowerCase().includes(lowerQuery) ||
-            s.nis.includes(lowerQuery)
-          );
-          setSearchResults(results);
-        } else {
-          setSearchResults([]);
-        }
-      }, [searchQuery]);
+            const handleLogin = (e) => {
+                e.preventDefault();
+                setLoadingLogin(true);
+                setLoginError('');
 
-      const handleSelectStudent = (student, isDuplicate = false) => {
-        setSearchQuery('');
-        setSearchResults([]);
-        if (document.activeElement) document.activeElement.blur();
-        
-        setSelectedStudent(student);
-        setIsDuplicateError(isDuplicate);
-        setSelectedReason(mockReasons.find(r => r.isDefault).id);
-      };
+                fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'login', password: passwordInput })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    setLoadingLogin(false);
+                    if (data.status === 'success') {
+                        setUser(data.user);
+                    } else {
+                        setLoginError(data.message || 'Password salah!');
+                    }
+                })
+                .catch(err => {
+                    setLoadingLogin(false);
+                    setLoginError('Koneksi Gagal. Coba lagi.');
+                });
+            };
 
-      const handleSave = () => {
-        const studentName = selectedStudent.name;
-        const studentClass = selectedStudent.class;
-        
-        setSelectedStudent(null);
-        setToast({ show: true, message: `${studentName} (${studentClass}) dicatat.` });
-        
-        setTimeout(() => setToast({ show: false, message: '' }), 5000);
-      };
+            const filteredStudents = searchQuery.trim() === '' ? [] : students.filter(s => 
+                s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                s.class.toLowerCase().includes(searchQuery.toLowerCase())
+            );
 
-      return (
-        <div className="w-full h-full bg-gray-100 relative flex flex-col font-sans">
-          
-          {/* HEADER: Smart Search */}
-          <div className="bg-white px-4 py-3 pb-4 shadow-sm z-20">
-            <h1 className="text-xl font-extrabold text-blue-700 mb-3 tracking-tight">SIGAP.</h1>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white text-base transition h-12"
-                placeholder="Cari Nama, NIS, atau Kelas..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+            const handleRecord = (type) => {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                const payload = {
+                    action: 'record',
+                    nisn: selectedStudent.nisn,
+                    name: selectedStudent.name,
+                    class_name: selectedStudent.class,
+                    type: type,
+                    logged_by: user.name
+                };
 
-            {/* Dropdown Pencarian */}
-            {searchResults.length > 0 && (
-              <div className="absolute top-28 left-4 right-4 bg-white shadow-xl rounded-xl border border-gray-100 max-h-60 overflow-y-auto mt-2">
-                {searchResults.map((student) => (
-                  <div 
-                    key={student.id} 
-                    className="p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer"
-                    onClick={() => handleSelectStudent(student)}
-                  >
-                    <div className="font-bold text-lg text-gray-900">{student.name}</div>
-                    <div className="text-sm text-gray-500">{student.class} • NIS: {student.nis}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                // Kirim ke Google Sheets di background
+                fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                }).catch(err => console.error("Gagal simpan ke sheets:", err));
 
-          {/* BODY: Simulasi Kamera Scanner */}
-          <div className="flex-1 bg-black relative flex flex-col items-center justify-center">
-            <div className="w-64 h-64 border-2 border-white/30 rounded-2xl relative">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-green-500 shadow-[0_0_10px_#22c55e] animate-bounce"></div>
-            </div>
-            <p className="text-white/60 mt-6 text-sm">Arahkan kartu siswa ke area kotak</p>
+                const newEntry = {
+                    id: Date.now().toString(),
+                    name: selectedStudent.name,
+                    class: selectedStudent.class,
+                    time: timeString,
+                    type: type,
+                    logged_by: user.name
+                };
 
-            <div className="absolute bottom-10 flex gap-2 w-full px-4">
-              <button 
-                onClick={() => handleSelectStudent(mockStudents[0], false)}
-                className="flex-1 bg-gray-800 text-white py-3 rounded-xl text-sm border border-gray-600 font-semibold"
-              >
-                + Simulasi Scan
-              </button>
-              <button 
-                onClick={() => handleSelectStudent(mockStudents[1], true)}
-                className="flex-1 bg-gray-800 text-red-400 py-3 rounded-xl text-sm border border-red-900 font-semibold"
-              >
-                + Error Ganda
-              </button>
-            </div>
-          </div>
+                setRecords([newEntry, ...records]);
+                setToast(`Berhasil: ${selectedStudent.name} (${type})`);
+                setSelectedStudent(null);
+                setSearchQuery('');
 
-          {/* OVERLAY */}
-          {selectedStudent && (
-            <div className="absolute inset-0 bg-black/60 z-30 transition-opacity" onClick={() => setSelectedStudent(null)} />
-          )}
+                setTimeout(() => setToast(null), 3000);
+            };
 
-          {/* BOTTOM SHEET */}
-          <div className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-40 transform transition-transform duration-200 ${selectedStudent ? 'translate-y-0' : 'translate-y-full'}`}>
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
-            </div>
+            // TAMPILAN HALAMAN LOGIN
+            if (!user) {
+                return (
+                    <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100">
+                        <div className="text-center mb-8">
+                            <div className="text-4xl mb-2">⚡</div>
+                            <h1 className="text-2xl font-bold text-emerald-400">SIGAP</h1>
+                            <p className="text-xs text-gray-400 mt-1">Sistem Gerbang & Catat Cepat Sekolah</p>
+                        </div>
 
-            {selectedStudent && (
-              <div className="px-6 pb-6 pt-2">
-                {isDuplicateError && (
-                  <div className="bg-red-50 text-red-700 p-3 rounded-xl mb-4 font-bold text-center border border-red-200 text-sm">
-                    ⚠️ Siswa sudah dicatat pukul 07:12
-                  </div>
-                )}
+                        <form onSubmit={handleLogin} className="space-y-4 bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl">
+                            <div>
+                                <label className="text-xs text-gray-400 font-medium mb-1 block">Password Guru (contoh: budi2026):</label>
+                                <input 
+                                    type="password"
+                                    value={passwordInput}
+                                    onChange={(e) => setPasswordInput(e.target.value)}
+                                    placeholder="Masukkan password..."
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                                    required
+                                />
+                            </div>
 
-                <div className="flex flex-col items-center mb-6">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full mb-3 flex items-center justify-center text-gray-500 text-2xl font-bold border border-gray-200">
-                    {selectedStudent.name.charAt(0)}
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900 text-center">{selectedStudent.name}</h2>
-                  <p className="text-lg text-gray-500">{selectedStudent.class}</p>
-                </div>
+                            {loginError && <div className="text-xs text-rose-400 font-medium text-center">{loginError}</div>}
 
-                {!isDuplicateError && (
-                  <div className="mb-6">
-                    <p className="text-sm font-semibold text-gray-500 mb-3">Alasan Keterlambatan:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {mockReasons.map(reason => (
-                        <button
-                          key={reason.id}
-                          onClick={() => setSelectedReason(reason.id)}
-                          className={`px-4 py-2 h-12 rounded-xl text-sm font-medium border ${
-                            selectedReason === reason.id
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                              : 'bg-white text-gray-700 border-gray-300'
-                          }`}
-                        >
-                          {reason.label}
-                        </button>
-                      ))}
+                            <button 
+                                type="submit"
+                                disabled={loadingLogin}
+                                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-semibold text-sm shadow transition active:scale-95 disabled:opacity-50"
+                            >
+                                {loadingLogin ? 'Memeriksa...' : 'Masuk Aplikasi'}
+                            </button>
+                        </form>
                     </div>
-                  </div>
-                )}
+                );
+            }
 
-                {isDuplicateError ? (
-                  <button onClick={() => setSelectedStudent(null)} className="w-full h-14 bg-gray-200 text-gray-800 rounded-xl font-bold text-lg">
-                    TUTUP
-                  </button>
-                ) : (
-                  <button onClick={handleSave} className="w-full h-14 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-transform">
-                    SIMPAN (1 TAP)
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+            // TAMPILAN UTAMA SETELAH LOGIN
+            return (
+                <div className="flex flex-col h-full bg-gray-900 text-gray-100 relative select-none">
+                    
+                    {/* Header */}
+                    <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
+                        <div>
+                            <h1 className="font-bold text-base tracking-wide text-emerald-400">SIGAP</h1>
+                            <p className="text-[10px] text-gray-400">Petugas: <span className="text-white font-medium">{user.name}</span></p>
+                        </div>
+                        <button 
+                            onClick={() => setUser(null)}
+                            className="text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 px-2.5 py-1.5 rounded-lg border border-gray-600 transition"
+                        >
+                            Keluar
+                        </button>
+                    </div>
 
-          {/* TOAST UNDO */}
-          <div className={`absolute bottom-6 left-4 right-4 bg-green-800 text-white px-4 py-4 rounded-xl shadow-xl z-50 flex items-center justify-between transform transition-all duration-300 ${toast.show ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}>
-            <div className="text-sm font-medium">{toast.message}</div>
-            <button onClick={() => setToast({ show: false, message: '' })} className="text-yellow-400 font-bold text-sm bg-green-900/50 px-3 py-1.5 rounded-lg">
-              BATAL
-            </button>
-          </div>
-        </div>
-      );
-    }
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className="absolute top-16 left-4 right-4 z-50 bg-emerald-600 text-white text-xs px-4 py-3 rounded-xl shadow-lg flex items-center justify-between animate-bounce">
+                            <span>{toast}</span>
+                            <span className="font-bold bg-emerald-700 px-2 py-0.5 rounded">OK</span>
+                        </div>
+                    )}
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<SigapApp />);
-  </script>
+                    {/* Konten Utama Berdasarkan Tab */}
+                    <div className="flex-1 overflow-y-auto p-4 pb-20">
+                        {activeTab === 'scan' ? (
+                            <div className="space-y-4">
+                                <div className="bg-gray-800 border-2 border-dashed border-gray-600 rounded-2xl p-4 flex flex-col items-center justify-center relative">
+                                    <div className="w-48 h-32 border-2 border-emerald-500 rounded-xl flex items-center justify-center relative overflow-hidden bg-gray-900/50 shadow-inner">
+                                        <div className="absolute inset-x-0 h-0.5 bg-emerald-400 animate-pulse top-1/2"></div>
+                                        <span className="text-xs text-gray-400 text-center px-2">Arahkan kartu siswa ke area kotak</span>
+                                    </div>
+                                    {students.length > 0 && (
+                                        <button 
+                                            onClick={() => setSelectedStudent(students[0])}
+                                            className="mt-3 w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-semibold shadow transition active:scale-95"
+                                        >
+                                            ⚡ Simulasi Scan ({students[0].name})
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-gray-400 font-medium mb-1 block">Atau Cari Nama / Kelas Siswa:</label>
+                                    <input 
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Ketik nama siswa..."
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                                    />
+                                </div>
+
+                                {searchQuery.trim() !== '' && (
+                                    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-lg">
+                                        <div className="px-3 py-2 bg-gray-750 border-b border-gray-700 text-xs text-gray-400 font-medium">
+                                            Hasil Pencarian ({filteredStudents.length})
+                                        </div>
+                                        {filteredStudents.length > 0 ? (
+                                            filteredStudents.map(student => (
+                                                <div 
+                                                    key={student.nisn}
+                                                    onClick={() => setSelectedStudent(student)}
+                                                    className="px-4 py-3 border-b border-gray-700/50 flex items-center justify-between hover:bg-gray-750 active:bg-gray-700 cursor-pointer transition"
+                                                >
+                                                    <div>
+                                                        <div className="font-semibold text-sm text-white">{student.name}</div>
+                                                        <div className="text-xs text-gray-400">{student.class} • NISN: {student.nisn}</div>
+                                                    </div>
+                                                    <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-1 rounded-lg font-medium">Pilih</span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="p-4 text-center text-xs text-gray-500">Siswa tidak ditemukan</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <h2 className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Riwayat Tercatat Hari Ini</h2>
+                                {records.length > 0 ? (
+                                    records.map(rec => (
+                                        <div key={rec.id} className="bg-gray-800 border border-gray-700 p-3.5 rounded-xl shadow space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <div className="font-semibold text-sm text-white">{rec.name}</div>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                                    rec.type === 'Terlambat' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+                                                    rec.type === 'Atribut Kurang' ? 'bg-rose-950 text-rose-400 border border-rose-800' :
+                                                    'bg-blue-950 text-blue-400 border border-blue-800'
+                                                }`}>
+                                                    {rec.type}
+                                                </span>
+                                            </div>
+                                            <div className="text-[11px] text-gray-400 flex justify-between">
+                                                <span>{rec.class} • Pukul {rec.time}</span>
+                                                <span className="italic text-emerald-400">Petugas: {rec.logged_by}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center py-12 text-gray-500 text-xs">Belum ada data tercatat pada sesi ini.</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Modal Konfirmasi */}
+                    {selectedStudent && (
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                            <div className="bg-gray-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl p-5 border border-gray-700 shadow-2xl space-y-4 animate-in">
+                                <div className="text-center">
+                                    <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-3 sm:hidden"></div>
+                                    <h3 className="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold">Konfirmasi Status Siswa</h3>
+                                    <div className="text-lg font-bold text-white mt-1">{selectedStudent.name}</div>
+                                    <div className="text-xs text-gray-400">{selectedStudent.class}</div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                    <button 
+                                        onClick={() => handleRecord('Terlambat')}
+                                        className="bg-amber-600 hover:bg-amber-500 text-white py-3 rounded-xl font-semibold text-xs shadow transition active:scale-95"
+                                    >
+                                        ⚠️ Terlambat
+                                    </button>
+                                    <button 
+                                        onClick={() => handleRecord('Atribut Kurang')}
+                                        className="bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl font-semibold text-xs shadow transition active:scale-95"
+                                    >
+                                        👕 Atribut Kurang
+                                    </button>
+                                    <button 
+                                        onClick={() => handleRecord('Izin Khusus')}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-semibold text-xs shadow transition active:scale-95 col-span-2"
+                                    >
+                                        📝 Izin / Keterangan Lain
+                                    </button>
+                                </div>
+
+                                <button 
+                                    onClick={() => setSelectedStudent(null)}
+                                    className="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 py-2.5 rounded-xl font-medium text-xs transition"
+                                >
+                                    Batal
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Bottom Nav */}
+                    <div className="absolute bottom-0 inset-x-0 bg-gray-800 border-t border-gray-700 flex justify-around py-3 px-6 z-40">
+                        <button 
+                            onClick={() => setActiveTab('scan')}
+                            className={`flex flex-col items-center space-y-1 transition ${activeTab === 'scan' ? 'text-emerald-400' : 'text-gray-400'}`}
+                        >
+                            <span className="text-lg">⚡</span>
+                            <span className="text-[10px] font-medium">Gerbang / Scan</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('history')}
+                            className={`flex flex-col items-center space-y-1 transition ${activeTab === 'history' ? 'text-emerald-400' : 'text-gray-400'}`}
+                        >
+                            <span className="text-lg">📋</span>
+                            <span className="text-[10px] font-medium">Riwayat Sesi Ini</span>
+                        </button>
+                    </div>
+
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
 </body>
 </html>
