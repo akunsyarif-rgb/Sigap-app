@@ -84,6 +84,20 @@
            );
        }
 
+       function parseTimestamp(ts) {
+           if (!ts) return new Date();
+           if (typeof ts === 'string' && ts.includes('/')) {
+               const parts = ts.split(' ');
+               const dateParts = parts[0].split('/');
+               if (dateParts.length === 3) {
+                   const timePart = parts[1] || '00:00:00';
+                   return new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T${timePart}`);
+               }
+           }
+           const d = new Date(ts);
+           return isNaN(d.getTime()) ? new Date() : d;
+       }
+
        const isSameDay = (a, b) => a.toDateString() === b.toDateString();
        const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
@@ -94,7 +108,7 @@
            return { label: 'Semester Genap', months: [0,1,2,3,4,5], year: d.getFullYear() };
        }
 
-       function inRange(ts, start, end) { const t = new Date(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
+       function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
 
        function countInRange(logs, start, end) {
            return logs.filter(l => inRange(l.timestamp, start, end)).length;
@@ -115,13 +129,13 @@
                    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) days.unshift(new Date(cursor));
                    cursor.setDate(cursor.getDate() - 1);
                }
-               return days.map(d => ({ label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(new Date(l.timestamp), d)).length }));
+               return days.map(d => ({ label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length }));
            }
            if (period === 'mingguan') {
                const start = startOfWeek(now);
                return Array.from({ length: 7 }, (_, i) => {
                    const d = new Date(start); d.setDate(start.getDate() + i);
-                   return { label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(new Date(l.timestamp), d)).length };
+                   return { label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length };
                });
            }
            if (period === 'bulanan') {
@@ -149,12 +163,15 @@
 
        function exportCSV(logs, filenameHint) {
            const header = ['Nama', 'NISN', 'Kelas', 'Alasan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
-           const rows = logs.map(l => [
-               l.name, l.nisn || '', l.class, l.type,
-               new Date(l.timestamp).toLocaleDateString('id-ID'),
-               new Date(l.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-               l.logged_by || '',
-           ]);
+           const rows = logs.map(l => {
+               const dt = parseTimestamp(l.timestamp);
+               return [
+                   l.name, l.nisn || '', l.class, l.type,
+                   dt.toLocaleDateString('id-ID'),
+                   dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                   l.logged_by || '',
+               ];
+           });
            const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
            const url = URL.createObjectURL(blob);
@@ -362,7 +379,7 @@
 
        function DashboardTab({ allLogs, expanded, onRefresh, loading }) {
            const now = new Date();
-           const today = allLogs.filter(l => isSameDay(new Date(l.timestamp), now));
+           const today = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const weekCount = countInRange(allLogs, startOfWeek(now), now);
            const monthCount = countInRange(allLogs, startOfMonth(now), now);
            const semInfo = getSemesterInfo(now);
@@ -389,17 +406,20 @@
                        <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
                    ) : today.length > 0 ? (
                        <div className="space-y-2.5">
-                           {today.slice(0, expanded ? 6 : 4).map((log, idx) => (
-                               <div key={idx} className="bg-ink-850 border-l-4 border-l-sky border-y border-r border-ink-700 p-3.5 rounded-r-xl shadow-sm space-y-1">
-                                   <div className="flex items-center justify-between">
-                                       <div className="font-bold text-sm text-white">{log.name}</div>
-                                       <span className="text-[9px] bg-crimson/15 text-crimson border border-crimson/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">{log.type}</span>
+                           {today.slice(0, expanded ? 6 : 4).map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx} className="bg-ink-850 border-l-4 border-l-sky border-y border-r border-ink-700 p-3.5 rounded-r-xl shadow-sm space-y-1">
+                                       <div className="flex items-center justify-between">
+                                           <div className="font-bold text-sm text-white">{log.name}</div>
+                                           <span className="text-[9px] bg-crimson/15 text-crimson border border-crimson/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">{log.type}</span>
+                                       </div>
+                                       <div className="text-[11px] text-slate-400 flex justify-between items-center">
+                                           <span>{log.class} • <span className="text-slate-300 font-medium">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
+                                       </div>
                                    </div>
-                                   <div className="text-[11px] text-slate-400 flex justify-between items-center">
-                                       <span>{log.class} • <span className="text-slate-300 font-medium">{new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
-                                   </div>
-                               </div>
-                           ))}
+                               );
+                           })}
                        </div>
                    ) : (
                        <EmptyState emoji="🏆" text="Belum ada siswa terlambat hari ini." />
@@ -427,9 +447,10 @@
            const reasons = useMemo(() => [...new Set(allLogs.map(l => l.type))].sort(), [allLogs]);
 
            const filtered = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
                if (filterClass && l.class !== filterClass) return false;
                if (filterReason && l.type !== filterReason) return false;
-               if (filterDate && !isSameDay(new Date(l.timestamp), new Date(filterDate))) return false;
+               if (filterDate && !isSameDay(dt, new Date(filterDate))) return false;
                if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
            });
@@ -479,31 +500,37 @@
 
                    {filtered.length > 0 ? (
                        <div className="space-y-2.5">
-                           {filtered.map((log, idx) => (
-                               <div key={idx}>
-                                   <div onClick={() => setExpandedStudent(expandedStudent === log.nisn ? null : log.nisn)} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-ink-800 transition">
-                                       <div className="flex items-center justify-between">
-                                           <div className="font-semibold text-sm text-slate-100">{log.name}</div>
-                                           <span className="text-[9px] bg-ink-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">{log.type}</span>
+                           {filtered.map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx}>
+                                       <div onClick={() => setExpandedStudent(expandedStudent === log.nisn ? null : log.nisn)} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-ink-800 transition">
+                                           <div className="flex items-center justify-between">
+                                               <div className="font-semibold text-sm text-slate-100">{log.name}</div>
+                                               <span className="text-[9px] bg-ink-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">{log.type}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-500 flex justify-between">
+                                               <span>{log.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                               <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                           </div>
                                        </div>
-                                       <div className="text-[10px] text-slate-500 flex justify-between">
-                                           <span>{log.class} • {new Date(log.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                           <span>{new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
-                                       </div>
+                                       {expandedStudent === log.nisn && (
+                                           <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
+                                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Riwayat {log.name}</div>
+                                               {allLogs.filter(l => l.nisn === log.nisn).map((h, i) => {
+                                                   const hDt = parseTimestamp(h.timestamp);
+                                                   return (
+                                                       <div key={i} className="text-[11px] text-slate-400 flex justify-between bg-ink-900/60 rounded-lg px-2.5 py-1.5">
+                                                           <span>{h.type}</span>
+                                                           <span>{hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                       </div>
+                                                   );
+                                               })}
+                                           </div>
+                                       )}
                                    </div>
-                                   {expandedStudent === log.nisn && (
-                                       <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
-                                           <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Riwayat {log.name}</div>
-                                           {allLogs.filter(l => l.nisn === log.nisn).map((h, i) => (
-                                               <div key={i} className="text-[11px] text-slate-400 flex justify-between bg-ink-900/60 rounded-lg px-2.5 py-1.5">
-                                                   <span>{h.type}</span>
-                                                   <span>{new Date(h.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                                               </div>
-                                           ))}
-                                       </div>
-                                   )}
-                               </div>
-                           ))}
+                               );
+                           })}
                        </div>
                    ) : (
                        <EmptyState emoji="🔍" text="Tidak ada catatan yang cocok dengan filter ini." />
@@ -572,15 +599,18 @@
                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                            <thead><tr>{['Nama', 'Kelas', 'Alasan', 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
                            <tbody>
-                               {allLogs.map((l, i) => (
-                                   <tr key={i}>
-                                       <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
-                                       <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
-                                       <td style={{ border: '1px solid #999', padding: '4px' }}>{l.type}</td>
-                                       <td style={{ border: '1px solid #999', padding: '4px' }}>{new Date(l.timestamp).toLocaleDateString('id-ID')}</td>
-                                       <td style={{ border: '1px solid #999', padding: '4px' }}>{new Date(l.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
-                                   </tr>
-                               ))}
+                               {allLogs.map((l, i) => {
+                                   const dt = parseTimestamp(l.timestamp);
+                                   return (
+                                       <tr key={i}>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.type}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleDateString('id-ID')}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                                       </tr>
+                                   );
+                               })}
                            </tbody>
                        </table>
                    </div>
