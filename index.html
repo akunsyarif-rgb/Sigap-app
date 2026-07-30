@@ -136,13 +136,21 @@
                    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) days.unshift(new Date(cursor));
                    cursor.setDate(cursor.getDate() - 1);
                }
-               return days.map(d => ({ label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length }));
+               return days.map(d => ({ 
+                   label: d.toLocaleDateString('id-ID', { weekday: 'short' }), 
+                   dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+                   count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length 
+               }));
            }
            if (period === 'mingguan') {
                const start = startOfWeek(now);
                return Array.from({ length: 7 }, (_, i) => {
                    const d = new Date(start); d.setDate(start.getDate() + i);
-                   return { label: d.toLocaleDateString('id-ID', { weekday: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length };
+                   return { 
+                       label: d.toLocaleDateString('id-ID', { weekday: 'short' }), 
+                       dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+                       count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length 
+                   };
                });
            }
            if (period === 'bulanan') {
@@ -152,7 +160,7 @@
                return Array.from({ length: weeks }, (_, i) => {
                    const wStart = new Date(start); wStart.setDate(start.getDate() + i * 7);
                    const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
-                   return { label: `M${i + 1}`, count: countInRange(logs, wStart, wEnd) };
+                   return { label: `M${i + 1}`, dateStr: `${wStart.getDate()}-${wEnd.getDate()}`, count: countInRange(logs, wStart, wEnd) };
                });
            }
            if (period === 'semester') {
@@ -214,7 +222,8 @@
                                <div className="w-full max-w-[28px] bg-ink-700/60 rounded-t-lg relative flex items-end justify-center h-full overflow-hidden">
                                    <div className="w-full bg-gradient-to-t from-navy-light to-sky rounded-t-lg transition-all duration-700 ease-out" style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? '8%' : '0%' }}></div>
                                </div>
-                               <span className="text-[9px] text-slate-500 mt-2 uppercase font-semibold">{d.label}</span>
+                               <span className="text-[9px] text-slate-300 mt-2 font-bold">{d.label}</span>
+                               {d.dateStr && <span className="text-[8px] text-slate-500">{d.dateStr}</span>}
                            </div>
                        ))}
                    </div>
