@@ -59,14 +59,14 @@
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
-       const API_TOKEN = "sigap2026rahasia8x9zK2mP";
+       const API_TOKEN = "TOKEN_RAHASIA_KAMU";
 
-       // Dua tier saja: admin dapat semua menu + ekspor + Kelola Guru.
+       // Dua tier saja: admin dapat semua menu + ekspor + Kelola Guru + Bimbingan Khusus.
        // Semua role lain (guru_piket, wali_kelas, dst) disamakan jadi "guru" —
        // menu dan hak akses identik untuk semua guru non-admin.
        const ROLES = {
-           admin: { label: 'Admin', menus: ['scan', 'dashboard', 'log', 'stats', 'kelola'], dashboardExpanded: true, canExport: true },
-           guru:  { label: 'Guru',  menus: ['scan', 'dashboard', 'log', 'stats'],            dashboardExpanded: true, canExport: false },
+           admin: { label: 'Admin', menus: ['scan', 'dashboard', 'log', 'stats', 'surat', 'pelanggaran', 'bimbingan', 'kelola'], dashboardExpanded: true, canExport: true },
+           guru:  { label: 'Guru',  menus: ['scan', 'dashboard', 'log', 'stats', 'surat', 'pelanggaran'],                       dashboardExpanded: true, canExport: false },
        };
 
        const NAV_ITEMS = {
@@ -75,6 +75,9 @@
            log:       { label: 'Riwayat',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /> },
            stats:     { label: 'Statistik',  icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" /></React.Fragment> },
            kelola:    { label: 'Kelola',     icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></React.Fragment> },
+           surat:       { label: 'Surat',       icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /> },
+           pelanggaran: { label: 'Pelanggaran', icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /> },
+           bimbingan:   { label: 'Bimbingan',   icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /> },
        };
 
        function Icon({ path, className = "h-5 w-5", filled = false }) {
@@ -317,14 +320,14 @@
 
        function BottomNav({ menus, activeTab, setActiveTab }) {
            return (
-               <div className="absolute bottom-0 inset-x-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-700 flex justify-around py-3 px-2 z-40 pb-safe">
+               <div className="absolute bottom-0 inset-x-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-700 flex overflow-x-auto py-3 px-2 z-40 pb-safe gap-1">
                    {menus.map((key) => {
                        const item = NAV_ITEMS[key];
                        const active = activeTab === key;
                        return (
-                           <button key={key} onClick={() => setActiveTab(key)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-light scale-110' : 'text-slate-500 hover:text-slate-300'}`}>
+                           <button key={key} onClick={() => setActiveTab(key)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 flex-shrink-0 ${active ? 'text-sky-light scale-110' : 'text-slate-500 hover:text-slate-300'}`}>
                                <Icon path={item.icon()} filled={active} className="h-6 w-6" />
-                               <span className="text-[10px] font-bold">{item.label}</span>
+                               <span className="text-[9px] font-bold whitespace-nowrap">{item.label}</span>
                            </button>
                        );
                    })}
@@ -773,6 +776,291 @@
            );
        }
 
+       function SuratTab({ students, suratList, onAddSurat, onDeleteSurat, isAdminUser }) {
+           const [searchQuery, setSearchQuery] = useState('');
+           const [selectedStudent, setSelectedStudent] = useState(null);
+           const [jenis, setJenis] = useState('Sakit');
+           const [keterangan, setKeterangan] = useState('');
+           const [showDeletePanel, setShowDeletePanel] = useState(false);
+           const [delMonth, setDelMonth] = useState(String(new Date().getMonth() + 1));
+           const [delYear, setDelYear] = useState(String(new Date().getFullYear()));
+           const [msg, setMsg] = useState('');
+
+           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
+               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
+           );
+
+           const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+
+           const submitSurat = () => {
+               onAddSurat({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis, keterangan }, (ok, text) => showMsg(text));
+               setSelectedStudent(null); setSearchQuery(''); setJenis('Sakit'); setKeterangan('');
+           };
+
+           const submitDelete = () => {
+               onDeleteSurat({ month: delMonth, year: delYear }, (ok, text) => showMsg(text));
+               setShowDeletePanel(false);
+           };
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Surat Masuk (Sakit/Izin)</h2>
+
+                   {msg && <div className="text-xs text-sky-light font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
+
+                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky" />
+
+                   {searchQuery.trim() !== '' && (
+                       <div className="bg-ink-850 rounded-2xl border border-ink-700 overflow-hidden shadow-xl">
+                           <div className="max-h-48 overflow-y-auto">
+                               {filtered.length > 0 ? filtered.map(s => (
+                                   <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-ink-700/60 flex items-center justify-between hover:bg-ink-800 cursor-pointer">
+                                       <div>
+                                           <div className="font-bold text-sm text-white">{s.name}</div>
+                                           <div className="text-xs text-sky-light">{s.class}</div>
+                                       </div>
+                                   </div>
+                               )) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
+                           </div>
+                       </div>
+                   )}
+
+                   {selectedStudent && (
+                       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-ink-850 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Catat Surat Masuk</h3>
+                                   <div className="font-display text-xl font-extrabold text-white mt-1">{selectedStudent.name}</div>
+                                   <div className="text-xs text-slate-400">{selectedStudent.class}</div>
+                               </div>
+                               <div className="grid grid-cols-3 gap-2">
+                                   {['Sakit', 'Izin', 'Lainnya'].map(j => (
+                                       <button key={j} onClick={() => setJenis(j)} className={`py-2.5 rounded-xl text-xs font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-ink-800 border border-ink-600 text-slate-300'}`}>{j}</button>
+                                   ))}
+                               </div>
+                               <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+                               <button onClick={submitSurat} className="w-full bg-sky hover:bg-sky-light text-white py-3 rounded-2xl font-bold text-sm">Simpan</button>
+                               <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
+                   {isAdminUser && (
+                       <div className="bg-ink-850 border border-ink-700 rounded-2xl p-4 space-y-3">
+                           <button onClick={() => setShowDeletePanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
+                           {showDeletePanel && (
+                               <div className="space-y-2 animate-pop">
+                                   <div className="grid grid-cols-2 gap-2">
+                                       <select value={delMonth} onChange={(e) => setDelMonth(e.target.value)} className="bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white">
+                                           {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
+                                       </select>
+                                       <input type="number" value={delYear} onChange={(e) => setDelYear(e.target.value)} className="bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white" />
+                                   </div>
+                                   <button onClick={submitDelete} className="w-full bg-crimson hover:bg-crimson-dim text-white py-2.5 rounded-xl text-xs font-bold">Hapus Data Periode Ini</button>
+                               </div>
+                           )}
+                       </div>
+                   )}
+
+                   <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{suratList.length} catatan surat</h3>
+                   <div className="space-y-2.5">
+                       {suratList.slice(0, 30).map((s, idx) => {
+                           const dt = parseTimestamp(s.timestamp);
+                           return (
+                               <div key={idx} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1">
+                                   <div className="flex items-center justify-between">
+                                       <div className="font-semibold text-sm text-slate-100">{s.name}</div>
+                                       <span className="text-[9px] bg-ink-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">{s.jenis}</span>
+                                   </div>
+                                   <div className="text-[10px] text-slate-500 flex justify-between gap-2">
+                                       <span>{s.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                       <span className="truncate">{s.keterangan}</span>
+                                   </div>
+                               </div>
+                           );
+                       })}
+                       {suratList.length === 0 && <EmptyState emoji="✉️" text="Belum ada catatan surat masuk." />}
+                   </div>
+               </div>
+           );
+       }
+
+       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan }) {
+           const [searchQuery, setSearchQuery] = useState('');
+           const [selectedStudent, setSelectedStudent] = useState(null);
+           const [jenis, setJenis] = useState('');
+           const [jenisCustom, setJenisCustom] = useState('');
+           const [sanksi, setSanksi] = useState('');
+           const [sanksiCustom, setSanksiCustom] = useState('');
+           const [catatan, setCatatan] = useState('');
+           const [msg, setMsg] = useState('');
+           const [bimbinganTarget, setBimbinganTarget] = useState(null);
+           const [bimbinganCatatan, setBimbinganCatatan] = useState('');
+
+           const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
+           const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
+
+           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
+               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
+           );
+
+           const studentHistory = selectedStudent ? pelanggaranList.filter(p => p.nisn === selectedStudent.nisn) : [];
+
+           const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
+
+           const submitPelanggaran = () => {
+               const finalJenis = jenis === 'Custom' ? (jenisCustom.trim() || 'Lainnya') : jenis;
+               const finalSanksi = sanksi === 'Custom' ? (sanksiCustom.trim() || 'Lainnya') : sanksi;
+               onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, sanksi: finalSanksi, catatan }, (ok, text) => showMsg(text));
+               setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setSanksi(''); setSanksiCustom(''); setCatatan('');
+           };
+
+           const submitBimbingan = () => {
+               if (!bimbinganCatatan.trim()) return;
+               onAddBimbingan({ nisn: bimbinganTarget.nisn, name: bimbinganTarget.name, class_name: bimbinganTarget.class, catatan: bimbinganCatatan.trim() }, (ok, text) => showMsg(text));
+               setBimbinganTarget(null); setBimbinganCatatan('');
+           };
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Pelanggaran & Sanksi</h2>
+
+                   {msg && <div className="text-xs text-sky-light font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
+
+                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky" />
+
+                   {searchQuery.trim() !== '' && (
+                       <div className="bg-ink-850 rounded-2xl border border-ink-700 overflow-hidden shadow-xl">
+                           <div className="max-h-48 overflow-y-auto">
+                               {filtered.length > 0 ? filtered.map(s => (
+                                   <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-ink-700/60 flex items-center justify-between hover:bg-ink-800 cursor-pointer">
+                                       <div>
+                                           <div className="font-bold text-sm text-white">{s.name}</div>
+                                           <div className="text-xs text-sky-light">{s.class}</div>
+                                       </div>
+                                   </div>
+                               )) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
+                           </div>
+                       </div>
+                   )}
+
+                   {selectedStudent && (
+                       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                           <div className="bg-ink-850 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-4 animate-pop my-4">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Catat Pelanggaran</h3>
+                                   <div className="font-display text-xl font-extrabold text-white mt-1">{selectedStudent.name}</div>
+                                   <div className="text-xs text-slate-400">{selectedStudent.class}</div>
+                               </div>
+
+                               {studentHistory.length > 0 && (
+                                   <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
+                                       <div className="text-[10px] text-crimson font-bold uppercase tracking-wide">⚠ Sudah {studentHistory.length}x tercatat sebelumnya</div>
+                                       {studentHistory.slice(0, 3).map((h, i) => {
+                                           const hDt = parseTimestamp(h.timestamp);
+                                           return <div key={i} className="text-[11px] text-slate-300">{h.jenis_pelanggaran} — {hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} ({h.sanksi})</div>;
+                                       })}
+                                   </div>
+                               )}
+
+                               <div>
+                                   <label className="text-[10px] text-slate-400 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
+                                   <div className="grid grid-cols-3 gap-2">
+                                       {jenisPresets.map(j => (
+                                           <button key={j} onClick={() => setJenis(j)} className={`py-2 rounded-xl text-[10px] font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-ink-800 border border-ink-600 text-slate-300'}`}>{j}</button>
+                                       ))}
+                                   </div>
+                                   <input type="text" value={jenisCustom} onChange={(e) => { setJenisCustom(e.target.value); setJenis('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky" />
+                               </div>
+
+                               <div>
+                                   <label className="text-[10px] text-slate-400 font-bold uppercase mb-1.5 block">Sanksi</label>
+                                   <div className="grid grid-cols-3 gap-2">
+                                       {sanksiPresets.map(s => (
+                                           <button key={s} onClick={() => setSanksi(s)} className={`py-2 rounded-xl text-[10px] font-bold ${sanksi === s ? 'bg-sky text-white' : 'bg-ink-800 border border-ink-600 text-slate-300'}`}>{s}</button>
+                                       ))}
+                                   </div>
+                                   <input type="text" value={sanksiCustom} onChange={(e) => { setSanksiCustom(e.target.value); setSanksi('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky" />
+                               </div>
+
+                               <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+
+                               <button onClick={submitPelanggaran} disabled={!jenis || !sanksi} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-3 rounded-2xl font-bold text-sm">Simpan</button>
+                               <button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} className="w-full bg-ink-800 border border-ink-600 text-slate-300 py-2.5 rounded-2xl font-bold text-xs">Tandai Perlu Bimbingan Khusus</button>
+                               <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
+                   {bimbinganTarget && (
+                       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-ink-850 w-full max-w-sm rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Perlu Bimbingan Khusus</h3>
+                                   <div className="font-display text-lg font-extrabold text-white mt-1">{bimbinganTarget.name}</div>
+                               </div>
+                               <textarea value={bimbinganCatatan} onChange={(e) => setBimbinganCatatan(e.target.value)} placeholder="Catatan untuk Admin..." rows={3} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+                               <button onClick={submitBimbingan} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold">Simpan (hanya Admin bisa lihat)</button>
+                               <button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 py-2.5 rounded-xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
+                   <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{pelanggaranList.length} catatan pelanggaran</h3>
+                   <div className="space-y-2.5">
+                       {pelanggaranList.slice(0, 30).map((p, idx) => {
+                           const dt = parseTimestamp(p.timestamp);
+                           return (
+                               <div key={idx} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1">
+                                   <div className="flex items-center justify-between">
+                                       <div className="font-semibold text-sm text-slate-100">{p.name}</div>
+                                       <span className="text-[9px] bg-crimson/15 text-crimson px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
+                                   </div>
+                                   <div className="text-[10px] text-slate-500 flex justify-between gap-2">
+                                       <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                       <span className="truncate">{p.sanksi}</span>
+                                   </div>
+                               </div>
+                           );
+                       })}
+                       {pelanggaranList.length === 0 && <EmptyState emoji="📋" text="Belum ada catatan pelanggaran." />}
+                   </div>
+               </div>
+           );
+       }
+
+       function BimbinganTab({ bimbinganList }) {
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Perlu Bimbingan Khusus (Admin)</h2>
+                   <p className="text-[11px] text-slate-500">Daftar ini hanya terlihat oleh Admin.</p>
+                   <div className="space-y-2.5">
+                       {bimbinganList.map((b, idx) => {
+                           const dt = parseTimestamp(b.timestamp);
+                           return (
+                               <div key={idx} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1.5">
+                                   <div className="flex items-center justify-between">
+                                       <div className="font-semibold text-sm text-slate-100">{b.name}</div>
+                                       <span className="text-[10px] text-slate-500">{b.class}</span>
+                                   </div>
+                                   <div className="text-[11px] text-slate-300">{b.catatan}</div>
+                                   <div className="text-[10px] text-slate-500 flex justify-between">
+                                       <span>{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                       <span>oleh {b.logged_by}</span>
+                                   </div>
+                               </div>
+                           );
+                       })}
+                       {bimbinganList.length === 0 && <EmptyState emoji="🤝" text="Belum ada catatan bimbingan khusus." />}
+                   </div>
+               </div>
+           );
+       }
+
        function App() {
            const [user, setUser] = useState(null);
            const [passwordInput, setPasswordInput] = useState('');
@@ -790,6 +1078,9 @@
 
            const [teachers, setTeachers] = useState([]);
            const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
+           const [suratList, setSuratList] = useState([]);
+           const [pelanggaranList, setPelanggaranList] = useState([]);
+           const [bimbinganList, setBimbinganList] = useState([]);
 
            // Cuma dua kemungkinan: 'admin' persis, atau dianggap 'guru' untuk selain itu
            const roleKey = user && user.role === 'admin' ? 'admin' : 'guru';
@@ -802,11 +1093,18 @@
                    .then(data => { if (data.status === 'success') setTeachers(data.teachers); });
            };
 
+           const fetchBimbingan = () => {
+               if (roleKey !== 'admin') return;
+               fetch(`${API_URL}?action=getBimbingan&token=${API_TOKEN}&requesterId=${user.id}`)
+                   .then(res => res.json())
+                   .then(data => { if (data.status === 'success') setBimbinganList(data.bimbingan); });
+           };
+
            useEffect(() => {
                if (user) {
                    fetchData();
                    setActiveTab(roleConfig.menus[0]);
-                   if (roleKey === 'admin') fetchTeachers();
+                   if (roleKey === 'admin') { fetchTeachers(); fetchBimbingan(); }
                }
            }, [user]);
 
@@ -817,6 +1115,8 @@
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
                }).catch(() => setLoadingLogs(false));
+               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}`).then(res => res.json()).then(data => { if (data.status === 'success') setSuratList(data.surat); });
+               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}`).then(res => res.json()).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
            };
 
            const handleLogin = (e) => {
@@ -864,6 +1164,46 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           const handleAddSurat = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, logged_by: user.name, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') { fetchData(); callback(true, 'Surat berhasil dicatat.'); }
+                       else callback(false, data.message || 'Gagal mencatat surat.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleDeleteSurat = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSurat', requesterId: user.id, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') { fetchData(); callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`); }
+                       else callback(false, data.message || 'Gagal menghapus data.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleAddPelanggaran = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, logged_by: user.name, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') { fetchData(); callback(true, 'Pelanggaran berhasil dicatat.'); }
+                       else callback(false, data.message || 'Gagal mencatat pelanggaran.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleAddBimbingan = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, logged_by: user.name, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') { if (roleKey === 'admin') fetchBimbingan(); callback(true, 'Berhasil dicatat (hanya Admin bisa lihat).'); }
+                       else callback(false, data.message || 'Gagal mencatat.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            if (!user) {
                return <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />;
            }
@@ -873,7 +1213,7 @@
                    <Header user={user} roleLabel={roleConfig.label} onLogout={() => setUser(null)} />
 
                    {toast && (
-                       <div className="absolute top-16 left-4 right-4 z-50 bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
+                       <div className="absolute bottom-24 left-4 right-4 z-50 bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
                            <span>{toast}</span>
                            <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
                        </div>
@@ -890,6 +1230,15 @@
                        {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
                        {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
                            <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
+                       )}
+                       {activeTab === 'surat' && roleConfig.menus.includes('surat') && (
+                           <SuratTab students={students} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
+                       )}
+                       {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
+                           <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
+                       )}
+                       {activeTab === 'bimbingan' && roleConfig.menus.includes('bimbingan') && (
+                           <BimbinganTab bimbinganList={bimbinganList} />
                        )}
                    </div>
 
