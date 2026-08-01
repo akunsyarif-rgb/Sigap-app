@@ -450,6 +450,301 @@
            );
        }
 
+       function DashboardTab({ allLogs, expanded, onRefresh, loading }) {
+           const now = new Date();
+           const today = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
+           const weekCount = countInRange(allLogs, startOfWeek(now), now);
+           const monthCount = countInRange(allLogs, startOfMonth(now), now);
+           const semInfo = getSemesterInfo(now);
+           const semStart = new Date(semInfo.year, semInfo.months[0], 1);
+           const semCount = countInRange(allLogs, semStart, now);
+           const topKelasToday = topN(today, l => l.class, 3);
+           const topAlasanToday = topN(today, l => l.type, 3);
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <div className="flex justify-between items-end">
+                       <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Ringkasan Hari Ini</h2>
+                       <button onClick={onRefresh} className="text-[10px] text-sky-light font-semibold bg-sky-dim/20 px-2 py-1 rounded-md">Refresh</button>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-3">
+                       <StatCard value={today.length} label="Terlambat Hari Ini" accent />
+                       <StatCard value={weekCount} label="Minggu Ini" />
+                       {expanded && <StatCard value={monthCount} label="Bulan Ini" />}
+                       {expanded && <StatCard value={semCount} label={semInfo.label} />}
+                   </div>
+
+                   {loading ? (
+                       <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
+                   ) : today.length > 0 ? (
+                       <div className="space-y-2.5">
+                           {today.slice(0, expanded ? 6 : 4).map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx} className="bg-ink-850 border-l-4 border-l-sky border-y border-r border-ink-700 p-3.5 rounded-r-xl shadow-sm space-y-1">
+                                       <div className="flex items-center justify-between">
+                                           <div className="font-bold text-sm text-white">{log.name}</div>
+                                           <span className="text-[9px] bg-crimson/15 text-crimson border border-crimson/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">{log.type}</span>
+                                       </div>
+                                       <div className="text-[11px] text-slate-400 flex justify-between items-center">
+                                           <span>{log.class} • <span className="text-slate-300 font-medium">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
+                                       </div>
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <EmptyState emoji="🏆" text="Belum ada siswa terlambat hari ini." />
+                   )}
+
+                   {expanded && (topKelasToday.length > 0 || topAlasanToday.length > 0) && (
+                       <div className="grid grid-cols-1 gap-3">
+                           <TopList title="Kelas Terbanyak Hari Ini" items={topKelasToday} unit="siswa" />
+                           <TopList title="Alasan Terbanyak Hari Ini" items={topAlasanToday} unit="kali" />
+                       </div>
+                   )}
+               </div>
+           );
+       }
+
+       function LogTab({ allLogs }) {
+           const [filterClass, setFilterClass] = useState('');
+           const [filterReason, setFilterReason] = useState('');
+           const [filterDate, setFilterDate] = useState('');
+           const [search, setSearch] = useState('');
+           const [expandedStudent, setExpandedStudent] = useState(null);
+           const [showFilters, setShowFilters] = useState(false);
+
+           const classes = useMemo(() => [...new Set(allLogs.map(l => l.class))].sort(), [allLogs]);
+           const reasons = useMemo(() => [...new Set(allLogs.map(l => l.type))].sort(), [allLogs]);
+
+           const filtered = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
+               if (filterClass && l.class !== filterClass) return false;
+               if (filterReason && l.type !== filterReason) return false;
+               if (filterDate && !isSameDay(dt, new Date(filterDate))) return false;
+               if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
+               return true;
+           });
+
+           const activeFilterCount = [filterClass, filterReason, filterDate].filter(Boolean).length;
+
+           return (
+               <div className="space-y-4 animate-rise">
+                   <div className="flex gap-2">
+                       <div className="relative flex-1">
+                           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-ink-850 border-2 border-ink-700 rounded-2xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky" />
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-500" />
+                       </div>
+                       <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${activeFilterCount > 0 ? 'bg-sky-dim/25 border-sky-dim text-sky-light' : 'bg-ink-850 border-ink-700 text-slate-400'}`}>
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
+                           {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+                       </button>
+                   </div>
+
+                   {showFilters && (
+                       <div className="bg-ink-850 border border-ink-700 rounded-2xl p-4 space-y-3 animate-pop">
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Kelas</label>
+                               <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky">
+                                   <option value="">Semua Kelas</option>
+                                   {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Alasan</label>
+                               <select value={filterReason} onChange={(e) => setFilterReason(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky">
+                                   <option value="">Semua Alasan</option>
+                                   {reasons.map(r => <option key={r} value={r}>{r}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Tanggal</label>
+                               <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky" />
+                           </div>
+                           {activeFilterCount > 0 && (
+                               <button onClick={() => { setFilterClass(''); setFilterReason(''); setFilterDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
+                           )}
+                       </div>
+                   )}
+
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{filtered.length} catatan</h2>
+
+                   {filtered.length > 0 ? (
+                       <div className="space-y-2.5">
+                           {filtered.map((log, idx) => {
+                               const dt = parseTimestamp(log.timestamp);
+                               return (
+                                   <div key={idx}>
+                                       <div onClick={() => setExpandedStudent(expandedStudent === log.nisn ? null : log.nisn)} className="bg-ink-850 border border-ink-700 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-ink-800 transition">
+                                           <div className="flex items-center justify-between">
+                                               <div className="font-semibold text-sm text-slate-100">{log.name}</div>
+                                               <span className="text-[9px] bg-ink-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">{log.type}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-500 flex justify-between">
+                                               <span>{log.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                               <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                           </div>
+                                       </div>
+                                       {expandedStudent === log.nisn && (
+                                           <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
+                                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Riwayat {log.name}</div>
+                                               {allLogs.filter(l => l.nisn === log.nisn).map((h, i) => {
+                                                   const hDt = parseTimestamp(h.timestamp);
+                                                   return (
+                                                       <div key={i} className="text-[11px] text-slate-400 flex justify-between bg-ink-900/60 rounded-lg px-2.5 py-1.5">
+                                                           <span>{h.type}</span>
+                                                           <span>{hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                       </div>
+                                                   );
+                                               })}
+                                           </div>
+                                       )}
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <EmptyState emoji="🔍" text="Tidak ada catatan yang cocok dengan filter ini." />
+                   )}
+               </div>
+           );
+       }
+
+       function StatsTab({ allLogs, canExport }) {
+           const [period, setPeriod] = useState('5hari');
+           const periods = [
+               { key: '5hari', label: '5 Hari' },
+               { key: 'mingguan', label: 'Mingguan' },
+               { key: 'bulanan', label: 'Bulanan' },
+               { key: 'semester', label: 'Semester' },
+               { key: 'tahunan', label: 'Tahunan' },
+           ];
+           const series = buildPeriodSeries(period, allLogs);
+
+           const periodLogs = allLogs.filter(l => {
+               const dt = parseTimestamp(l.timestamp);
+               const now = new Date();
+               if (period === '5hari') {
+                   const past = new Date();
+                   past.setDate(now.getDate() - 5);
+                   return dt >= past && dt <= now;
+               }
+               if (period === 'mingguan') {
+                   return inRange(l.timestamp, startOfWeek(now), now);
+               }
+               if (period === 'bulanan') {
+                   return inRange(l.timestamp, startOfMonth(now), now);
+               }
+               if (period === 'semester') {
+                   const semInfo = getSemesterInfo(now);
+                   const s = new Date(semInfo.year, semInfo.months[0], 1);
+                   return inRange(l.timestamp, s, now);
+               }
+               const s = new Date(now.getFullYear(), 0, 1);
+               return inRange(l.timestamp, s, now);
+           });
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Statistik Keterlambatan</h2>
+
+                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                       {periods.map(p => (
+                           <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-sky text-white shadow-md' : 'bg-ink-850 text-slate-400 border border-ink-700'}`}>
+                               {p.label}
+                           </button>
+                       ))}
+                   </div>
+
+                   <BarChart data={series} title={`Tren ${periods.find(p => p.key === period).label}`} />
+
+                   <div className="grid grid-cols-1 gap-3">
+                       <StatCard value={periodLogs.length} label={`Total Keterlambatan (${periods.find(p => p.key === period).label})`} accent />
+                   </div>
+
+                   <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.class, 5)} unit="siswa" />
+                   <TopList title="Alasan Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.type, 5)} unit="kali" />
+
+                   {canExport && (
+                       <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
+                           <h3 className="text-xs font-display font-bold text-sky-light flex items-center gap-2">
+                               <Icon path={<path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />} filled className="h-4 w-4" />
+                               Ekspor Data (Admin)
+                           </h3>
+                           <p className="text-[11px] text-slate-400 leading-relaxed">Seluruh log tersimpan di Google Sheets. Unduh sebagai CSV/Excel, cetak sebagai PDF, atau buka rekap lengkap di Spreadsheet.</p>
+                           <div className="grid grid-cols-2 gap-2">
+                               <button onClick={() => exportCSV(allLogs, 'LogLengkap')} className="bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">Unduh CSV</button>
+                               <button onClick={() => window.print()} className="bg-ink-800 border border-ink-600 hover:bg-ink-700 text-slate-200 py-2.5 rounded-xl text-[11px] font-bold transition">Cetak / PDF</button>
+                           </div>
+                           <a href="https://docs.google.com/spreadsheets" target="_blank" className="block w-full text-center bg-transparent border-2 border-sky-dim text-sky-light py-2.5 rounded-xl text-[11px] font-bold transition">
+                               Buka Google Spreadsheet
+                           </a>
+                       </div>
+                   )}
+
+                   <div className="print-report">
+                       <h2 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>Laporan Keterlambatan — SIGAP SMAN 2 Tarakan</h2>
+                       <p style={{ fontSize: '11px', marginBottom: '12px' }}>Dicetak: {new Date().toLocaleString('id-ID')}</p>
+                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                           <thead><tr>{['Nama', 'Kelas', 'Alasan', 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
+                           <tbody>
+                               {allLogs.map((l, i) => {
+                                   const dt = parseTimestamp(l.timestamp);
+                                   return (
+                                       <tr key={i}>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.type}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleDateString('id-ID')}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                                       </tr>
+                                   );
+                               })}
+                           </tbody>
+                       </table>
+                   </div>
+               </div>
+           );
+       }
+
+       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose }) {
+           const presets = [
+               { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
+               { type: 'Hujan', emoji: '🌧️', label: 'Hujan' },
+               { type: 'Kendaraan bermasalah', emoji: '🏍️', label: 'Kendaraan' },
+               { type: 'Keperluan keluarga', emoji: '👥', label: 'Urusan Keluarga' },
+           ];
+           return (
+               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                   <div className="bg-ink-850 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-5 animate-pop">
+                       <div className="text-center">
+                           <div className="w-12 h-1.5 bg-ink-600 rounded-full mx-auto mb-4 sm:hidden"></div>
+                           <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Catat Keterlambatan</h3>
+                           <div className="font-display text-xl font-extrabold text-white mt-1">{student.name}</div>
+                           <div className="text-xs text-slate-400 font-medium bg-ink-900 inline-block px-3 py-1 rounded-full mt-2 border border-ink-700">{student.class}</div>
+                       </div>
+                       <div className="grid grid-cols-2 gap-2.5">
+                           {presets.map(p => (
+                               <button key={p.type} onClick={() => onRecord(p.type)} className="bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                                   <span className="text-lg">{p.emoji}</span><span>{p.label}</span>
+                               </button>
+                           ))}
+                       </div>
+                       <div className="pt-2">
+                           <label className="text-[10px] text-slate-400 font-bold mb-1.5 block uppercase tracking-wider">Atau Alasan Lainnya</label>
+                           <div className="flex gap-2">
+                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Ketik spesifik..." className="flex-1 bg-ink-900 border border-ink-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+                               <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
+                           </div>
+                       </div>
+                       <button onClick={onClose} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 hover:text-white hover:border-ink-500 py-3 rounded-2xl font-bold text-xs transition">Batal</button>
+                   </div>
+               </div>
+           );
+       }
+
        function GerbangTab({ students, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser }) {
            const [mode, setMode] = useState('terlambat');
            const [searchQuery, setSearchQuery] = useState('');
