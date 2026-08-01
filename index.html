@@ -518,9 +518,9 @@
                    </div>
 
                    <div className="grid grid-cols-3 gap-2.5">
-                       <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" onClick={() => onNavigate('log')} />
+                       <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" onClick={() => onNavigate('terlambat')} />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" onClick={() => onNavigate('pelanggaran')} />
-                       <SummaryCard value={todaySurat.length} label="Surat" tone="sky" onClick={() => onNavigate('scan')} />
+                       <SummaryCard value={todaySurat.length} label="Surat" tone="sky" onClick={() => onNavigate('surat')} />
                    </div>
 
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Terbaru</h2>
@@ -538,30 +538,48 @@
            );
        }
 
-       function LogTab({ allLogs }) {
+       function LogTab({ allLogs, pelanggaranList, suratList, initialCategory }) {
+           const [category, setCategory] = useState(initialCategory || 'terlambat');
            const [filterClass, setFilterClass] = useState('');
-           const [filterReason, setFilterReason] = useState('');
+           const [filterSub, setFilterSub] = useState('');
            const [filterDate, setFilterDate] = useState('');
            const [search, setSearch] = useState('');
            const [expandedStudent, setExpandedStudent] = useState(null);
            const [showFilters, setShowFilters] = useState(false);
 
-           const classes = useMemo(() => [...new Set(allLogs.map(l => l.class))].sort(), [allLogs]);
-           const reasons = useMemo(() => [...new Set(allLogs.map(l => l.type))].sort(), [allLogs]);
+           const categories = [
+               { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
+               { key: 'pelanggaran', label: 'Pelanggaran', data: pelanggaranList, subField: 'jenis_pelanggaran', subLabel: 'Jenis' },
+               { key: 'surat', label: 'Surat', data: suratList, subField: 'jenis', subLabel: 'Jenis' },
+           ];
+           const activeCat = categories.find(c => c.key === category);
+           const sourceData = activeCat.data;
 
-           const filtered = allLogs.filter(l => {
+           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya
+           useEffect(() => { setFilterClass(''); setFilterSub(''); setFilterDate(''); setExpandedStudent(null); }, [category]);
+
+           const classes = useMemo(() => [...new Set(sourceData.map(l => l.class))].sort(), [sourceData]);
+           const subOptions = useMemo(() => [...new Set(sourceData.map(l => l[activeCat.subField]))].filter(Boolean).sort(), [sourceData, category]);
+
+           const filtered = sourceData.filter(l => {
                const dt = parseTimestamp(l.timestamp);
                if (filterClass && l.class !== filterClass) return false;
-               if (filterReason && l.type !== filterReason) return false;
+               if (filterSub && l[activeCat.subField] !== filterSub) return false;
                if (filterDate && !isSameDay(dt, new Date(filterDate))) return false;
                if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
            });
 
-           const activeFilterCount = [filterClass, filterReason, filterDate].filter(Boolean).length;
+           const activeFilterCount = [filterClass, filterSub, filterDate].filter(Boolean).length;
 
            return (
                <div className="space-y-4 animate-rise">
+                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
+                       {categories.map(c => (
+                           <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold transition ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
+                       ))}
+                   </div>
+
                    <div className="flex gap-2">
                        <div className="relative flex-1">
                            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-sky" />
@@ -583,10 +601,10 @@
                                </select>
                            </div>
                            <div>
-                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Alasan</label>
-                               <select value={filterReason} onChange={(e) => setFilterReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                   <option value="">Semua Alasan</option>
-                                   {reasons.map(r => <option key={r} value={r}>{r}</option>)}
+                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">{activeCat.subLabel}</label>
+                               <select value={filterSub} onChange={(e) => setFilterSub(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                   <option value="">Semua {activeCat.subLabel}</option>
+                                   {subOptions.map(r => <option key={r} value={r}>{r}</option>)}
                                </select>
                            </div>
                            <div>
@@ -594,37 +612,44 @@
                                <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                            </div>
                            {activeFilterCount > 0 && (
-                               <button onClick={() => { setFilterClass(''); setFilterReason(''); setFilterDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
+                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setFilterDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
                            )}
                        </div>
                    )}
 
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{filtered.length} catatan</h2>
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{filtered.length} catatan {activeCat.label.toLowerCase()}</h2>
 
                    {filtered.length > 0 ? (
                        <div className="space-y-2.5">
-                           {filtered.map((log, idx) => {
-                               const dt = parseTimestamp(log.timestamp);
+                           {filtered.map((item, idx) => {
+                               const dt = parseTimestamp(item.timestamp);
+                               const subValue = item[activeCat.subField];
                                return (
                                    <div key={idx}>
-                                       <div onClick={() => setExpandedStudent(expandedStudent === log.nisn ? null : log.nisn)} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-slate-100 transition">
+                                       <div onClick={() => setExpandedStudent(expandedStudent === item.nisn ? null : item.nisn)} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-slate-100 transition">
                                            <div className="flex items-center justify-between">
-                                               <div className="font-semibold text-sm text-slate-900">{log.name}</div>
-                                               <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{log.type}</span>
+                                               <div className="font-semibold text-sm text-slate-900">{item.name}</div>
+                                               <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{subValue}</span>
                                            </div>
                                            <div className="text-[10px] text-slate-400 flex justify-between">
-                                               <span>{log.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                               <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                                <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
+                                           {category === 'pelanggaran' && item.sanksi && (
+                                               <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
+                                           )}
+                                           {category === 'surat' && item.foto_url && (
+                                               <a href={item.foto_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-sky-dim underline inline-block">Lihat foto surat</a>
+                                           )}
                                        </div>
-                                       {expandedStudent === log.nisn && (
+                                       {expandedStudent === item.nisn && (
                                            <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
-                                               <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Riwayat {log.name}</div>
-                                               {allLogs.filter(l => l.nisn === log.nisn).map((h, i) => {
+                                               <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Riwayat {activeCat.label} {item.name}</div>
+                                               {sourceData.filter(l => l.nisn === item.nisn).map((h, i) => {
                                                    const hDt = parseTimestamp(h.timestamp);
                                                    return (
-                                                       <div key={i} className="text-[11px] text-slate-500 flex justify-between bg-white/60 rounded-lg px-2.5 py-1.5">
-                                                           <span>{h.type}</span>
+                                                       <div key={i} className="text-[11px] text-slate-500 flex justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+                                                           <span>{h[activeCat.subField]}</span>
                                                            <span>{hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                                        </div>
                                                    );
@@ -636,7 +661,7 @@
                            })}
                        </div>
                    ) : (
-                       <EmptyState emoji="🔍" text="Tidak ada catatan yang cocok dengan filter ini." />
+                       <EmptyState emoji="🔍" text={`Tidak ada catatan ${activeCat.label.toLowerCase()} yang cocok.`} />
                    )}
                </div>
            );
@@ -1012,18 +1037,7 @@
            );
 
            const studentHistory = selectedStudent ? pelanggaranList.filter(p => p.nisn === selectedStudent.nisn) : [];
-
-           // Ringkasan pelanggaran — struktur sama seperti Dashboard keterlambatan
-           const now = new Date();
-           const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
-           const weekCount = countInRange(pelanggaranList, startOfWeek(now), now);
-           const monthCount = countInRange(pelanggaranList, startOfMonth(now), now);
-           const semInfo = getSemesterInfo(now);
-           const semStart = new Date(semInfo.year, semInfo.months[0], 1);
-           const semCount = countInRange(pelanggaranList, semStart, now);
-           const trendSeries = buildPeriodSeries('5hari', pelanggaranList);
-           const topKelasPelanggaran = topN(pelanggaranList, p => p.class, 3);
-           const topJenisPelanggaran = topN(pelanggaranList, p => p.jenis_pelanggaran, 3);
+           const todayCount = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), new Date())).length;
 
            const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
@@ -1042,28 +1056,9 @@
 
            return (
                <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Pelanggaran & Sanksi</h2>
-
-                   <div className="grid grid-cols-2 gap-3">
-                       <StatCard value={todayPelanggaran.length} label="Hari Ini" accent />
-                       <StatCard value={weekCount} label="Minggu Ini" />
-                       <StatCard value={monthCount} label="Bulan Ini" />
-                       <StatCard value={semCount} label={semInfo.label} />
-                   </div>
-
-                   <BarChart data={trendSeries} title="Tren 5 Hari Terakhir" />
-
-                   {(topKelasPelanggaran.length > 0 || topJenisPelanggaran.length > 0) && (
-                       <div className="grid grid-cols-1 gap-3">
-                           <TopList title="Kelas Terbanyak" items={topKelasPelanggaran} unit="kali" />
-                           <TopList title="Jenis Pelanggaran Terbanyak" items={topJenisPelanggaran} unit="kali" />
-                       </div>
-                   )}
-
-                   <div className="relative flex items-center py-1">
-                       <div className="flex-grow border-t border-slate-200"></div>
-                       <span className="flex-shrink-0 mx-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Catat Baru</span>
-                       <div className="flex-grow border-t border-slate-200"></div>
+                   <div className="flex justify-between items-end">
+                       <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran</h2>
+                       <span className="text-[10px] text-slate-400 font-semibold">{todayCount} hari ini</span>
                    </div>
 
                    {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
@@ -1084,6 +1079,8 @@
                            </div>
                        </div>
                    )}
+
+                   <p className="text-[11px] text-slate-400 text-center">Untuk melihat riwayat lengkap, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
 
                    {selectedStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
@@ -1205,6 +1202,7 @@
            const [loginError, setLoginError] = useState('');
 
            const [activeTab, setActiveTab] = useState(null);
+           const [riwayatCategory, setRiwayatCategory] = useState('terlambat');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
@@ -1267,6 +1265,11 @@
                        else setLoginError(data.message || 'Password salah!');
                    })
                    .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+           };
+
+           const goToRiwayat = (category) => {
+               setRiwayatCategory(category);
+               setActiveTab('log');
            };
 
            const handleRecord = (type) => {
@@ -1362,9 +1365,9 @@
                            <GerbangTab students={students} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                        )}
                        {activeTab === 'dashboard' && (
-                           <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} onNavigate={setActiveTab} />
+                           <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} onNavigate={goToRiwayat} />
                        )}
-                       {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} />}
+                       {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
                        {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
                        {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
                            <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
