@@ -58,6 +58,8 @@
 
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+       // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
+       const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
        const ROLES = {
            guru_piket:     { label: 'Guru Piket',        menus: ['scan', 'dashboard'],             dashboardExpanded: false, canExport: false },
@@ -709,8 +711,8 @@
 
            const fetchData = () => {
                setLoadingLogs(true);
-               fetch(`${API_URL}?action=getStudents`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
-               fetch(`${API_URL}?action=getLogs`).then(res => res.json()).then(data => {
+               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
+               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}`).then(res => res.json()).then(data => {
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
                }).catch(() => setLoadingLogs(false));
@@ -720,7 +722,7 @@
                e.preventDefault();
                setLoadingLogin(true);
                setLoginError('');
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput }) })
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
                    .then(res => res.json())
                    .then(data => {
                        setLoadingLogin(false);
@@ -732,7 +734,7 @@
 
            const handleRecord = (type) => {
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
-               const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, logged_by: user.name };
+               const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, logged_by: user.name, token: API_TOKEN };
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(() => fetchData()).catch(err => console.error('Gagal simpan:', err));
                setToast(`Berhasil mencatat: ${selectedStudent.name}`);
                setSelectedStudent(null); setSearchQuery(''); setCustomReasonInput('');
