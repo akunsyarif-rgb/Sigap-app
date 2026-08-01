@@ -299,7 +299,7 @@
            );
        }
 
-       function Header({ user, roleLabel, onLogout }) {
+       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange }) {
            return (
                <div className="fixed top-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
                    <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -313,9 +313,15 @@
                                </div>
                            </div>
                        </div>
-                       <button onClick={onLogout} className="text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-300 transition shadow-sm flex-shrink-0">
-                           Keluar
-                       </button>
+                       <div className="flex items-center gap-1.5 flex-shrink-0">
+                           <div className="flex items-center bg-slate-100 rounded-lg border border-slate-300 overflow-hidden">
+                               <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="px-2 py-1.5 text-slate-600 hover:bg-slate-200 text-xs font-bold">Aa−</button>
+                               <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="px-2 py-1.5 text-slate-600 hover:bg-slate-200 text-sm font-bold border-l border-slate-300">Aa+</button>
+                           </div>
+                           <button onClick={onLogout} className="text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-300 transition shadow-sm">
+                               Keluar
+                           </button>
+                       </div>
                    </div>
                </div>
            );
@@ -458,17 +464,17 @@
            );
        }
 
-       function SummaryCard({ value, label, tone, onClick }) {
+       function SummaryCard({ value, label, tone }) {
            const toneClasses = {
                crimson: 'bg-crimson/10 border-crimson/30 text-crimson',
                amber: 'bg-amber-50 border-amber-200 text-amber-600',
                sky: 'bg-sky-dim/10 border-sky-dim/30 text-sky-dim',
            };
            return (
-               <button onClick={onClick} className={`p-4 rounded-2xl text-center border transition active:scale-95 ${toneClasses[tone]}`}>
+               <div className={`p-4 rounded-2xl text-center border ${toneClasses[tone]}`}>
                    <div className="font-display text-3xl font-extrabold">{value}</div>
                    <div className="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-80">{label}</div>
-               </button>
+               </div>
            );
        }
 
@@ -498,17 +504,18 @@
            );
        }
 
-       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh, loading, onNavigate }) {
+       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh, loading }) {
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
            const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
 
+           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat
            const combinedFeed = [
-               ...allLogs.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
-               ...pelanggaranList.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
-               ...suratList.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
-           ].sort((a, b) => b._time - a._time).slice(0, 15);
+               ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
+               ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
+               ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
+           ].sort((a, b) => b._time - a._time);
 
            return (
                <div className="space-y-5 animate-rise">
@@ -518,12 +525,12 @@
                    </div>
 
                    <div className="grid grid-cols-3 gap-2.5">
-                       <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" onClick={() => onNavigate('terlambat')} />
-                       <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" onClick={() => onNavigate('pelanggaran')} />
-                       <SummaryCard value={todaySurat.length} label="Surat" tone="sky" onClick={() => onNavigate('surat')} />
+                       <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" />
+                       <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
+                       <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
 
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Terbaru</h2>
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
                    {loading ? (
                        <div className="text-center py-10 text-xs text-slate-400">Memuat data...</div>
@@ -534,18 +541,29 @@
                    ) : (
                        <EmptyState emoji="🏆" text="Belum ada aktivitas tercatat hari ini." />
                    )}
+
+                   <p className="text-[11px] text-slate-400 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
                </div>
            );
        }
 
        function LogTab({ allLogs, pelanggaranList, suratList, initialCategory }) {
            const [category, setCategory] = useState(initialCategory || 'terlambat');
+           const [period, setPeriod] = useState('semua');
+           const [customDate, setCustomDate] = useState('');
            const [filterClass, setFilterClass] = useState('');
            const [filterSub, setFilterSub] = useState('');
-           const [filterDate, setFilterDate] = useState('');
            const [search, setSearch] = useState('');
            const [expandedStudent, setExpandedStudent] = useState(null);
            const [showFilters, setShowFilters] = useState(false);
+
+           const periods = [
+               { key: 'semua', label: 'Semua' },
+               { key: 'hari-ini', label: 'Hari Ini' },
+               { key: 'kemarin', label: 'Kemarin' },
+               { key: 'minggu-ini', label: 'Minggu Ini' },
+               { key: 'bulan-ini', label: 'Bulan Ini' },
+           ];
 
            const categories = [
                { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
@@ -556,21 +574,34 @@
            const sourceData = activeCat.data;
 
            // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya
-           useEffect(() => { setFilterClass(''); setFilterSub(''); setFilterDate(''); setExpandedStudent(null); }, [category]);
+           useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); }, [category]);
 
            const classes = useMemo(() => [...new Set(sourceData.map(l => l.class))].sort(), [sourceData]);
            const subOptions = useMemo(() => [...new Set(sourceData.map(l => l[activeCat.subField]))].filter(Boolean).sort(), [sourceData, category]);
 
+           const passesPeriod = (dt) => {
+               const now = new Date();
+               if (period === 'hari-ini') return isSameDay(dt, now);
+               if (period === 'kemarin') {
+                   const y = new Date(now); y.setDate(now.getDate() - 1);
+                   return isSameDay(dt, y);
+               }
+               if (period === 'minggu-ini') return dt >= startOfWeek(now) && dt <= now;
+               if (period === 'bulan-ini') return dt >= startOfMonth(now) && dt <= now;
+               if (period === 'custom' && customDate) return isSameDay(dt, new Date(customDate));
+               return true;
+           };
+
            const filtered = sourceData.filter(l => {
                const dt = parseTimestamp(l.timestamp);
+               if (!passesPeriod(dt)) return false;
                if (filterClass && l.class !== filterClass) return false;
                if (filterSub && l[activeCat.subField] !== filterSub) return false;
-               if (filterDate && !isSameDay(dt, new Date(filterDate))) return false;
                if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
-           });
+           }).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
 
-           const activeFilterCount = [filterClass, filterSub, filterDate].filter(Boolean).length;
+           const activeFilterCount = [filterClass, filterSub, period !== 'semua' ? 'x' : ''].filter(Boolean).length;
 
            return (
                <div className="space-y-4 animate-rise">
@@ -580,14 +611,22 @@
                        ))}
                    </div>
 
+                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                       {periods.map(p => (
+                           <button key={p.key} onClick={() => { setPeriod(p.key); setCustomDate(''); }} className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-navy text-white' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                               {p.label}
+                           </button>
+                       ))}
+                   </div>
+
                    <div className="flex gap-2">
                        <div className="relative flex-1">
                            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-sky" />
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-400" />
                        </div>
-                       <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${activeFilterCount > 0 ? 'bg-sky-dim/25 border-sky-dim text-sky-dim' : 'bg-white border-slate-200 text-slate-500'}`}>
+                       <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${(filterClass || filterSub) ? 'bg-sky-dim/25 border-sky-dim text-sky-dim' : 'bg-white border-slate-200 text-slate-500'}`}>
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
-                           {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+                           {(filterClass || filterSub) && <span>•</span>}
                        </button>
                    </div>
 
@@ -608,11 +647,11 @@
                                </select>
                            </div>
                            <div>
-                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Tanggal</label>
-                               <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Tanggal Spesifik</label>
+                               <input type="date" value={customDate} onChange={(e) => { setCustomDate(e.target.value); setPeriod('custom'); }} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                            </div>
-                           {activeFilterCount > 0 && (
-                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setFilterDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
+                           {(filterClass || filterSub || period !== 'semua') && (
+                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
                            )}
                        </div>
                    )}
@@ -911,24 +950,6 @@
                        </div>
                    )}
 
-                   {mode === 'terlambat' && (
-                       <React.Fragment>
-                           <div className="relative flex items-center py-2">
-                               <div className="flex-grow border-t border-slate-200"></div>
-                               <span className="flex-shrink-0 mx-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Gerbang RFID</span>
-                               <div className="flex-grow border-t border-slate-200"></div>
-                           </div>
-
-                           <div className="bg-white/60 border-2 border-dashed border-slate-300 rounded-3xl p-6 flex flex-col items-center justify-center relative">
-                               <div className="w-64 h-40 border-[3px] border-sky rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-white/80 shadow-[inset_0_0_20px_rgba(46,134,216,0.25)]">
-                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />} className="h-8 w-8 text-sky mb-2 opacity-60" />
-                                   <div className="absolute inset-x-0 h-[2px] bg-sky-light animate-scanline shadow-[0_0_10px_rgba(111,179,234,1)]" style={{ top: '8%' }}></div>
-                                   <span className="text-[11px] text-slate-500 text-center px-4 font-medium">Arahkan kartu RFID ke alat pembaca</span>
-                               </div>
-                           </div>
-                       </React.Fragment>
-                   )}
-
                    {mode === 'surat' && (
                        <React.Fragment>
                            {isAdminUser && (
@@ -1037,7 +1058,8 @@
            );
 
            const studentHistory = selectedStudent ? pelanggaranList.filter(p => p.nisn === selectedStudent.nisn) : [];
-           const todayCount = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), new Date())).length;
+           const todayList = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), new Date())).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
+           const todayCount = todayList.length;
 
            const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
@@ -1080,7 +1102,31 @@
                        </div>
                    )}
 
-                   <p className="text-[11px] text-slate-400 text-center">Untuk melihat riwayat lengkap, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+                   <div className="pt-1">
+                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Pelanggaran Hari Ini ({todayList.length})</h3>
+                       {todayList.length > 0 ? (
+                           <div className="space-y-2.5">
+                               {todayList.map((p, idx) => {
+                                   const dt = parseTimestamp(p.timestamp);
+                                   return (
+                                       <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
+                                           <div className="flex items-center justify-between gap-2">
+                                               <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
+                                               <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                               <span>{p.class} • Sanksi: {p.sanksi}</span>
+                                               <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                           </div>
+                                       </div>
+                                   );
+                               })}
+                           </div>
+                       ) : (
+                           <EmptyState emoji="✅" text="Belum ada pelanggaran tercatat hari ini." />
+                       )}
+                       <p className="text-[11px] text-slate-400 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+                   </div>
 
                    {selectedStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
@@ -1202,6 +1248,18 @@
            const [loginError, setLoginError] = useState('');
 
            const [activeTab, setActiveTab] = useState(null);
+           const [fontScale, setFontScale] = useState(() => {
+               try { return parseFloat(localStorage.getItem('sigap_font_scale')) || 1; } catch (e) { return 1; }
+           });
+           const FONT_SCALE_STEPS = [1, 1.15, 1.3, 1.45];
+           const changeFontScale = (direction) => {
+               const currentIndex = FONT_SCALE_STEPS.indexOf(fontScale);
+               const idx = currentIndex === -1 ? 0 : currentIndex;
+               const nextIndex = Math.min(FONT_SCALE_STEPS.length - 1, Math.max(0, idx + direction));
+               const next = FONT_SCALE_STEPS[nextIndex];
+               setFontScale(next);
+               try { localStorage.setItem('sigap_font_scale', String(next)); } catch (e) {}
+           };
            const [riwayatCategory, setRiwayatCategory] = useState('terlambat');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
@@ -1267,15 +1325,17 @@
                    .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
            };
 
-           const goToRiwayat = (category) => {
-               setRiwayatCategory(category);
-               setActiveTab('log');
-           };
-
            const handleRecord = (type) => {
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
+               const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, logged_by: user.name, token: API_TOKEN };
-               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(() => fetchData()).catch(err => console.error('Gagal simpan:', err));
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') setAllLogs(prev => [newEntry, ...prev]);
+                       else setToast('Gagal menyimpan, coba lagi.');
+                   })
+                   .catch(() => setToast('Koneksi gagal, coba lagi.'));
                setToast(`Berhasil mencatat: ${selectedStudent.name}`);
                setSelectedStudent(null); setCustomReasonInput('');
                setTimeout(() => setToast(null), 3000);
@@ -1287,8 +1347,10 @@
                    .then(res => res.json())
                    .then(data => {
                        setLoadingTeacherAction(false);
-                       if (data.status === 'success') { fetchTeachers(); callback(true, 'Guru berhasil ditambahkan.'); }
-                       else callback(false, data.message || 'Gagal menambah guru.');
+                       if (data.status === 'success') {
+                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole }]);
+                           callback(true, 'Guru berhasil ditambahkan.');
+                       } else callback(false, data.message || 'Gagal menambah guru.');
                    })
                    .catch(() => { setLoadingTeacherAction(false); callback(false, 'Koneksi gagal, coba lagi.'); });
            };
@@ -1307,8 +1369,11 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, logged_by: user.name, ...payload }) })
                    .then(res => res.json())
                    .then(data => {
-                       if (data.status === 'success') { fetchData(); callback(true, 'Surat berhasil dicatat.'); }
-                       else callback(false, data.message || 'Gagal mencatat surat.');
+                       if (data.status === 'success') {
+                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
+                           setSuratList(prev => [newEntry, ...prev]);
+                           callback(true, 'Surat berhasil dicatat.');
+                       } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -1317,8 +1382,15 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSurat', requesterId: user.id, token: API_TOKEN, ...payload }) })
                    .then(res => res.json())
                    .then(data => {
-                       if (data.status === 'success') { fetchData(); callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`); }
-                       else callback(false, data.message || 'Gagal menghapus data.');
+                       if (data.status === 'success') {
+                           const month = parseInt(payload.month, 10);
+                           const year = parseInt(payload.year, 10);
+                           setSuratList(prev => prev.filter(s => {
+                               const dt = parseTimestamp(s.timestamp);
+                               return !((dt.getMonth() + 1) === month && dt.getFullYear() === year);
+                           }));
+                           callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`);
+                       } else callback(false, data.message || 'Gagal menghapus data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -1327,8 +1399,11 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, logged_by: user.name, ...payload }) })
                    .then(res => res.json())
                    .then(data => {
-                       if (data.status === 'success') { fetchData(); callback(true, 'Pelanggaran berhasil dicatat.'); }
-                       else callback(false, data.message || 'Gagal mencatat pelanggaran.');
+                       if (data.status === 'success') {
+                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
+                           setPelanggaranList(prev => [newEntry, ...prev]);
+                           callback(true, 'Pelanggaran berhasil dicatat.');
+                       } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -1337,54 +1412,61 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, logged_by: user.name, ...payload }) })
                    .then(res => res.json())
                    .then(data => {
-                       if (data.status === 'success') { if (roleKey === 'admin') fetchBimbingan(); callback(true, 'Berhasil dicatat (hanya Admin bisa lihat).'); }
-                       else callback(false, data.message || 'Gagal mencatat.');
+                       if (data.status === 'success') {
+                           if (roleKey === 'admin') {
+                               const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, catatan: payload.catatan, logged_by: user.name };
+                               setBimbinganList(prev => [newEntry, ...prev]);
+                           }
+                           callback(true, 'Berhasil dicatat (hanya Admin bisa lihat).');
+                       } else callback(false, data.message || 'Gagal mencatat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
-           if (!user) {
-               return <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />;
-           }
-
            return (
-               <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                   <Header user={user} roleLabel={roleConfig.label} onLogout={() => setUser(null)} />
+               <div style={{ zoom: fontScale }}>
+                   {!user ? (
+                       <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
+                   ) : (
+                       <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
+                           <Header user={user} roleLabel={roleConfig.label} onLogout={() => setUser(null)} fontScale={fontScale} onFontScaleChange={changeFontScale} />
 
-                   {toast && (
-                       <div className="fixed bottom-24 inset-x-0 z-50 px-4">
-                           <div className="max-w-2xl mx-auto bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
-                               <span>{toast}</span>
-                               <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
+                           {toast && (
+                               <div className="fixed bottom-24 inset-x-0 z-50 px-4">
+                                   <div className="max-w-2xl mx-auto bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
+                                       <span>{toast}</span>
+                                       <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
+                                   </div>
+                               </div>
+                           )}
+
+                           <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
+                               {activeTab === 'scan' && roleConfig.menus.includes('scan') && (
+                                   <GerbangTab students={students} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
+                               )}
+                               {activeTab === 'dashboard' && (
+                                   <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} />
+                               )}
+                               {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
+                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
+                               {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
+                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
+                               )}
+                               {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
+                               )}
+                               {activeTab === 'bimbingan' && roleConfig.menus.includes('bimbingan') && (
+                                   <BimbinganTab bimbinganList={bimbinganList} />
+                               )}
                            </div>
+
+                           {selectedStudent && (
+                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} />
+                           )}
+
+                           <BottomNav menus={roleConfig.menus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
                        </div>
                    )}
-
-                   <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
-                       {activeTab === 'scan' && roleConfig.menus.includes('scan') && (
-                           <GerbangTab students={students} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
-                       )}
-                       {activeTab === 'dashboard' && (
-                           <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} onNavigate={goToRiwayat} />
-                       )}
-                       {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
-                       {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
-                       {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
-                           <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
-                       )}
-                       {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
-                           <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
-                       )}
-                       {activeTab === 'bimbingan' && roleConfig.menus.includes('bimbingan') && (
-                           <BimbinganTab bimbinganList={bimbinganList} />
-                       )}
-                   </div>
-
-                   {selectedStudent && (
-                       <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} />
-                   )}
-
-                   <BottomNav menus={roleConfig.menus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
                </div>
            );
        }
