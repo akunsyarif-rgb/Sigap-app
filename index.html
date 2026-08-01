@@ -61,14 +61,12 @@
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
+       // Dua tier saja: admin dapat semua menu + ekspor + Kelola Guru.
+       // Semua role lain (guru_piket, wali_kelas, dst) disamakan jadi "guru" —
+       // menu dan hak akses identik untuk semua guru non-admin.
        const ROLES = {
-           guru_piket:     { label: 'Guru Piket',        menus: ['scan', 'dashboard'],             dashboardExpanded: false, canExport: false },
-           wali_kelas:     { label: 'Wali Kelas',        menus: ['dashboard', 'log'],               dashboardExpanded: true,  canExport: false },
-           guru_bk:        { label: 'Guru BK',           menus: ['dashboard', 'log', 'stats'],      dashboardExpanded: true,  canExport: false },
-           wakasek:        { label: 'Wakasek Kesiswaan', menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
-           kepala_sekolah: { label: 'Kepala Sekolah',    menus: ['dashboard'],                      dashboardExpanded: true,  canExport: false },
-           admin:          { label: 'Admin',             menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: true },
-           _legacy:        { label: 'Petugas',           menus: ['scan', 'dashboard', 'log', 'stats'], dashboardExpanded: true, canExport: false },
+           admin: { label: 'Admin', menus: ['scan', 'dashboard', 'log', 'stats', 'kelola'], dashboardExpanded: true, canExport: true },
+           guru:  { label: 'Guru',  menus: ['scan', 'dashboard', 'log', 'stats'],            dashboardExpanded: true, canExport: false },
        };
 
        const NAV_ITEMS = {
@@ -76,6 +74,7 @@
            dashboard: { label: 'Beranda',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /> },
            log:       { label: 'Riwayat',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /> },
            stats:     { label: 'Statistik',  icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" /></React.Fragment> },
+           kelola:    { label: 'Kelola',     icon: (a) => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></React.Fragment> },
        };
 
        function Icon({ path, className = "h-5 w-5", filled = false }) {
@@ -684,6 +683,96 @@
            );
        }
 
+       function KelolaTab({ teachers, onAddTeacher, onUpdatePassword, loading }) {
+           const [newId, setNewId] = useState('');
+           const [newName, setNewName] = useState('');
+           const [newPassword, setNewPassword] = useState('');
+           const [newRole, setNewRole] = useState('guru_piket');
+           const [resetTarget, setResetTarget] = useState(null);
+           const [resetPassword, setResetPassword] = useState('');
+           const [msg, setMsg] = useState('');
+           const [msgTone, setMsgTone] = useState('sky');
+
+           const showMsg = (ok, text) => {
+               setMsgTone(ok ? 'sky' : 'crimson');
+               setMsg(text);
+               setTimeout(() => setMsg(''), 3000);
+           };
+
+           const submitAdd = (e) => {
+               e.preventDefault();
+               if (!newId.trim() || !newName.trim() || !newPassword.trim()) return;
+               onAddTeacher({ newId: newId.trim(), newName: newName.trim(), newPassword: newPassword.trim(), newRole }, (ok, text) => {
+                   showMsg(ok, text);
+                   if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru_piket'); }
+               });
+           };
+
+           const submitReset = () => {
+               if (!resetPassword.trim() || !resetTarget) return;
+               onUpdatePassword({ targetId: resetTarget.id, newPassword: resetPassword.trim() }, (ok, text) => {
+                   showMsg(ok, text);
+                   setResetTarget(null); setResetPassword('');
+               });
+           };
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Kelola Guru</h2>
+
+                   {msg && (
+                       <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-light bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                           {msg}
+                       </div>
+                   )}
+
+                   <form onSubmit={submitAdd} className="bg-ink-850 border border-ink-700 rounded-2xl p-4 space-y-3">
+                       <h3 className="text-xs font-display font-bold text-slate-200">Tambah Guru Baru</h3>
+                       <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" required />
+                       <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama Lengkap" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" required />
+                       <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password Awal" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" required />
+                       <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky">
+                           <option value="guru_piket">Guru</option>
+                           <option value="admin">Admin</option>
+                       </select>
+                       <button type="submit" disabled={loading} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-50">
+                           {loading ? 'Menyimpan...' : 'Tambah Guru'}
+                       </button>
+                   </form>
+
+                   <div className="bg-ink-850 border border-ink-700 rounded-2xl p-4">
+                       <h3 className="text-xs font-display font-bold text-slate-200 mb-3">Daftar Guru ({teachers.length})</h3>
+                       {teachers.length === 0 && <div className="text-xs text-slate-500 py-2">Memuat daftar guru...</div>}
+                       <div className="space-y-2">
+                           {teachers.map(t => (
+                               <div key={t.id} className="flex items-center justify-between bg-ink-900/60 rounded-xl px-3 py-2.5">
+                                   <div className="min-w-0">
+                                       <div className="text-xs font-semibold text-white truncate">{t.name}</div>
+                                       <div className="text-[10px] text-slate-500">{t.id} • {t.role === 'admin' ? 'Admin' : 'Guru'}</div>
+                                   </div>
+                                   <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-ink-800 border border-ink-600 text-slate-300 px-2.5 py-1.5 rounded-lg flex-shrink-0">Reset Password</button>
+                               </div>
+                           ))}
+                       </div>
+                   </div>
+
+                   {resetTarget && (
+                       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-ink-850 w-full max-w-sm rounded-3xl p-6 border border-ink-700 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-light uppercase tracking-widest font-bold">Reset Password</h3>
+                                   <div className="font-display text-lg font-extrabold text-white mt-1">{resetTarget.name}</div>
+                               </div>
+                               <input type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Password baru" className="w-full bg-ink-900 border border-ink-600 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky" />
+                               <button onClick={submitReset} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Password Baru</button>
+                               <button onClick={() => { setResetTarget(null); setResetPassword(''); }} className="w-full bg-transparent border-2 border-ink-600 text-slate-400 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+               </div>
+           );
+       }
+
        function App() {
            const [user, setUser] = useState(null);
            const [passwordInput, setPasswordInput] = useState('');
@@ -699,13 +788,25 @@
            const [allLogs, setAllLogs] = useState([]);
            const [loadingLogs, setLoadingLogs] = useState(false);
 
-           const roleKey = user && ROLES[user.role] ? user.role : '_legacy';
+           const [teachers, setTeachers] = useState([]);
+           const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
+
+           // Cuma dua kemungkinan: 'admin' persis, atau dianggap 'guru' untuk selain itu
+           const roleKey = user && user.role === 'admin' ? 'admin' : 'guru';
            const roleConfig = ROLES[roleKey];
+
+           const fetchTeachers = () => {
+               if (roleKey !== 'admin') return;
+               fetch(`${API_URL}?action=getTeachers&token=${API_TOKEN}&requesterId=${user.id}`)
+                   .then(res => res.json())
+                   .then(data => { if (data.status === 'success') setTeachers(data.teachers); });
+           };
 
            useEffect(() => {
                if (user) {
                    fetchData();
                    setActiveTab(roleConfig.menus[0]);
+                   if (roleKey === 'admin') fetchTeachers();
                }
            }, [user]);
 
@@ -741,6 +842,28 @@
                setTimeout(() => setToast(null), 3000);
            };
 
+           const handleAddTeacher = (payload, callback) => {
+               setLoadingTeacherAction(true);
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacher', requesterId: user.id, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       setLoadingTeacherAction(false);
+                       if (data.status === 'success') { fetchTeachers(); callback(true, 'Guru berhasil ditambahkan.'); }
+                       else callback(false, data.message || 'Gagal menambah guru.');
+                   })
+                   .catch(() => { setLoadingTeacherAction(false); callback(false, 'Koneksi gagal, coba lagi.'); });
+           };
+
+           const handleUpdatePassword = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', requesterId: user.id, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') callback(true, 'Password berhasil diubah.');
+                       else callback(false, data.message || 'Gagal mengubah password.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            if (!user) {
                return <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />;
            }
@@ -765,6 +888,9 @@
                        )}
                        {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} />}
                        {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
+                       {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
+                           <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
+                       )}
                    </div>
 
                    {selectedStudent && (
