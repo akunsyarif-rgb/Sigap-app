@@ -706,25 +706,29 @@
            );
        }
 
-       function StatsTab({ allLogs, canExport }) {
-           const [period, setPeriod] = useState('5hari');
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
+           const [category, setCategory] = useState('terlambat');
+           const [period, setPeriod] = useState('mingguan');
+
+           const categories = [
+               { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
+               { key: 'pelanggaran', label: 'Pelanggaran', data: pelanggaranList, subField: 'jenis_pelanggaran', subLabel: 'Jenis' },
+               { key: 'surat', label: 'Surat', data: suratList, subField: 'jenis', subLabel: 'Jenis' },
+           ];
+           const activeCat = categories.find(c => c.key === category);
+           const sourceData = activeCat.data;
+
            const periods = [
-               { key: '5hari', label: '5 Hari' },
                { key: 'mingguan', label: 'Mingguan' },
                { key: 'bulanan', label: 'Bulanan' },
                { key: 'semester', label: 'Semester' },
                { key: 'tahunan', label: 'Tahunan' },
            ];
-           const series = buildPeriodSeries(period, allLogs);
+           const activePeriod = periods.find(p => p.key === period);
+           const series = buildPeriodSeries(period, sourceData);
 
-           const periodLogs = allLogs.filter(l => {
-               const dt = parseTimestamp(l.timestamp);
+           const periodData = sourceData.filter(l => {
                const now = new Date();
-               if (period === '5hari') {
-                   const past = new Date();
-                   past.setDate(now.getDate() - 5);
-                   return dt >= past && dt <= now;
-               }
                if (period === 'mingguan') {
                    return inRange(l.timestamp, startOfWeek(now), now);
                }
@@ -742,7 +746,11 @@
 
            return (
                <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Statistik Keterlambatan</h2>
+                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
+                       {categories.map(c => (
+                           <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold transition ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
+                       ))}
+                   </div>
 
                    <div className="flex gap-1.5 overflow-x-auto pb-1">
                        {periods.map(p => (
@@ -752,14 +760,14 @@
                        ))}
                    </div>
 
-                   <BarChart data={series} title={`Tren ${periods.find(p => p.key === period).label}`} />
+                   <BarChart data={series} title={`Tren ${activeCat.label} — ${activePeriod.label}`} />
 
                    <div className="grid grid-cols-1 gap-3">
-                       <StatCard value={periodLogs.length} label={`Total Keterlambatan (${periods.find(p => p.key === period).label})`} accent />
+                       <StatCard value={periodData.length} label={`Total ${activeCat.label} (${activePeriod.label})`} accent />
                    </div>
 
-                   <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.class, 5)} unit="siswa" />
-                   <TopList title="Alasan Terbanyak (Periode Ini)" items={topN(periodLogs, l => l.type, 5)} unit="kali" />
+                   <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodData, l => l.class, 5)} unit="siswa" />
+                   <TopList title={`${activeCat.subLabel} Terbanyak (Periode Ini)`} items={topN(periodData, l => l[activeCat.subField], 5)} unit="kali" />
 
                    {canExport && (
                        <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
@@ -769,7 +777,7 @@
                            </h3>
                            <p className="text-[11px] text-slate-500 leading-relaxed">Seluruh log tersimpan di Google Sheets. Unduh sebagai CSV/Excel, cetak sebagai PDF, atau buka rekap lengkap di Spreadsheet.</p>
                            <div className="grid grid-cols-2 gap-2">
-                               <button onClick={() => exportCSV(allLogs, 'LogLengkap')} className="bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">Unduh CSV</button>
+                               <button onClick={() => exportCSV(sourceData, activeCat.label)} className="bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">Unduh CSV</button>
                                <button onClick={() => window.print()} className="bg-slate-100 border border-slate-300 hover:bg-slate-200 text-slate-800 py-2.5 rounded-xl text-[11px] font-bold transition">Cetak / PDF</button>
                            </div>
                            <a href="https://docs.google.com/spreadsheets" target="_blank" className="block w-full text-center bg-transparent border-2 border-sky-dim text-sky-dim py-2.5 rounded-xl text-[11px] font-bold transition">
@@ -779,18 +787,18 @@
                    )}
 
                    <div className="print-report">
-                       <h2 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>Laporan Keterlambatan — SIGAP SMAN 2 Tarakan</h2>
+                       <h2 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>Laporan {activeCat.label} — SIGAP SMAN 2 Tarakan</h2>
                        <p style={{ fontSize: '11px', marginBottom: '12px' }}>Dicetak: {new Date().toLocaleString('id-ID')}</p>
                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                           <thead><tr>{['Nama', 'Kelas', 'Alasan', 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
+                           <thead><tr>{['Nama', 'Kelas', activeCat.subLabel, 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
                            <tbody>
-                               {allLogs.map((l, i) => {
+                               {sourceData.map((l, i) => {
                                    const dt = parseTimestamp(l.timestamp);
                                    return (
                                        <tr key={i}>
                                            <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
                                            <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.type}</td>
+                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l[activeCat.subField]}</td>
                                            <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleDateString('id-ID')}</td>
                                            <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
                                        </tr>
@@ -1448,7 +1456,7 @@
                                    <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} />
                                )}
                                {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
-                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
+                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
                                {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
                                    <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
                                )}
