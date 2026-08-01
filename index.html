@@ -458,59 +458,81 @@
            );
        }
 
-       function DashboardTab({ allLogs, expanded, onRefresh, loading }) {
+       function SummaryCard({ value, label, tone, onClick }) {
+           const toneClasses = {
+               crimson: 'bg-crimson/10 border-crimson/30 text-crimson',
+               amber: 'bg-amber-50 border-amber-200 text-amber-600',
+               sky: 'bg-sky-dim/10 border-sky-dim/30 text-sky-dim',
+           };
+           return (
+               <button onClick={onClick} className={`p-4 rounded-2xl text-center border transition active:scale-95 ${toneClasses[tone]}`}>
+                   <div className="font-display text-3xl font-extrabold">{value}</div>
+                   <div className="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-80">{label}</div>
+               </button>
+           );
+       }
+
+       function FeedItem({ item }) {
+           const toneClasses = {
+               terlambat: 'bg-crimson/10 text-crimson border-crimson/20',
+               pelanggaran: 'bg-amber-50 text-amber-700 border-amber-200',
+               surat: 'bg-sky-dim/10 text-sky-dim border-sky-dim/20',
+           };
+           const labelMap = { terlambat: 'Terlambat', pelanggaran: 'Pelanggaran', surat: 'Surat' };
+           const detailMap = {
+               terlambat: item.type,
+               pelanggaran: `${item.jenis_pelanggaran} — ${item.sanksi}`,
+               surat: item.jenis,
+           };
+           return (
+               <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
+                   <div className="flex items-center justify-between gap-2">
+                       <div className="font-bold text-sm text-slate-900 truncate">{item.name}</div>
+                       <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border flex-shrink-0 ${toneClasses[item._kind]}`}>{labelMap[item._kind]}</span>
+                   </div>
+                   <div className="text-[11px] text-slate-500 flex justify-between items-center gap-2">
+                       <span className="truncate">{item.class} • {detailMap[item._kind]}</span>
+                       <span className="flex-shrink-0 text-slate-400">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                   </div>
+               </div>
+           );
+       }
+
+       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh, loading, onNavigate }) {
            const now = new Date();
-           const today = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
-           const weekCount = countInRange(allLogs, startOfWeek(now), now);
-           const monthCount = countInRange(allLogs, startOfMonth(now), now);
-           const semInfo = getSemesterInfo(now);
-           const semStart = new Date(semInfo.year, semInfo.months[0], 1);
-           const semCount = countInRange(allLogs, semStart, now);
-           const topKelasToday = topN(today, l => l.class, 3);
-           const topAlasanToday = topN(today, l => l.type, 3);
+           const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
+           const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
+           const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
+
+           const combinedFeed = [
+               ...allLogs.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
+               ...pelanggaranList.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
+               ...suratList.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
+           ].sort((a, b) => b._time - a._time).slice(0, 15);
 
            return (
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
                        <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Ringkasan Hari Ini</h2>
-                       <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/20 px-2 py-1 rounded-md">Refresh</button>
+                       <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md">Refresh</button>
                    </div>
 
-                   <div className="grid grid-cols-2 gap-3">
-                       <StatCard value={today.length} label="Terlambat Hari Ini" accent />
-                       <StatCard value={weekCount} label="Minggu Ini" />
-                       {expanded && <StatCard value={monthCount} label="Bulan Ini" />}
-                       {expanded && <StatCard value={semCount} label={semInfo.label} />}
+                   <div className="grid grid-cols-3 gap-2.5">
+                       <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" onClick={() => onNavigate('log')} />
+                       <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" onClick={() => onNavigate('pelanggaran')} />
+                       <SummaryCard value={todaySurat.length} label="Surat" tone="sky" onClick={() => onNavigate('scan')} />
                    </div>
+
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Terbaru</h2>
 
                    {loading ? (
                        <div className="text-center py-10 text-xs text-slate-400">Memuat data...</div>
-                   ) : today.length > 0 ? (
+                   ) : combinedFeed.length > 0 ? (
                        <div className="space-y-2.5">
-                           {today.slice(0, expanded ? 6 : 4).map((log, idx) => {
-                               const dt = parseTimestamp(log.timestamp);
-                               return (
-                                   <div key={idx} className="bg-white border-l-4 border-l-sky border-y border-r border-slate-200 p-3.5 rounded-r-xl shadow-sm space-y-1">
-                                       <div className="flex items-center justify-between">
-                                           <div className="font-bold text-sm text-slate-900">{log.name}</div>
-                                           <span className="text-[9px] bg-crimson/15 text-crimson border border-crimson/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">{log.type}</span>
-                                       </div>
-                                       <div className="text-[11px] text-slate-500 flex justify-between items-center">
-                                           <span>{log.class} • <span className="text-slate-600 font-medium">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
-                                       </div>
-                                   </div>
-                               );
-                           })}
+                           {combinedFeed.map((item, idx) => <FeedItem key={idx} item={item} />)}
                        </div>
                    ) : (
-                       <EmptyState emoji="🏆" text="Belum ada siswa terlambat hari ini." />
-                   )}
-
-                   {expanded && (topKelasToday.length > 0 || topAlasanToday.length > 0) && (
-                       <div className="grid grid-cols-1 gap-3">
-                           <TopList title="Kelas Terbanyak Hari Ini" items={topKelasToday} unit="siswa" />
-                           <TopList title="Alasan Terbanyak Hari Ini" items={topAlasanToday} unit="kali" />
-                       </div>
+                       <EmptyState emoji="🏆" text="Belum ada aktivitas tercatat hari ini." />
                    )}
                </div>
            );
@@ -1340,7 +1362,7 @@
                            <GerbangTab students={students} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                        )}
                        {activeTab === 'dashboard' && (
-                           <DashboardTab allLogs={allLogs} expanded={roleConfig.dashboardExpanded} onRefresh={fetchData} loading={loadingLogs} />
+                           <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} onNavigate={setActiveTab} />
                        )}
                        {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} />}
                        {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} canExport={roleConfig.canExport} />}
