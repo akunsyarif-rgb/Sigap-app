@@ -29,6 +29,7 @@
            const [students, setStudents] = useState([]);
            const [allLogs, setAllLogs] = useState([]);
            const [loadingLogs, setLoadingLogs] = useState(false);
+           const [slowConnection, setSlowConnection] = useState(false);
 
            const [teachers, setTeachers] = useState([]);
            const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
@@ -85,11 +86,15 @@
 
            const fetchData = () => {
                setLoadingLogs(true);
+               setSlowConnection(false);
+               const slowTimer = setTimeout(() => setSlowConnection(true), 3000);
                fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
                fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => {
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
-               }).catch(() => setLoadingLogs(false));
+                   clearTimeout(slowTimer);
+                   setSlowConnection(false);
+               }).catch(() => { setLoadingLogs(false); clearTimeout(slowTimer); setSlowConnection(false); });
                fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setSuratList(data.surat); });
                fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
            };
@@ -119,7 +124,7 @@
                        else setToast('Gagal menyimpan, coba lagi.');
                    })
                    .catch(() => setToast('Koneksi gagal, coba lagi.'));
-               setToast(`Berhasil mencatat: ${selectedStudent.name}`);
+               setToast(`✓ Berhasil mencatat: ${selectedStudent.name}`);
                setSelectedStudent(null); setCustomReasonInput('');
                setTimeout(() => setToast(null), 3000);
            };
@@ -132,7 +137,7 @@
                        setLoadingTeacherAction(false);
                        if (data.status === 'success') {
                            setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole }]);
-                           callback(true, 'Guru berhasil ditambahkan.');
+                           callback(true, '✓ Guru berhasil ditambahkan.');
                        } else callback(false, data.message || 'Gagal menambah guru.');
                    })
                    .catch(() => { setLoadingTeacherAction(false); callback(false, 'Koneksi gagal, coba lagi.'); });
@@ -142,7 +147,7 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json())
                    .then(data => {
-                       if (data.status === 'success') callback(true, 'Password berhasil diubah.');
+                       if (data.status === 'success') callback(true, '✓ Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -155,7 +160,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
-                           callback(true, 'Surat berhasil dicatat.');
+                           callback(true, '✓ Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -172,7 +177,7 @@
                                const dt = parseTimestamp(s.timestamp);
                                return !((dt.getMonth() + 1) === month && dt.getFullYear() === year);
                            }));
-                           callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`);
+                           callback(true, `✓ Berhasil hapus ${data.deletedCount || 0} data.`);
                        } else callback(false, data.message || 'Gagal menghapus data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -185,7 +190,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
                            setPelanggaranList(prev => [newEntry, ...prev]);
-                           callback(true, 'Pelanggaran berhasil dicatat.');
+                           callback(true, '✓ Pelanggaran berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -200,7 +205,7 @@
                                const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, catatan: payload.catatan, logged_by: user.name };
                                setBimbinganList(prev => [newEntry, ...prev]);
                            }
-                           callback(true, 'Berhasil dicatat (hanya Admin/BK bisa lihat).');
+                           callback(true, '✓ Berhasil dicatat (hanya Admin/BK bisa lihat).');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -213,7 +218,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, catatan: payload.catatan || '', logged_by: user.name };
                            setUpacaraList(prev => [newEntry, ...prev]);
-                           callback(true, 'Pelanggaran upacara berhasil dicatat.');
+                           callback(true, '✓ Pelanggaran upacara berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -232,6 +237,14 @@
                                    <div className="max-w-2xl mx-auto bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
                                        <span>{toast}</span>
                                        <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
+                                   </div>
+                               </div>
+                           )}
+
+                           {slowConnection && loadingLogs && (
+                               <div className="fixed top-16 inset-x-0 z-40 px-4">
+                                   <div className="max-w-2xl mx-auto bg-amber-50 text-amber-700 text-[11px] px-4 py-2 rounded-xl shadow-md border border-amber-200 text-center animate-pop">
+                                       Masih mengambil data... koneksi internet sedang lambat.
                                    </div>
                                </div>
                            )}
