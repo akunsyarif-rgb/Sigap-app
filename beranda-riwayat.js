@@ -71,7 +71,7 @@
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
                    {loading ? (
-                       <div className="text-center py-10 text-xs text-slate-400">Memuat data...</div>
+                       <SkeletonList count={4} />
                    ) : combinedFeed.length > 0 ? (
                        <div className="space-y-2.5">
                            {combinedFeed.map((item, idx) => <FeedItem key={idx} item={item} />)}
