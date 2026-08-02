@@ -4,6 +4,7 @@
        function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
+           const [freqWindow, setFreqWindow] = useState('1minggu');
 
            const categories = [
                { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
@@ -21,6 +22,22 @@
            ];
            const activePeriod = periods.find(p => p.key === period);
            const series = buildPeriodSeries(period, sourceData);
+
+           // Daftar siswa sering terlambat (khusus kategori Terlambat) — ambang tetap 3x,
+           // jendela waktu bisa dipilih (1/2/3 minggu, atau sebulan)
+           const freqWindows = [
+               { key: '1minggu', label: '1 Minggu', days: 7 },
+               { key: '2minggu', label: '2 Minggu', days: 14 },
+               { key: '3minggu', label: '3 Minggu', days: 21 },
+               { key: 'sebulan', label: 'Sebulan', days: 30 },
+           ];
+           const activeFreqWindow = freqWindows.find(w => w.key === freqWindow);
+           const freqWindowEnd = new Date();
+           const freqWindowStart = new Date();
+           freqWindowStart.setDate(freqWindowEnd.getDate() - activeFreqWindow.days);
+           const frequentStudents = category === 'terlambat'
+               ? groupLateByStudent(allLogs, freqWindowStart, freqWindowEnd).filter(s => s.count >= 3)
+               : [];
 
            const periodData = sourceData.filter(l => {
                const now = new Date();
@@ -81,6 +98,31 @@
                    </div>
 
                    <TopList title={`${activeCat.subLabel} Terbanyak (Periode Ini)`} items={topN(periodData, l => l[activeCat.subField], 5)} unit="kali" />
+
+                   {category === 'terlambat' && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Siswa Sering Terlambat (≥3x)</h3>
+                           <div className="flex gap-1.5 overflow-x-auto pb-1">
+                               {freqWindows.map(w => (
+                                   <button key={w.key} onClick={() => setFreqWindow(w.key)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition ${freqWindow === w.key ? 'bg-navy text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                       {w.label}
+                                   </button>
+                               ))}
+                           </div>
+                           {frequentStudents.length > 0 ? (
+                               <div className="space-y-2">
+                                   {frequentStudents.map((s, idx) => (
+                                       <div key={idx} className="flex items-center justify-between">
+                                           <span className="text-xs text-slate-700 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                           <span className="text-[11px] text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
+                                       </div>
+                                   ))}
+                               </div>
+                           ) : (
+                               <div className="text-xs text-slate-400 py-1 text-center">Tidak ada siswa dengan ≥3x terlambat di periode ini.</div>
+                           )}
+                       </div>
+                   )}
 
                    {canExport && (
                        <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
