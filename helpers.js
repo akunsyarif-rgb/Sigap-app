@@ -54,6 +54,41 @@
            return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
        }
 
+       // Kelompokkan catatan terlambat per siswa dalam rentang waktu tertentu —
+       // dipakai bareng oleh banner "Siswa Sering Terlambat" di Beranda dan
+       // daftar sejenis di Statistik, supaya logikanya tidak ditulis dua kali.
+       function groupLateByStudent(allLogs, startDate, endDate) {
+           const map = {};
+           allLogs.forEach(l => {
+               const dt = parseTimestamp(l.timestamp);
+               if (dt >= startDate && dt <= endDate) {
+                   if (!map[l.nisn]) map[l.nisn] = { nisn: l.nisn, name: l.name, class: l.class, count: 0 };
+                   map[l.nisn].count++;
+               }
+           });
+           return Object.values(map).sort((a, b) => b.count - a.count);
+       }
+
+       // Kombinasi ambang batas untuk banner Beranda: 3x minggu ini ATAU 5x bulan ini.
+       function getFrequentLatecomersBanner(allLogs) {
+           const now = new Date();
+           const weekData = groupLateByStudent(allLogs, startOfWeek(now), now);
+           const monthData = groupLateByStudent(allLogs, startOfMonth(now), now);
+           const weekMap = {}; weekData.forEach(s => { weekMap[s.nisn] = s.count; });
+           const monthMap = {}; monthData.forEach(s => { monthMap[s.nisn] = s.count; });
+           const info = {}; allLogs.forEach(l => { info[l.nisn] = { name: l.name, class: l.class }; });
+           const allNisn = new Set([...Object.keys(weekMap), ...Object.keys(monthMap)]);
+           const result = [];
+           allNisn.forEach(nisn => {
+               const wc = weekMap[nisn] || 0;
+               const mc = monthMap[nisn] || 0;
+               if (wc >= 3 || mc >= 5) {
+                   result.push({ nisn, name: info[nisn].name, class: info[nisn].class, weekCount: wc, monthCount: mc });
+               }
+           });
+           return result.sort((a, b) => (b.weekCount + b.monthCount) - (a.weekCount + a.monthCount));
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {
