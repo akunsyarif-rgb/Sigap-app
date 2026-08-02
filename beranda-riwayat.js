@@ -55,6 +55,9 @@
                ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
+           // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu tindak lanjut BK
+           const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
+
            return (
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
@@ -67,6 +70,24 @@
                        <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
+
+                   {frequentLatecomers.length > 0 && (
+                       <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-4 space-y-2">
+                           <div className="flex items-center gap-2">
+                               <span className="text-lg">⚠️</span>
+                               <h3 className="text-[11px] font-bold text-crimson uppercase tracking-wide">Perlu Tindak Lanjut — Sering Terlambat</h3>
+                           </div>
+                           <div className="space-y-1.5">
+                               {frequentLatecomers.slice(0, 5).map((s, idx) => (
+                                   <div key={idx} className="flex items-center justify-between text-[11px]">
+                                       <span className="text-slate-700 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                       <span className="text-crimson font-semibold flex-shrink-0 ml-2">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
+                                   </div>
+                               ))}
+                           </div>
+                           {frequentLatecomers.length > 5 && <p className="text-[10px] text-slate-500">+{frequentLatecomers.length - 5} siswa lainnya</p>}
+                       </div>
+                   )}
 
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
