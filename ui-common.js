@@ -64,6 +64,28 @@
            );
        }
 
+       // Placeholder "kerangka" saat data sedang dimuat — lebih enak dilihat
+       // daripada layar kosong atau tulisan "Memuat..." saja.
+       function SkeletonCard() {
+           return (
+               <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-2 animate-pulse">
+                   <div className="flex items-center justify-between">
+                       <div className="h-3.5 bg-slate-200 rounded w-1/3"></div>
+                       <div className="h-4 bg-slate-200 rounded-full w-16"></div>
+                   </div>
+                   <div className="h-2.5 bg-slate-100 rounded w-1/2"></div>
+               </div>
+           );
+       }
+
+       function SkeletonList({ count = 4 }) {
+           return (
+               <div className="space-y-2.5">
+                   {Array.from({ length: count }, (_, i) => <SkeletonCard key={i} />)}
+               </div>
+           );
+       }
+
        function LoginScreen({ onLogin, loading, error, password, setPassword }) {
            return (
                <div className="min-h-screen flex flex-col justify-center p-6 bg-slate-50">
