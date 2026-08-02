@@ -72,6 +72,13 @@
                (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
            );
 
+           // Live Activity Log — gabungan Terlambat + Surat hari ini, terbaru dulu,
+           // supaya guru piket lain langsung tahu siapa yang sudah dicatat (hindari input ganda).
+           const todayActivity = [
+               ...allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), new Date())).map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
+               ...suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), new Date())).map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
+           ].sort((a, b) => b._time - a._time).slice(0, 25);
+
            const [msgTone, setMsgTone] = useState('sky');
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
            const alreadyToday = (list, nisn) => list.some(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
@@ -171,6 +178,39 @@
                                    </div>
                                )) : <div className="p-6 text-center text-xs text-slate-400 font-medium">Siswa tidak ditemukan</div>}
                            </div>
+                       </div>
+                   )}
+
+                   {searchQuery.trim() === '' && (
+                       <div className="space-y-2.5">
+                           <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                               Aktivitas Hari Ini
+                               <span className="flex h-2 w-2 relative">
+                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky opacity-60"></span>
+                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-sky"></span>
+                               </span>
+                           </h3>
+                           {todayActivity.length > 0 ? (
+                               <div className="space-y-2">
+                                   {todayActivity.map((item, idx) => (
+                                       <div key={idx} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center gap-3">
+                                           <div className="text-[11px] font-bold text-slate-400 w-11 text-center flex-shrink-0">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                                           <div className="w-px h-8 bg-slate-200 flex-shrink-0"></div>
+                                           <div className="flex-1 min-w-0">
+                                               <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-400 font-normal">({item.class})</span></div>
+                                               <div className="text-[10px] mt-0.5 flex items-center justify-between gap-2">
+                                                   <span className={item._kind === 'terlambat' ? 'text-crimson font-semibold' : 'text-sky-dim font-semibold'}>
+                                                       {item._kind === 'terlambat' ? '⏰ Terlambat' : '📄 Surat'} — {item._kind === 'terlambat' ? item.type : item.jenis}
+                                                   </span>
+                                                   <span className="text-slate-400 truncate flex-shrink-0">oleh {item.logged_by}</span>
+                                               </div>
+                                           </div>
+                                       </div>
+                                   ))}
+                               </div>
+                           ) : (
+                               <EmptyState emoji="🌤️" text="Belum ada aktivitas tercatat hari ini." />
+                           )}
                        </div>
                    )}
 
