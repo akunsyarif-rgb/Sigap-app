@@ -143,6 +143,7 @@
 
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
                    {blockMsg && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2.5 px-3 rounded-lg leading-relaxed">{blockMsg}</div>}
+                   <div>
                        <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
                        <div className="relative">
                            <input
