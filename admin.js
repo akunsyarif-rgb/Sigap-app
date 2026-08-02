@@ -2,7 +2,7 @@
 // Panel Kelola Guru (khusus Admin): tambah guru baru, reset password, ubah
 // jabatan tampilan. Juga berisi AuditLogTab (khusus Admin/BK-Kesiswaan).
 
-       function KelolaTab({ teachers, onAddTeacher, onUpdatePassword, onUpdateJabatan, loading }) {
+       function KelolaTab({ teachers, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, loading }) {
            const [newId, setNewId] = useState('');
            const [newName, setNewName] = useState('');
            const [newPassword, setNewPassword] = useState('');
@@ -79,14 +79,22 @@
                        {teachers.length === 0 && <div className="text-xs text-slate-400 py-2">Memuat daftar guru...</div>}
                        <div className="space-y-2">
                            {teachers.map(t => (
-                               <div key={t.id} className="flex items-center justify-between bg-white/60 rounded-xl px-3 py-2.5 gap-2">
-                                   <div className="min-w-0">
-                                       <div className="text-xs font-semibold text-slate-900 truncate">{t.name}</div>
-                                       <div className="text-[10px] text-slate-400">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}</div>
+                               <div key={t.id} className="bg-white/60 rounded-xl px-3 py-2.5 space-y-2">
+                                   <div className="flex items-center justify-between gap-2">
+                                       <div className="min-w-0">
+                                           <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                                               {t.name}
+                                               {t.status === 'nonaktif' && <span className="text-[9px] bg-crimson/10 text-crimson px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">NONAKTIF</span>}
+                                           </div>
+                                           <div className="text-[10px] text-slate-400">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}</div>
+                                       </div>
                                    </div>
-                                   <div className="flex gap-1.5 flex-shrink-0">
+                                   <div className="flex gap-1.5 flex-wrap">
                                        <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                        <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
+                                       <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
+                                           {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
+                                       </button>
                                    </div>
                                </div>
                            ))}
