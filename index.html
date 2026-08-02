@@ -53,20 +53,42 @@
 
    <div id="root" class="w-full min-h-screen relative"></div>
 
-   <script type="text/babel">
-       const { useState, useEffect, useMemo, useRef } = React;
+   <!-- Kode dipecah jadi beberapa file .js supaya gampang dirawat, tapi supaya
+        urutan pemuatannya PASTI benar (tidak bergantung ke Babel menebak urutan
+        sendiri), index.html ini yang ambil semua file secara berurutan,
+        gabungkan jadi satu, baru diproses sekali jalan. -->
+   <script>
+       (async function loadSigapApp() {
+           var files = [
+               'config.js',
+               'helpers.js',
+               'ui-common.js',
+               'admin.js',
+               'beranda-riwayat.js',
+               'statistik.js',
+               'gerbang.js',
+               'pelanggaran-bimbingan-upacara.js',
+               'app.js'
+           ];
+           try {
+               var combined = 'const { useState, useEffect, useMemo, useRef } = React;\n';
+               for (var i = 0; i < files.length; i++) {
+                   var res = await fetch(files[i] + '?v=' + Date.now());
+                   if (!res.ok) throw new Error('Gagal memuat ' + files[i] + ' (status ' + res.status + ')');
+                   combined += await res.text() + '\n';
+               }
+               var transformed = Babel.transform(combined, { presets: ['react'] }).code;
+               var script = document.createElement('script');
+               script.textContent = transformed;
+               document.body.appendChild(script);
+           } catch (err) {
+               document.getElementById('root').innerHTML =
+                   '<div style="padding:24px;font-family:sans-serif;color:#B93A31;">' +
+                   '<b>Gagal memuat aplikasi.</b><br>' + err.message +
+                   '<br><br>Coba refresh halaman. Kalau tetap gagal, cek apakah semua file .js sudah ter-upload ke GitHub.</div>';
+               console.error('SIGAP load error:', err);
+           }
+       })();
    </script>
-
-   <!-- Kode dipecah jadi beberapa file supaya gampang dirawat.
-        URUTAN INI PENTING — file belakangan pakai fungsi dari file sebelumnya. -->
-   <script type="text/babel" src="config.js"></script>
-   <script type="text/babel" src="helpers.js"></script>
-   <script type="text/babel" src="ui-common.js"></script>
-   <script type="text/babel" src="admin.js"></script>
-   <script type="text/babel" src="beranda-riwayat.js"></script>
-   <script type="text/babel" src="statistik.js"></script>
-   <script type="text/babel" src="gerbang.js"></script>
-   <script type="text/babel" src="pelanggaran-bimbingan-upacara.js"></script>
-   <script type="text/babel" src="app.js"></script>
 </body>
 </html>
