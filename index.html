@@ -1,580 +1,72 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIGAP - SMAN 2 Tarakan</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <title>SIGAP - SMAN 2 Tarakan</title>
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <script>
+       tailwind.config = {
+           theme: {
+               extend: {
+                   fontFamily: {
+                       sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                       display: ['Sora', 'sans-serif'],
+                   },
+                   colors: {
+                       navy: { DEFAULT: '#0B2A55', light: '#123B72', dark: '#071A38' },
+                       sky: { DEFAULT: '#2E86D8', light: '#6FB3EA', dim: '#1D5C93' },
+                       crimson: { DEFAULT: '#E0473C', dim: '#B93A31' },
+                       ink: { 950: '#0A0D12', 900: '#10141B', 850: '#161B24', 800: '#1C222D', 700: '#262E3B', 600: '#3A4453' },
+                   },
+               }
+           }
+       }
+   </script>
+   <style>
+       * { font-family: 'Plus Jakarta Sans', sans-serif; }
+       .font-display { font-family: 'Sora', sans-serif; }
+       ::-webkit-scrollbar { width: 4px; height: 4px; }
+       ::-webkit-scrollbar-thumb { background: #262E3B; border-radius: 4px; }
+       ::-webkit-scrollbar-track { background: transparent; }
+       @keyframes scanline { 0% { top: 8%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 92%; opacity: 0; } }
+       .animate-scanline { animation: scanline 2.2s ease-in-out infinite; }
+       @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+       .animate-rise { animation: riseIn .28s ease-out; }
+       @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+       .animate-pop { animation: popIn .18s ease-out; }
+       .print-report { display: none; }
+       @media print {
+           body * { visibility: hidden; }
+           .print-report, .print-report * { visibility: visible; }
+           .print-report { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; color: #000; }
+       }
+   </style>
 </head>
-<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen m-0 font-sans">
+<body class="bg-slate-100 text-slate-900 min-h-screen m-0">
 
-    <div id="root" class="w-full h-screen sm:h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border-[8px] sm:border-gray-800 bg-gray-900 flex flex-col overflow-hidden shadow-2xl relative"></div>
+   <div id="root" class="w-full min-h-screen relative"></div>
 
-    <script type="text/babel">
-        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+   <script type="text/babel">
+       const { useState, useEffect, useMemo, useRef } = React;
+   </script>
 
-        // MOCK DATA JADWAL PIKET (Dapat dihubungkan ke backend nantinya)
-        const MOCK_JADWAL_PIKET = {
-            1: ["Guru A", "Guru B"], // Senin
-            2: ["Guru C", "Guru D"], // Selasa
-            3: ["Guru E", "Guru F"], // Rabu
-            4: ["Guru G", "Guru H"], // Kamis
-            5: ["Guru I", "Guru J"], // Jumat
-            6: ["Guru K"],           // Sabtu
-            0: ["Libur"]             // Minggu
-        };
-
-        function App() {
-            const [user, setUser] = React.useState(null);
-            const [passwordInput, setPasswordInput] = React.useState('');
-            const [loadingLogin, setLoadingLogin] = React.useState(false);
-            const [loginError, setLoginError] = React.useState('');
-
-            const [activeTab, setActiveTab] = React.useState('gerbang');
-            const [subTabLainnya, setSubTabLainnya] = React.useState('menu'); // Untuk navigasi di dalam tab "Lainnya"
-
-            const [searchQuery, setSearchQuery] = React.useState('');
-            const [selectedStudent, setSelectedStudent] = React.useState(null);
-            const [customReasonInput, setCustomReasonInput] = React.useState('');
-            const [recordType, setRecordType] = React.useState('terlambat'); // 'terlambat' | 'surat'
-
-            const [toast, setToast] = React.useState(null);
-            const [students, setStudents] = React.useState([]);
-            const [allLogs, setAllLogs] = React.useState([]);
-            const [loadingLogs, setLoadingLogs] = React.useState(false);
-            
-            const [currentTime, setCurrentTime] = React.useState(new Date());
-
-            // Real-time clock
-            React.useEffect(() => {
-                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-                return () => clearInterval(timer);
-            }, []);
-
-            React.useEffect(() => {
-                if (user) fetchData();
-            }, [user]);
-
-            const fetchData = () => {
-                setLoadingLogs(true);
-                // Mock Fetching for UI testing. Ganti dengan fetch asli jika backend siap.
-                fetch(`${API_URL}?action=getStudents`)
-                    .then(res => res.json())
-                    .then(data => { if (data.status === 'success') setStudents(data.students); });
-
-                fetch(`${API_URL}?action=getLogs`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') setAllLogs(data.logs);
-                        setLoadingLogs(false);
-                    })
-                    .catch(() => setLoadingLogs(false));
-            };
-
-            const handleLogin = (e) => {
-                e.preventDefault();
-                setLoadingLogin(true);
-                setLoginError('');
-
-                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput }) })
-                .then(res => res.json())
-                .then(data => {
-                    setLoadingLogin(false);
-                    if (data.status === 'success') setUser(data.user);
-                    else setLoginError(data.message || 'Password salah!');
-                })
-                .catch(() => {
-                    setLoadingLogin(false);
-                    setLoginError('Koneksi Gagal. Coba lagi.');
-                });
-            };
-
-            const showToast = (msg, isError = false) => {
-                setToast({ msg, isError });
-                setTimeout(() => setToast(null), 3000);
-            };
-
-            const handleRecord = (reason) => {
-                const todayStr = new Date().toDateString();
-                
-                // VALIDASI DOUBLE INPUT (Hanya untuk keterlambatan)
-                if (recordType === 'terlambat') {
-                    const alreadyLate = allLogs.some(log => 
-                        log.nisn === selectedStudent.nisn && 
-                        log.kategori === 'terlambat' && 
-                        new Date(log.timestamp).toDateString() === todayStr
-                    );
-                    
-                    if (alreadyLate) {
-                        showToast(`Siswa ${selectedStudent.name} sudah tercatat terlambat hari ini!`, true);
-                        setSelectedStudent(null);
-                        setSearchQuery('');
-                        return;
-                    }
-                }
-
-                const payload = {
-                    action: 'record',
-                    nisn: selectedStudent.nisn,
-                    name: selectedStudent.name,
-                    class_name: selectedStudent.class,
-                    kategori: recordType, // 'terlambat' atau 'surat'
-                    type: reason,
-                    logged_by: user.name,
-                    timestamp: new Date().toISOString() // Untuk simulasi lokal
-                };
-
-                // Optimistic UI Update
-                setAllLogs([payload, ...allLogs]);
-
-                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-                    .then(() => fetchData())
-                    .catch(err => console.error("Gagal simpan:", err));
-
-                showToast(`Berhasil mencatat ${recordType}: ${selectedStudent.name}`);
-                setSelectedStudent(null);
-                setSearchQuery('');
-                setCustomReasonInput('');
-            };
-
-            // Helpers & Derived Data
-            const todayStr = new Date().toDateString();
-            const todayLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() === todayStr);
-            
-            const countTerlambat = todayLogs.filter(l => l.kategori === 'terlambat').length;
-            const countSurat = todayLogs.filter(l => l.kategori === 'surat').length;
-            const countPelanggaran = todayLogs.filter(l => l.kategori === 'pelanggaran').length;
-            const countUpacara = todayLogs.filter(l => l.kategori === 'upacara').length;
-
-            const guruPiket = MOCK_JADWAL_PIKET[currentTime.getDay()] || ["Belum Diatur"];
-
-            // Deteksi Siswa Sering Terlambat (Bulan ini >= 5x atau Minggu ini >= 3x)
-            const getFrequentLatecomers = () => {
-                const currentMonth = new Date().getMonth();
-                const counts = {};
-                allLogs.filter(l => l.kategori === 'terlambat' && new Date(l.timestamp).getMonth() === currentMonth)
-                       .forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
-                return Object.keys(counts).filter(name => counts[name] >= 5).map(name => ({name, count: counts[name]}));
-            };
-            const frequentLatecomers = getFrequentLatecomers();
-
-            if (!user) {
-                return (
-                    <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100 overflow-y-auto">
-                        <div className="text-center mb-8 mt-2">
-                            <div className="relative inline-block mb-6">
-                                <div className="absolute inset-0 bg-blue-600 blur-[30px] opacity-40 rounded-[40px]"></div>
-                                <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="relative w-56 h-56 sm:w-64 sm:h-64 object-contain bg-white rounded-[40px] mx-auto shadow-2xl p-3 border-4 border-gray-800" />
-                            </div>
-                            <h1 className="text-3xl font-extrabold text-blue-500 tracking-tight">SIGAP</h1>
-                            <p className="text-sm text-gray-400 mt-2 font-medium">Sistem Informasi Gerbang dan Absensi Pelanggaran</p>
-                        </div>
-                        <form onSubmit={handleLogin} className="space-y-5 bg-gray-800/80 p-6 rounded-3xl border border-gray-700 shadow-xl backdrop-blur-sm">
-                            <div>
-                                <label className="text-xs text-gray-400 font-medium mb-1.5 block">Password Petugas:</label>
-                                <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Masukkan password..." className="w-full bg-gray-900/50 border border-gray-600 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 transition" required />
-                            </div>
-                            {loginError && <div className="text-xs text-rose-400 font-medium text-center bg-rose-950/50 py-2 rounded-lg">{loginError}</div>}
-                            <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl font-bold text-sm shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] transition active:scale-95 disabled:opacity-50">
-                                {loadingLogin ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
-                            </button>
-                        </form>
-                    </div>
-                );
-            }
-
-            return (
-                <div className="flex flex-col h-full bg-gray-900 text-gray-100 relative select-none">
-                    
-                    {/* Header */}
-                    <div className="bg-gray-800/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-700 z-30">
-                        <div className="flex items-center space-x-3">
-                            <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-gray-600" />
-                            <div>
-                                <h1 className="font-bold text-[11px] uppercase tracking-wider text-blue-400">SMAN 2 Tarakan</h1>
-                                <p className="text-[9px] text-gray-400">User: <span className="text-white font-medium">{user.name}</span></p>
-                            </div>
-                        </div>
-                        <button onClick={() => setUser(null)} className="text-[10px] font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-xl border border-gray-600 transition">Keluar</button>
-                    </div>
-
-                    {/* Toast */}
-                    {toast && (
-                        <div className={`absolute top-16 left-4 right-4 z-50 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-bounce border ${toast.isError ? 'bg-rose-600 border-rose-400' : 'bg-blue-600 border-blue-400'}`}>
-                            <span>{toast.msg}</span>
-                        </div>
-                    )}
-
-                    {/* Content Area */}
-                    <div className="flex-1 overflow-y-auto p-4 pb-24">
-                        
-                        {/* 1. GERBANG TAB */}
-                        {activeTab === 'gerbang' && (
-                            <div className="space-y-4">
-                                {/* Panel Info Hari Ini */}
-                                <div className="bg-gradient-to-br from-gray-800 to-gray-850 p-4 rounded-3xl border border-gray-700 shadow-lg relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                                    </div>
-                                    <div className="relative z-10 flex justify-between items-center">
-                                        <div>
-                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</div>
-                                            <div className="text-3xl font-black text-white mt-1 tabular-nums tracking-tight">{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-                                        </div>
-                                    </div>
-                                    <div className="relative z-10 mt-4 pt-3 border-t border-gray-700/50 flex items-center gap-2">
-                                        <div className="bg-blue-900/50 p-1.5 rounded-lg border border-blue-700/50 text-blue-400">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                                        </div>
-                                        <div>
-                                            <div className="text-[9px] text-gray-400 uppercase tracking-wider">Guru Piket Hari Ini</div>
-                                            <div className="text-xs font-bold text-blue-300">{guruPiket.join(', ')}</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Form Pencatatan Cepat */}
-                                <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700 shadow-md">
-                                    <div className="flex gap-2 mb-4 bg-gray-900 p-1 rounded-2xl">
-                                        <button onClick={() => setRecordType('terlambat')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${recordType === 'terlambat' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}>Terlambat</button>
-                                        <button onClick={() => setRecordType('surat')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${recordType === 'surat' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}>Surat Izin/Sakit</button>
-                                    </div>
-
-                                    <div className="relative">
-                                        <input 
-                                            type="text"
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            placeholder="Cari Nama atau NISN Siswa..."
-                                            className="w-full bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 shadow-sm"
-                                        />
-                                    </div>
-
-                                    {searchQuery.trim() !== '' && (
-                                        <div className="mt-2 bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden max-h-48 overflow-y-auto">
-                                            {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.nisn?.includes(searchQuery)).slice(0, 10).map(student => (
-                                                <div key={student.nisn} onClick={() => setSelectedStudent(student)} className="px-4 py-3 border-b border-gray-800 flex justify-between items-center hover:bg-gray-800 cursor-pointer">
-                                                    <div>
-                                                        <div className="font-bold text-sm text-white">{student.name}</div>
-                                                        <div className="text-[10px] text-blue-400 mt-0.5">{student.class}</div>
-                                                    </div>
-                                                    <span className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg font-bold">Pilih</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Live Feed Hari Ini */}
-                                <div>
-                                    <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex justify-between items-center">
-                                        <span>Live Feed Aktivitas</span>
-                                        <span className="flex h-2 w-2 relative">
-                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                        </span>
-                                    </h3>
-                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                        {todayLogs.slice(0, 15).map((log, i) => (
-                                            <div key={i} className="bg-gray-800 p-3 rounded-2xl flex items-center gap-3 border border-gray-750">
-                                                <div className="text-xs font-bold text-gray-400 w-10 text-center">{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                                                <div className="w-[1px] h-6 bg-gray-700"></div>
-                                                <div className="flex-1">
-                                                    <div className="text-xs font-bold text-white truncate">{log.name} <span className="text-gray-500 font-normal">({log.class})</span></div>
-                                                    <div className="text-[10px] font-medium mt-0.5">
-                                                        {log.kategori === 'terlambat' ? <span className="text-rose-400">Terlambat - {log.type}</span> :
-                                                         log.kategori === 'surat' ? <span className="text-blue-400">Surat - {log.type}</span> :
-                                                         <span className="text-amber-400">{log.kategori}</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {todayLogs.length === 0 && <div className="text-center text-xs text-gray-600 py-6">Belum ada aktivitas terekam hari ini.</div>}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 2. BERANDA TAB */}
-                        {activeTab === 'beranda' && (
-                            <div className="space-y-5">
-                                <h2 className="text-2xl font-display font-bold text-white tracking-tight">Halo, {user.name.split(' ')[0]} 👋</h2>
-                                
-                                {frequentLatecomers.length > 0 && (
-                                    <div className="bg-rose-950/40 border border-rose-900/50 p-4 rounded-2xl flex gap-3 items-start">
-                                        <div className="bg-rose-900/50 p-2 rounded-xl text-rose-400">⚠️</div>
-                                        <div>
-                                            <h4 className="text-xs font-bold text-rose-400 uppercase">Perlu Tindak Lanjut BK</h4>
-                                            <p className="text-[10px] text-gray-400 mt-1">{frequentLatecomers.length} siswa telah melampaui batas toleransi keterlambatan bulan ini.</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl">
-                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Terlambat Hari Ini</div>
-                                        <div className="text-4xl font-black text-rose-400">{countTerlambat}</div>
-                                    </div>
-                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl">
-                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Surat Hari Ini</div>
-                                        <div className="text-4xl font-black text-blue-400">{countSurat}</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl flex justify-between items-center">
-                                    <div>
-                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Pelanggaran Kedisiplinan</div>
-                                        <div className="text-3xl font-black text-amber-400">{countPelanggaran}</div>
-                                    </div>
-                                    <div className="h-10 w-10 bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                    </div>
-                                </div>
-
-                                {countUpacara > 0 && (
-                                    <div className="bg-emerald-950/40 border border-emerald-900/50 p-4 rounded-3xl flex justify-between items-center">
-                                        <div>
-                                            <div className="text-emerald-400 text-[10px] font-bold uppercase tracking-wider mb-1">Pelanggaran Upacara</div>
-                                            <div className="text-3xl font-black text-emerald-400">{countUpacara}</div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 3. RIWAYAT TAB */}
-                        {activeTab === 'riwayat' && (
-                            <div className="space-y-4">
-                                <div className="relative">
-                                    <input 
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Cari Riwayat Siswa (Nama/NISN/Kelas)..."
-                                        className="w-full bg-gray-800 border border-gray-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 shadow-sm"
-                                    />
-                                </div>
-
-                                <div className="space-y-3">
-                                    {allLogs.filter(log => 
-                                        !searchQuery || 
-                                        log.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                        log.class.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                        log.nisn?.includes(searchQuery)
-                                    ).slice(0, 50).map((log, i) => (
-                                        <div key={i} className="bg-gray-800 p-4 rounded-2xl border border-gray-700">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <div className="font-bold text-sm text-white">{log.name}</div>
-                                                    <div className="text-xs text-blue-400 font-medium">{log.class}</div>
-                                                </div>
-                                                <span className={`text-[9px] px-2 py-1 rounded-md font-bold uppercase ${
-                                                    log.kategori === 'terlambat' ? 'bg-rose-900/50 text-rose-400 border border-rose-800/50' :
-                                                    log.kategori === 'surat' ? 'bg-blue-900/50 text-blue-400 border border-blue-800/50' :
-                                                    'bg-amber-900/50 text-amber-400 border border-amber-800/50'
-                                                }`}>
-                                                    {log.kategori}
-                                                </span>
-                                            </div>
-                                            <div className="text-xs text-gray-300 bg-gray-900/50 p-2 rounded-lg mb-2">"{log.type}"</div>
-                                            <div className="flex justify-between text-[10px] text-gray-500">
-                                                <span>{new Date(log.timestamp).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
-                                                <span>Oleh: {log.logged_by}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 4. PELANGGARAN TAB */}
-                        {activeTab === 'pelanggaran' && (
-                            <div className="space-y-4">
-                                <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Catat Pelanggaran Kedisiplinan</h2>
-                                <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700 shadow-md">
-                                    <input 
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Cari Siswa..."
-                                        className="w-full bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3.5 text-sm text-white mb-3"
-                                    />
-                                    {/* Hasil pencarian siswa untuk pelanggaran */}
-                                    {searchQuery.trim() !== '' && (
-                                        <div className="bg-gray-900 rounded-2xl border border-gray-700 max-h-48 overflow-y-auto mb-3">
-                                            {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 5).map(student => (
-                                                <div key={student.nisn} onClick={() => { setSelectedStudent(student); setRecordType('pelanggaran'); }} className="px-4 py-3 border-b border-gray-800 hover:bg-gray-800 cursor-pointer">
-                                                    <div className="font-bold text-sm text-white">{student.name} ({student.class})</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {selectedStudent && recordType === 'pelanggaran' && (
-                                        <div className="bg-gray-900/50 border border-amber-900/50 p-4 rounded-2xl space-y-3">
-                                            <div className="text-xs font-bold text-amber-400">Target: {selectedStudent.name}</div>
-                                            <textarea 
-                                                value={customReasonInput} 
-                                                onChange={(e) => setCustomReasonInput(e.target.value)} 
-                                                placeholder="Deskripsi pelanggaran..." 
-                                                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs text-white" rows="3">
-                                            </textarea>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleRecord(customReasonInput || 'Pelanggaran Umum')} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl text-xs font-bold transition">Simpan</button>
-                                                <button onClick={() => setSelectedStudent(null)} className="bg-gray-700 px-4 rounded-xl text-xs font-bold">Batal</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Riwayat Pelanggaran Terbaru</h3>
-                                    <div className="space-y-2">
-                                        {allLogs.filter(l => l.kategori === 'pelanggaran').slice(0,10).map((log, i) => (
-                                            <div key={i} className="bg-gray-800 p-3 rounded-2xl border border-gray-750 flex flex-col gap-1">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="font-bold text-sm text-white">{log.name}</span>
-                                                    <span className="text-[10px] bg-amber-900/40 text-amber-500 px-2 rounded font-bold">Bimbingan</span>
-                                                </div>
-                                                <span className="text-xs text-gray-400">{log.type}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 5. LAINNYA TAB */}
-                        {activeTab === 'lainnya' && (
-                            <div className="space-y-4">
-                                {subTabLainnya === 'menu' && (
-                                    <div className="space-y-2">
-                                        <button onClick={() => setSubTabLainnya('statistik')} className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-blue-900/50 p-2 rounded-xl text-blue-400">📊</div>
-                                                <span className="font-bold text-sm text-white">Statistik & Rekap Kelas</span>
-                                            </div>
-                                            <span className="text-gray-500">➔</span>
-                                        </button>
-                                        <button className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-emerald-900/50 p-2 rounded-xl text-emerald-400">👥</div>
-                                                <span className="font-bold text-sm text-white">Kelola Guru Piket (Admin)</span>
-                                            </div>
-                                            <span className="text-gray-500">➔</span>
-                                        </button>
-                                        <button className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-purple-900/50 p-2 rounded-xl text-purple-400">⚙️</div>
-                                                <span className="font-bold text-sm text-white">Pengaturan Aplikasi</span>
-                                            </div>
-                                            <span className="text-gray-500">➔</span>
-                                        </button>
-                                    </div>
-                                )}
-
-                                {subTabLainnya === 'statistik' && (
-                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                                        <button onClick={() => setSubTabLainnya('menu')} className="text-xs text-blue-400 font-bold mb-2 flex items-center gap-1">
-                                            <span>⬅ Kembali</span>
-                                        </button>
-                                        <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700">
-                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Rekap Terlambat Per Kelas (Hari Ini)</h3>
-                                            <div className="space-y-2">
-                                                {/* Logic Kalkulasi Rekap Kelas */}
-                                                {Object.entries(todayLogs.filter(l => l.kategori === 'terlambat').reduce((acc, curr) => {
-                                                    acc[curr.class] = (acc[curr.class] || 0) + 1; return acc;
-                                                }, {})).sort((a,b) => b[1]-a[1]).map(([className, count], i) => (
-                                                    <div key={className} className="flex justify-between items-center bg-gray-900 p-3 rounded-xl">
-                                                        <span className="font-bold text-sm text-white">{className}</span>
-                                                        <span className="text-xs bg-rose-900/50 text-rose-400 px-3 py-1 rounded-lg font-bold">{count} Siswa</span>
-                                                    </div>
-                                                ))}
-                                                {todayLogs.filter(l => l.kategori === 'terlambat').length === 0 && <div className="text-xs text-gray-500 text-center py-4">Belum ada data rekap hari ini.</div>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                    </div>
-
-                    {/* MODAL INPUT RECORD DARI GERBANG (UNTUK TERLAMBAT & SURAT) */}
-                    {selectedStudent && activeTab === 'gerbang' && (
-                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                            <div className="bg-gray-800 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-gray-700 shadow-2xl space-y-5 animate-in slide-in-from-bottom-4">
-                                <div className="text-center">
-                                    <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-4 sm:hidden"></div>
-                                    <h3 className="text-[10px] text-blue-400 uppercase tracking-widest font-bold">
-                                        Catat {recordType === 'terlambat' ? 'Keterlambatan' : 'Surat Masuk'}
-                                    </h3>
-                                    <div className="text-xl font-extrabold text-white mt-1">{selectedStudent.name}</div>
-                                    <div className="text-xs text-gray-400 font-medium bg-gray-900 inline-block px-3 py-1 rounded-full mt-2 border border-gray-700">{selectedStudent.class}</div>
-                                </div>
-
-                                {recordType === 'terlambat' ? (
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <button onClick={() => handleRecord('Telat Bangun')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">⏰ Bangun</button>
-                                        <button onClick={() => handleRecord('Hujan')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">🌧️ Hujan</button>
-                                        <button onClick={() => handleRecord('Kendaraan')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">🏍️ Kendaraan</button>
-                                        <button onClick={() => handleRecord('Keluarga')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">👥 Keluarga</button>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <button onClick={() => handleRecord('Sakit')} className="bg-blue-900/30 hover:bg-blue-800/40 border border-blue-700/50 text-blue-300 py-3 rounded-2xl font-bold text-xs">🤒 Sakit</button>
-                                        <button onClick={() => handleRecord('Izin')} className="bg-emerald-900/30 hover:bg-emerald-800/40 border border-emerald-700/50 text-emerald-300 py-3 rounded-2xl font-bold text-xs">✉️ Izin</button>
-                                    </div>
-                                )}
-
-                                <div className="pt-2">
-                                    <label className="text-[10px] text-gray-400 font-bold mb-1.5 block uppercase tracking-wider">Keterangan Khusus (Opsional):</label>
-                                    <div className="flex gap-2">
-                                        <input type="text" value={customReasonInput} onChange={(e) => setCustomReasonInput(e.target.value)} placeholder="Ketik keterangan..." className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-2.5 text-xs text-white" />
-                                        <button onClick={() => handleRecord(customReasonInput || 'Lainnya')} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold">Simpan</button>
-                                    </div>
-                                </div>
-                                <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-gray-600 text-gray-400 py-3 rounded-2xl font-bold text-xs">Batal</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* BOTTOM NAVIGATION BARS */}
-                    <div className="absolute bottom-0 inset-x-0 bg-gray-800/90 backdrop-blur-md border-t border-gray-700 flex justify-around py-3 px-1 z-40 pb-safe">
-                        
-                        <button onClick={() => setActiveTab('gerbang')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'gerbang' ? 'text-blue-400' : 'text-gray-500'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='gerbang'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" /></svg>
-                            <span className="text-[9px] font-bold">Gerbang</span>
-                        </button>
-
-                        <button onClick={() => setActiveTab('beranda')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'beranda' ? 'text-blue-400' : 'text-gray-500'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='beranda'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                            <span className="text-[9px] font-bold">Beranda</span>
-                        </button>
-
-                        <button onClick={() => setActiveTab('riwayat')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'riwayat' ? 'text-blue-400' : 'text-gray-500'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='riwayat'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                            <span className="text-[9px] font-bold">Riwayat</span>
-                        </button>
-
-                        <button onClick={() => setActiveTab('pelanggaran')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'pelanggaran' ? 'text-amber-400' : 'text-gray-500'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='pelanggaran'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            <span className="text-[9px] font-bold">Pelanggaran</span>
-                        </button>
-
-                        <button onClick={() => { setActiveTab('lainnya'); setSubTabLainnya('menu'); }} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'lainnya' ? 'text-blue-400' : 'text-gray-500'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='lainnya'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
-                            <span className="text-[9px] font-bold">Lainnya</span>
-                        </button>
-
-                    </div>
-                </div>
-            );
-        }
-
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+   <!-- Kode dipecah jadi beberapa file supaya gampang dirawat.
+        URUTAN INI PENTING — file belakangan pakai fungsi dari file sebelumnya. -->
+   <script type="text/babel" src="config.js"></script>
+   <script type="text/babel" src="helpers.js"></script>
+   <script type="text/babel" src="ui-common.js"></script>
+   <script type="text/babel" src="admin.js"></script>
+   <script type="text/babel" src="beranda-riwayat.js"></script>
+   <script type="text/babel" src="statistik.js"></script>
+   <script type="text/babel" src="gerbang.js"></script>
+   <script type="text/babel" src="pelanggaran-bimbingan-upacara.js"></script>
+   <script type="text/babel" src="app.js"></script>
 </body>
 </html>
