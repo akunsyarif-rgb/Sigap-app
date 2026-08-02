@@ -1,682 +1,580 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-   <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-   <title>SIGAP - SMAN 2 Tarakan</title>
-   <link rel="preconnect" href="https://fonts.googleapis.com">
-   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-   <script src="https://cdn.tailwindcss.com"></script>
-   <script>
-       tailwind.config = {
-           theme: {
-               extend: {
-                   fontFamily: {
-                       sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-                       display: ['Sora', 'sans-serif'],
-                   },
-                   colors: {
-                       navy: { DEFAULT: '#0B2A55', light: '#123B72', dark: '#071A38' },
-                       sky: { DEFAULT: '#2E86D8', light: '#6FB3EA', dim: '#1D5C93' },
-                       crimson: { DEFAULT: '#E0473C', dim: '#B93A31' },
-                       ink: { 950: '#0A0D12', 900: '#10141B', 850: '#161B24', 800: '#1C222D', 700: '#262E3B', 600: '#3A4453' },
-                   },
-               }
-           }
-       }
-   </script>
-   <style>
-       * { font-family: 'Plus Jakarta Sans', sans-serif; }
-       .font-display { font-family: 'Sora', sans-serif; }
-       ::-webkit-scrollbar { width: 4px; height: 4px; }
-       ::-webkit-scrollbar-thumb { background: #262E3B; border-radius: 4px; }
-       ::-webkit-scrollbar-track { background: transparent; }
-       @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-       .animate-rise { animation: riseIn .28s ease-out; }
-       @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
-       .animate-pop { animation: popIn .18s ease-out; }
-   </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SIGAP - SMAN 2 Tarakan</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 text-slate-900 min-h-screen m-0">
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen m-0 font-sans">
 
-   <div id="root" class="w-full min-h-screen relative"></div>
+    <div id="root" class="w-full h-screen sm:h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border-[8px] sm:border-gray-800 bg-gray-900 flex flex-col overflow-hidden shadow-2xl relative"></div>
 
-   <script type="text/babel">
-       const { useState, useEffect, useMemo, useRef } = React;
+    <script type="text/babel">
+        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
 
-       const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
-       const API_TOKEN = "sigap2026rahasia8x9zK2mP";
+        // MOCK DATA JADWAL PIKET (Dapat dihubungkan ke backend nantinya)
+        const MOCK_JADWAL_PIKET = {
+            1: ["Guru A", "Guru B"], // Senin
+            2: ["Guru C", "Guru D"], // Selasa
+            3: ["Guru E", "Guru F"], // Rabu
+            4: ["Guru G", "Guru H"], // Kamis
+            5: ["Guru I", "Guru J"], // Jumat
+            6: ["Guru K"],           // Sabtu
+            0: ["Libur"]             // Minggu
+        };
 
-       const ROLES = {
-           admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran', 'bimbingan', 'upacara', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true },
-           bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran', 'bimbingan', 'upacara'],             primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false },
-           guru:          { label: 'Guru',          menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran'],                                    primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false },
-           osis:          { label: 'OSIS',          menus: ['upacara'],                                                                             primaryMenus: ['upacara'], canExport: false },
-       };
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [passwordInput, setPasswordInput] = React.useState('');
+            const [loadingLogin, setLoadingLogin] = React.useState(false);
+            const [loginError, setLoginError] = React.useState('');
 
-       const NAV_ITEMS = {
-           scan:      { label: 'Gerbang',    icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" /> },
-           dashboard: { label: 'Beranda',    icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /> },
-           log:       { label: 'Riwayat',    icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /> },
-           stats:     { label: 'Statistik',  icon: () => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" /></React.Fragment> },
-           kelola:    { label: 'Kelola',     icon: () => <React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></React.Fragment> },
-           pelanggaran: { label: 'Pelanggaran', icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /> },
-           bimbingan:   { label: 'Bimbingan',   icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /> },
-           upacara:     { label: 'Upacara',      icon: () => <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" /> },
-       };
+            const [activeTab, setActiveTab] = React.useState('gerbang');
+            const [subTabLainnya, setSubTabLainnya] = React.useState('menu'); // Untuk navigasi di dalam tab "Lainnya"
 
-       function Icon({ path, className = "h-5 w-5", filled = false }) {
-           return <svg xmlns="http://www.w3.org/2000/svg" className={className} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={filled ? 0 : 1.6}>{path}</svg>;
-       }
+            const [searchQuery, setSearchQuery] = React.useState('');
+            const [selectedStudent, setSelectedStudent] = React.useState(null);
+            const [customReasonInput, setCustomReasonInput] = React.useState('');
+            const [recordType, setRecordType] = React.useState('terlambat'); // 'terlambat' | 'surat'
 
-       function parseTimestamp(ts) {
-           if (!ts) return new Date();
-           if (typeof ts === 'string' && ts.includes('/')) {
-               const parts = ts.trim().split(' ');
-               const dateParts = parts[0].split('/');
-               if (dateParts.length === 3) {
-                   const d = new Date(`${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${parts[1] || '00:00:00'}`);
-                   if (!isNaN(d.getTime())) return d;
-               }
-           }
-           const fallback = new Date(ts);
-           return isNaN(fallback.getTime()) ? new Date() : fallback;
-       }
+            const [toast, setToast] = React.useState(null);
+            const [students, setStudents] = React.useState([]);
+            const [allLogs, setAllLogs] = React.useState([]);
+            const [loadingLogs, setLoadingLogs] = React.useState(false);
+            
+            const [currentTime, setCurrentTime] = React.useState(new Date());
 
-       const isSameDay = (a, b) => a.toDateString() === b.toDateString();
-       const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
-       const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+            // Real-time clock
+            React.useEffect(() => {
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
 
-       function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
+            React.useEffect(() => {
+                if (user) fetchData();
+            }, [user]);
 
-       function exportCSV(logs, filenameHint) {
-           const header = ['Nama', 'NISN', 'Kelas', 'Keterangan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
-           const rows = logs.map(l => {
-               const dt = parseTimestamp(l.timestamp);
-               return [l.name, l.nisn || '', l.class, l.type || l.jenis_pelanggaran || l.jenis || '', dt.toLocaleDateString('id-ID'), dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), l.logged_by || ''];
-           });
-           const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-           const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-           const url = URL.createObjectURL(blob);
-           const a = document.createElement('a'); a.href = url; a.download = `SIGAP_${filenameHint}_${new Date().toISOString().slice(0, 10)}.csv`;
-           document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-       }
+            const fetchData = () => {
+                setLoadingLogs(true);
+                // Mock Fetching for UI testing. Ganti dengan fetch asli jika backend siap.
+                fetch(`${API_URL}?action=getStudents`)
+                    .then(res => res.json())
+                    .then(data => { if (data.status === 'success') setStudents(data.students); });
 
-       function Badge({ children, tone = 'sky' }) {
-           const tones = { sky: 'bg-sky-dim/30 text-sky-dim border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', green: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-           return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
-       }
+                fetch(`${API_URL}?action=getLogs`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') setAllLogs(data.logs);
+                        setLoadingLogs(false);
+                    })
+                    .catch(() => setLoadingLogs(false));
+            };
 
-       function EmptyState({ emoji, text }) {
-           return (
-               <div className="text-center py-16 bg-white/50 rounded-2xl border border-dashed border-slate-200">
-                   <div className="text-4xl mb-2">{emoji}</div>
-                   <div className="text-slate-500 text-xs font-medium px-6">{text}</div>
-               </div>
-           );
-       }
+            const handleLogin = (e) => {
+                e.preventDefault();
+                setLoadingLogin(true);
+                setLoginError('');
 
-       function LoginScreen({ onLogin, loading, error, password, setPassword }) {
-           return (
-               <div className="min-h-screen flex flex-col justify-center p-6 bg-slate-50">
-                   <div className="w-full max-w-sm mx-auto">
-                       <div className="text-center mb-8 mt-2">
-                           <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="w-32 h-32 object-contain bg-white rounded-[32px] mx-auto shadow-lg p-3 border border-slate-200 mb-4" />
-                           <h1 className="font-display text-3xl font-extrabold text-navy tracking-tight">SIGAP</h1>
-                           <p className="text-[11px] text-slate-500 mt-2 font-semibold uppercase tracking-wide">Sistem Informasi Gerbang &amp; Absensi Pelanggaran</p>
-                       </div>
-                       <form onSubmit={onLogin} className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                           <div>
-                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
-                               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan password..." className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky" required />
-                           </div>
-                           {error && <div className="text-xs text-crimson text-center bg-crimson/10 py-2 rounded-lg">{error}</div>}
-                           <button type="submit" disabled={loading} className="w-full bg-sky text-white py-3.5 rounded-2xl font-bold text-sm shadow-md transition disabled:opacity-50">
-                               {loading ? 'Memeriksa...' : 'Masuk Aplikasi'}
-                           </button>
-                       </form>
-                   </div>
-               </div>
-           );
-       }
+                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput }) })
+                .then(res => res.json())
+                .then(data => {
+                    setLoadingLogin(false);
+                    if (data.status === 'success') setUser(data.user);
+                    else setLoginError(data.message || 'Password salah!');
+                })
+                .catch(() => {
+                    setLoadingLogin(false);
+                    setLoginError('Koneksi Gagal. Coba lagi.');
+                });
+            };
 
-       function Header({ user, roleLabel, onLogout }) {
-           return (
-               <div className="fixed top-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
-                   <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-                       <div className="flex items-center space-x-3 min-w-0">
-                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-slate-300 flex-shrink-0" />
-                           <div className="min-w-0">
-                               <h1 className="font-display font-bold text-xs uppercase tracking-wider text-sky-dim truncate">SMAN 2 Tarakan</h1>
-                               <div className="flex items-center gap-1.5 mt-0.5">
-                                   <span className="text-[10px] text-slate-500 truncate">{user.name}</span>
-                                   <Badge tone="sky">{roleLabel}</Badge>
-                               </div>
-                           </div>
-                       </div>
-                       <button onClick={onLogout} className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-300">Keluar</button>
-                   </div>
-               </div>
-           );
-       }
+            const showToast = (msg, isError = false) => {
+                setToast({ msg, isError });
+                setTimeout(() => setToast(null), 3000);
+            };
 
-       function BottomNav({ menus, primaryMenus, activeTab, setActiveTab }) {
-           const [showMore, setShowMore] = useState(false);
-           const secondaryMenus = menus.filter(m => !primaryMenus.includes(m));
-           return (
-               <div className="fixed bottom-0 inset-x-0 z-40">
-                   {showMore && secondaryMenus.length > 0 && (
-                       <div className="max-w-2xl mx-auto px-4">
-                           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 mb-2 animate-pop">
-                               {secondaryMenus.map(key => (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-600 hover:bg-slate-100">
-                                       <span>{NAV_ITEMS[key].label}</span>
-                                   </button>
-                               ))}
-                           </div>
-                       </div>
-                   )}
-                   <div className="bg-white/95 backdrop-blur-md border-t border-slate-200">
-                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-2">
-                           {primaryMenus.map(key => (
-                               <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 px-3 ${activeTab === key ? 'text-sky-dim scale-110' : 'text-slate-400'}`}>
-                                   <Icon path={NAV_ITEMS[key].icon()} filled={activeTab === key} className="h-6 w-6" />
-                                   <span className="text-[10px] font-bold">{NAV_ITEMS[key].label}</span>
-                               </button>
-                           ))}
-                           {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className="flex flex-col items-center space-y-1 px-3 text-slate-400">
-                                   <span className="text-[10px] font-bold">Lainnya</span>
-                               </button>
-                           )}
-                       </div>
-                   </div>
-               </div>
-           );
-       }
+            const handleRecord = (reason) => {
+                const todayStr = new Date().toDateString();
+                
+                // VALIDASI DOUBLE INPUT (Hanya untuk keterlambatan)
+                if (recordType === 'terlambat') {
+                    const alreadyLate = allLogs.some(log => 
+                        log.nisn === selectedStudent.nisn && 
+                        log.kategori === 'terlambat' && 
+                        new Date(log.timestamp).toDateString() === todayStr
+                    );
+                    
+                    if (alreadyLate) {
+                        showToast(`Siswa ${selectedStudent.name} sudah tercatat terlambat hari ini!`, true);
+                        setSelectedStudent(null);
+                        setSearchQuery('');
+                        return;
+                    }
+                }
 
-       function GerbangTab({ students, onSelectLate, onAddSurat }) {
-           const [mode, setMode] = useState('terlambat');
-           const [searchQuery, setSearchQuery] = useState('');
-           const [suratStudent, setSuratStudent] = useState(null);
-           const [jenis, setJenis] = useState('Sakit');
-           const [keterangan, setKeterangan] = useState('');
-           const [savingSurat, setSavingSurat] = useState(false);
-           const [msg, setMsg] = useState('');
+                const payload = {
+                    action: 'record',
+                    nisn: selectedStudent.nisn,
+                    name: selectedStudent.name,
+                    class_name: selectedStudent.class,
+                    kategori: recordType, // 'terlambat' atau 'surat'
+                    type: reason,
+                    logged_by: user.name,
+                    timestamp: new Date().toISOString() // Untuk simulasi lokal
+                };
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || (s.nisn && s.nisn.toString().includes(searchQuery.trim())));
+                // Optimistic UI Update
+                setAllLogs([payload, ...allLogs]);
 
-           const handleSelect = (s) => {
-               setSearchQuery('');
-               if (mode === 'terlambat') onSelectLate(s);
-               else setSuratStudent(s);
-           };
+                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+                    .then(() => fetchData())
+                    .catch(err => console.error("Gagal simpan:", err));
 
-           const submitSurat = () => {
-               setSavingSurat(true);
-               onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan }, (ok, text) => {
-                   setSavingSurat(false);
-                   setMsg(text); setTimeout(() => setMsg(''), 3000);
-               });
-               setSuratStudent(null); setJenis('Sakit'); setKeterangan('');
-           };
+                showToast(`Berhasil mencatat ${recordType}: ${selectedStudent.name}`);
+                setSelectedStudent(null);
+                setSearchQuery('');
+                setCustomReasonInput('');
+            };
 
-           return (
-               <div className="space-y-4 animate-rise">
-                   <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       <button onClick={() => setMode('terlambat')} className={`py-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
-                       <button onClick={() => setMode('surat')} className={`py-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
-                   </div>
-                   {msg && <div className="text-xs text-sky-dim text-center bg-sky-dim/15 py-2 rounded-lg">{msg}</div>}
-                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm shadow-sm" />
-                   {searchQuery.trim() !== '' && (
-                       <div className="bg-white rounded-2xl border border-slate-200 max-h-60 overflow-y-auto">
-                           {filtered.map(s => (
-                               <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b flex items-center justify-between hover:bg-slate-50 cursor-pointer">
-                                   <div><div className="font-bold text-sm">{s.name}</div><div className="text-xs text-sky-dim">{s.class}</div></div>
-                                   <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold">Pilih</span>
-                               </div>
-                           ))}
-                       </div>
-                   )}
+            // Helpers & Derived Data
+            const todayStr = new Date().toDateString();
+            const todayLogs = allLogs.filter(log => new Date(log.timestamp).toDateString() === todayStr);
+            
+            const countTerlambat = todayLogs.filter(l => l.kategori === 'terlambat').length;
+            const countSurat = todayLogs.filter(l => l.kategori === 'surat').length;
+            const countPelanggaran = todayLogs.filter(l => l.kategori === 'pelanggaran').length;
+            const countUpacara = todayLogs.filter(l => l.kategori === 'upacara').length;
 
-                   {suratStudent && (
-                       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-pop">
-                               <div className="font-display font-bold text-base text-center">{suratStudent.name} ({suratStudent.class})</div>
-                               <div className="grid grid-cols-3 gap-2">
-                                   {['Sakit', 'Izin', 'Lainnya'].map(j => <button key={j} onClick={() => setJenis(j)} className={`py-2 rounded-xl text-xs font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 text-slate-600'}`}>{j}</button>)}
-                               </div>
-                               <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan..." className="w-full border rounded-xl px-3 py-2 text-xs" />
-                               <button onClick={submitSurat} disabled={savingSurat} className="w-full bg-sky text-white py-2.5 rounded-xl text-xs font-bold">{savingSurat ? 'Menyimpan...' : 'Simpan Surat'}</button>
-                               <button onClick={() => setSuratStudent(null)} className="w-full border py-2 rounded-xl text-xs text-slate-500">Batal</button>
-                           </div>
-                       </div>
-                   )}
-               </div>
-           );
-       }
+            const guruPiket = MOCK_JADWAL_PIKET[currentTime.getDay()] || ["Belum Diatur"];
 
-       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh }) {
-           const now = new Date();
-           const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
-           return (
-               <div className="space-y-5 animate-rise">
-                   <div className="flex justify-between items-end">
-                       <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Ringkasan Hari Ini</h2>
-                       <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md">Refresh</button>
-                   </div>
-                   <div className="grid grid-cols-3 gap-2.5">
-                       <div className="p-4 rounded-2xl text-center border bg-crimson/10 text-crimson"><div className="font-display text-3xl font-extrabold">{todayLate.length}</div><div className="text-[9px] mt-1 font-bold uppercase">Terlambat</div></div>
-                       <div className="p-4 rounded-2xl text-center border bg-sky-dim/10 text-sky-dim"><div className="font-display text-3xl font-extrabold">{suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now)).length}</div><div className="text-[9px] mt-1 font-bold uppercase">Surat</div></div>
-                       <div className="p-4 rounded-2xl text-center border bg-amber-50 text-amber-600"><div className="font-display text-3xl font-extrabold">{pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now)).length}</div><div className="text-[9px] mt-1 font-bold uppercase">Pelanggaran</div></div>
-                   </div>
-               </div>
-           );
-       }
+            // Deteksi Siswa Sering Terlambat (Bulan ini >= 5x atau Minggu ini >= 3x)
+            const getFrequentLatecomers = () => {
+                const currentMonth = new Date().getMonth();
+                const counts = {};
+                allLogs.filter(l => l.kategori === 'terlambat' && new Date(l.timestamp).getMonth() === currentMonth)
+                       .forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
+                return Object.keys(counts).filter(name => counts[name] >= 5).map(name => ({name, count: counts[name]}));
+            };
+            const frequentLatecomers = getFrequentLatecomers();
 
-       function LogTab({ allLogs, pelanggaranList, suratList, onDeleteLog }) {
-           const [category, setCategory] = useState('terlambat');
-           const [search, setSearch] = useState('');
-           const [msg, setMsg] = useState('');
+            if (!user) {
+                return (
+                    <div className="flex flex-col h-full justify-center p-6 bg-gray-900 text-gray-100 overflow-y-auto">
+                        <div className="text-center mb-8 mt-2">
+                            <div className="relative inline-block mb-6">
+                                <div className="absolute inset-0 bg-blue-600 blur-[30px] opacity-40 rounded-[40px]"></div>
+                                <img src="IMG_1966.jpeg" alt="Logo SMAN 2 Tarakan" className="relative w-56 h-56 sm:w-64 sm:h-64 object-contain bg-white rounded-[40px] mx-auto shadow-2xl p-3 border-4 border-gray-800" />
+                            </div>
+                            <h1 className="text-3xl font-extrabold text-blue-500 tracking-tight">SIGAP</h1>
+                            <p className="text-sm text-gray-400 mt-2 font-medium">Sistem Informasi Gerbang dan Absensi Pelanggaran</p>
+                        </div>
+                        <form onSubmit={handleLogin} className="space-y-5 bg-gray-800/80 p-6 rounded-3xl border border-gray-700 shadow-xl backdrop-blur-sm">
+                            <div>
+                                <label className="text-xs text-gray-400 font-medium mb-1.5 block">Password Petugas:</label>
+                                <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Masukkan password..." className="w-full bg-gray-900/50 border border-gray-600 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 transition" required />
+                            </div>
+                            {loginError && <div className="text-xs text-rose-400 font-medium text-center bg-rose-950/50 py-2 rounded-lg">{loginError}</div>}
+                            <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl font-bold text-sm shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] transition active:scale-95 disabled:opacity-50">
+                                {loadingLogin ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
+                            </button>
+                        </form>
+                    </div>
+                );
+            }
 
-           const categories = [
-               { key: 'terlambat', label: 'Terlambat', data: allLogs },
-               { key: 'pelanggaran', label: 'Pelanggaran', data: pelanggaranList },
-               { key: 'surat', label: 'Surat', data: suratList },
-           ];
-           const activeCat = categories.find(c => c.key === category);
-           const filtered = activeCat.data.filter(l => !search.trim() || l.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
+            return (
+                <div className="flex flex-col h-full bg-gray-900 text-gray-100 relative select-none">
+                    
+                    {/* Header */}
+                    <div className="bg-gray-800/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-700 z-30">
+                        <div className="flex items-center space-x-3">
+                            <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-gray-600" />
+                            <div>
+                                <h1 className="font-bold text-[11px] uppercase tracking-wider text-blue-400">SMAN 2 Tarakan</h1>
+                                <p className="text-[9px] text-gray-400">User: <span className="text-white font-medium">{user.name}</span></p>
+                            </div>
+                        </div>
+                        <button onClick={() => setUser(null)} className="text-[10px] font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-xl border border-gray-600 transition">Keluar</button>
+                    </div>
 
-           const handleDelete = (item) => {
-               if (!confirm(`Hapus catatan untuk ${item.name}?`)) return;
-               onDeleteLog({ category, id: item.id || item.timestamp, nisn: item.nisn }, (ok, text) => {
-                   setMsg(text); setTimeout(() => setMsg(''), 3000);
-               });
-           };
+                    {/* Toast */}
+                    {toast && (
+                        <div className={`absolute top-16 left-4 right-4 z-50 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-bounce border ${toast.isError ? 'bg-rose-600 border-rose-400' : 'bg-blue-600 border-blue-400'}`}>
+                            <span>{toast.msg}</span>
+                        </div>
+                    )}
 
-           return (
-               <div className="space-y-4 animate-rise">
-                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       {categories.map(c => (
-                           <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold transition ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
-                       ))}
-                   </div>
-                   {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 py-2 rounded-lg">{msg}</div>}
-                   <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm" />
-                   <div className="space-y-2.5">
-                       {filtered.map((item, idx) => {
-                           const dt = parseTimestamp(item.timestamp);
-                           return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl flex items-center justify-between shadow-sm">
-                                   <div className="min-w-0 pr-3">
-                                       <div className="font-semibold text-sm text-slate-900 truncate">{item.name}</div>
-                                       <div className="text-xs text-sky-dim font-medium">{item.class} • <span className="text-slate-600">{item.type || item.jenis_pelanggaran || item.jenis}</span></div>
-                                       <div className="text-[10px] text-slate-400 mt-0.5">{dt.toLocaleDateString('id-ID')} • {dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                                   </div>
-                                   <button onClick={() => handleDelete(item)} className="text-[10px] font-bold bg-crimson/10 text-crimson border border-crimson/30 px-3 py-2 rounded-xl flex-shrink-0">Hapus</button>
-                               </div>
-                           );
-                       })}
-                       {filtered.length === 0 && <EmptyState emoji="🔍" text="Tidak ada catatan ditemukan." />}
-                   </div>
-               </div>
-           );
-       }
+                    {/* Content Area */}
+                    <div className="flex-1 overflow-y-auto p-4 pb-24">
+                        
+                        {/* 1. GERBANG TAB */}
+                        {activeTab === 'gerbang' && (
+                            <div className="space-y-4">
+                                {/* Panel Info Hari Ini */}
+                                <div className="bg-gradient-to-br from-gray-800 to-gray-850 p-4 rounded-3xl border border-gray-700 shadow-lg relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                    </div>
+                                    <div className="relative z-10 flex justify-between items-center">
+                                        <div>
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</div>
+                                            <div className="text-3xl font-black text-white mt-1 tabular-nums tracking-tight">{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                                        </div>
+                                    </div>
+                                    <div className="relative z-10 mt-4 pt-3 border-t border-gray-700/50 flex items-center gap-2">
+                                        <div className="bg-blue-900/50 p-1.5 rounded-lg border border-blue-700/50 text-blue-400">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                        </div>
+                                        <div>
+                                            <div className="text-[9px] text-gray-400 uppercase tracking-wider">Guru Piket Hari Ini</div>
+                                            <div className="text-xs font-bold text-blue-300">{guruPiket.join(', ')}</div>
+                                        </div>
+                                    </div>
+                                </div>
 
-       function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
-           const [category, setCategory] = useState('terlambat');
-           const [period, setPeriod] = useState('mingguan');
-           const [selectedClassDetail, setSelectedClassDetail] = useState(null);
+                                {/* Form Pencatatan Cepat */}
+                                <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700 shadow-md">
+                                    <div className="flex gap-2 mb-4 bg-gray-900 p-1 rounded-2xl">
+                                        <button onClick={() => setRecordType('terlambat')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${recordType === 'terlambat' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}>Terlambat</button>
+                                        <button onClick={() => setRecordType('surat')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${recordType === 'surat' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}>Surat Izin/Sakit</button>
+                                    </div>
 
-           const categories = [{ key: 'terlambat', label: 'Terlambat', data: allLogs }, { key: 'pelanggaran', label: 'Pelanggaran', data: pelanggaranList }, { key: 'surat', label: 'Surat', data: suratList }];
-           const activeCat = categories.find(c => c.key === category);
+                                    <div className="relative">
+                                        <input 
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Cari Nama atau NISN Siswa..."
+                                            className="w-full bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 shadow-sm"
+                                        />
+                                    </div>
 
-           const periodData = activeCat.data.filter(l => {
-               const now = new Date();
-               if (period === 'mingguan') return inRange(l.timestamp, startOfWeek(now), now);
-               if (period === 'bulanan') return inRange(l.timestamp, startOfMonth(now), now);
-               return true;
-           });
+                                    {searchQuery.trim() !== '' && (
+                                        <div className="mt-2 bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden max-h-48 overflow-y-auto">
+                                            {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.nisn?.includes(searchQuery)).slice(0, 10).map(student => (
+                                                <div key={student.nisn} onClick={() => setSelectedStudent(student)} className="px-4 py-3 border-b border-gray-800 flex justify-between items-center hover:bg-gray-800 cursor-pointer">
+                                                    <div>
+                                                        <div className="font-bold text-sm text-white">{student.name}</div>
+                                                        <div className="text-[10px] text-blue-400 mt-0.5">{student.class}</div>
+                                                    </div>
+                                                    <span className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg font-bold">Pilih</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
-           const classMap = {};
-           periodData.forEach(l => {
-               const cls = l.class || 'Lainnya';
-               if (!classMap[cls]) classMap[cls] = [];
-               classMap[cls].push(l);
-           });
-           const sortedClasses = Object.entries(classMap).map(([cls, items]) => [cls, items.length, items]).sort((a, b) => b[1] - a[1]);
+                                {/* Live Feed Hari Ini */}
+                                <div>
+                                    <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex justify-between items-center">
+                                        <span>Live Feed Aktivitas</span>
+                                        <span className="flex h-2 w-2 relative">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                        </span>
+                                    </h3>
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {todayLogs.slice(0, 15).map((log, i) => (
+                                            <div key={i} className="bg-gray-800 p-3 rounded-2xl flex items-center gap-3 border border-gray-750">
+                                                <div className="text-xs font-bold text-gray-400 w-10 text-center">{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                                                <div className="w-[1px] h-6 bg-gray-700"></div>
+                                                <div className="flex-1">
+                                                    <div className="text-xs font-bold text-white truncate">{log.name} <span className="text-gray-500 font-normal">({log.class})</span></div>
+                                                    <div className="text-[10px] font-medium mt-0.5">
+                                                        {log.kategori === 'terlambat' ? <span className="text-rose-400">Terlambat - {log.type}</span> :
+                                                         log.kategori === 'surat' ? <span className="text-blue-400">Surat - {log.type}</span> :
+                                                         <span className="text-amber-400">{log.kategori}</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {todayLogs.length === 0 && <div className="text-center text-xs text-gray-600 py-6">Belum ada aktivitas terekam hari ini.</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
-           const frequentStudents = useMemo(() => {
-               if (category !== 'terlambat') return [];
-               const studentMap = {};
-               periodData.forEach(l => {
-                   const key = l.nisn || l.name;
-                   if (!studentMap[key]) studentMap[key] = { name: l.name, class: l.class, count: 0 };
-                   studentMap[key].count += 1;
-               });
-               return Object.values(studentMap).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
-           }, [periodData, category]);
+                        {/* 2. BERANDA TAB */}
+                        {activeTab === 'beranda' && (
+                            <div className="space-y-5">
+                                <h2 className="text-2xl font-display font-bold text-white tracking-tight">Halo, {user.name.split(' ')[0]} 👋</h2>
+                                
+                                {frequentLatecomers.length > 0 && (
+                                    <div className="bg-rose-950/40 border border-rose-900/50 p-4 rounded-2xl flex gap-3 items-start">
+                                        <div className="bg-rose-900/50 p-2 rounded-xl text-rose-400">⚠️</div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-rose-400 uppercase">Perlu Tindak Lanjut BK</h4>
+                                            <p className="text-[10px] text-gray-400 mt-1">{frequentLatecomers.length} siswa telah melampaui batas toleransi keterlambatan bulan ini.</p>
+                                        </div>
+                                    </div>
+                                )}
 
-           return (
-               <div className="space-y-5 animate-rise">
-                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       {categories.map(c => <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold ${category === c.key ? 'bg-sky text-white' : 'text-slate-500'}`}>{c.label}</button>)}
-                   </div>
-                   <div className="flex gap-1.5 overflow-x-auto pb-1">
-                       {['mingguan', 'bulanan', 'semester', 'tahunan'].map(p => <button key={p} onClick={() => setPeriod(p)} className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase whitespace-nowrap ${period === p ? 'bg-navy text-white' : 'bg-white border text-slate-500'}`}>{p}</button>)}
-                   </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl">
+                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Terlambat Hari Ini</div>
+                                        <div className="text-4xl font-black text-rose-400">{countTerlambat}</div>
+                                    </div>
+                                    <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl">
+                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Surat Hari Ini</div>
+                                        <div className="text-4xl font-black text-blue-400">{countSurat}</div>
+                                    </div>
+                                </div>
 
-                   <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-                       <h3 className="text-xs font-display font-bold text-slate-800 uppercase">Rekapitulasi Seluruh Kelas (Klik kelas untuk detail)</h3>
-                       <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
-                           {sortedClasses.map(([cls, count, items], idx) => (
-                               <div key={cls} onClick={() => setSelectedClassDetail({ cls, items })} className="py-3 flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 px-2 rounded-lg transition">
-                                   <span className="font-semibold text-slate-800">{idx + 1}. {cls}</span>
-                                   <span className="font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1 rounded-lg">{count} kejadian ➔</span>
-                               </div>
-                           ))}
-                           {sortedClasses.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data pada periode ini.</div>}
-                       </div>
-                   </div>
+                                <div className="bg-gray-800 border border-gray-700 p-4 rounded-3xl flex justify-between items-center">
+                                    <div>
+                                        <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Pelanggaran Kedisiplinan</div>
+                                        <div className="text-3xl font-black text-amber-400">{countPelanggaran}</div>
+                                    </div>
+                                    <div className="h-10 w-10 bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                    </div>
+                                </div>
 
-                   {category === 'terlambat' && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-                           <h3 className="text-xs font-display font-bold text-crimson uppercase">⚠ Siswa Sering Terlambat ($\ge3\times$)</h3>
-                           {frequentStudents.length === 0 ? (
-                               <div className="text-xs text-slate-400 py-2">Tidak ada siswa terlambat 3x atau lebih.</div>
-                           ) : (
-                               <div className="space-y-2">
-                                   {frequentStudents.map((st, i) => (
-                                       <div key={i} className="bg-crimson/5 border border-crimson/20 p-3 rounded-xl flex items-center justify-between">
-                                           <div><div className="font-bold text-xs text-slate-900">{st.name}</div><div className="text-[10px] text-slate-500">{st.class} • <span className="font-bold text-crimson">{st.count}x</span></div></div>
-                                           <Badge tone="crimson">Perlu Tindak Lanjut</Badge>
-                                       </div>
-                                   ))}
-                               </div>
-                           )}
-                       </div>
-                   )}
+                                {countUpacara > 0 && (
+                                    <div className="bg-emerald-950/40 border border-emerald-900/50 p-4 rounded-3xl flex justify-between items-center">
+                                        <div>
+                                            <div className="text-emerald-400 text-[10px] font-bold uppercase tracking-wider mb-1">Pelanggaran Upacara</div>
+                                            <div className="text-3xl font-black text-emerald-400">{countUpacara}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                   {canExport && (
-                       <div className="grid grid-cols-2 gap-2 pt-2">
-                           <button onClick={() => exportCSV(activeCat.data, activeCat.label)} className="bg-sky text-white py-2.5 rounded-xl text-xs font-bold">Unduh CSV</button>
-                           <button onClick={() => window.print()} className="bg-slate-100 border text-slate-800 py-2.5 rounded-xl text-xs font-bold">Cetak / PDF</button>
-                       </div>
-                   )}
+                        {/* 3. RIWAYAT TAB */}
+                        {activeTab === 'riwayat' && (
+                            <div className="space-y-4">
+                                <div className="relative">
+                                    <input 
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Cari Riwayat Siswa (Nama/NISN/Kelas)..."
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 shadow-sm"
+                                    />
+                                </div>
 
-                   {selectedClassDetail && (
-                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 animate-pop max-h-[80vh] flex flex-col">
-                               <div className="flex justify-between items-center border-b pb-3">
-                                   <div className="font-display font-bold text-sm text-slate-900">Daftar Kelas {selectedClassDetail.cls}</div>
-                                   <button onClick={() => setSelectedClassDetail(null)} className="text-xs font-bold text-slate-400">✕ Tutup</button>
-                               </div>
-                               <div className="overflow-y-auto space-y-2 flex-1 pr-1">
-                                   {selectedClassDetail.items.map((it, i) => {
-                                       const dt = parseTimestamp(it.timestamp);
-                                       return (
-                                           <div key={i} className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs space-y-1">
-                                               <div className="font-bold text-slate-900">{it.name}</div>
-                                               <div className="text-[10px] text-slate-500 flex justify-between">
-                                                   <span>{it.type || it.jenis_pelanggaran || it.jenis}</span>
-                                                   <span>{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                                               </div>
-                                           </div>
-                                       );
-                                   })}
-                               </div>
-                           </div>
-                       </div>
-                   )}
-               </div>
-           );
-       }
+                                <div className="space-y-3">
+                                    {allLogs.filter(log => 
+                                        !searchQuery || 
+                                        log.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                        log.class.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                        log.nisn?.includes(searchQuery)
+                                    ).slice(0, 50).map((log, i) => (
+                                        <div key={i} className="bg-gray-800 p-4 rounded-2xl border border-gray-700">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <div className="font-bold text-sm text-white">{log.name}</div>
+                                                    <div className="text-xs text-blue-400 font-medium">{log.class}</div>
+                                                </div>
+                                                <span className={`text-[9px] px-2 py-1 rounded-md font-bold uppercase ${
+                                                    log.kategori === 'terlambat' ? 'bg-rose-900/50 text-rose-400 border border-rose-800/50' :
+                                                    log.kategori === 'surat' ? 'bg-blue-900/50 text-blue-400 border border-blue-800/50' :
+                                                    'bg-amber-900/50 text-amber-400 border border-amber-800/50'
+                                                }`}>
+                                                    {log.kategori}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-300 bg-gray-900/50 p-2 rounded-lg mb-2">"{log.type}"</div>
+                                            <div className="flex justify-between text-[10px] text-gray-500">
+                                                <span>{new Date(log.timestamp).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
+                                                <span>Oleh: {log.logged_by}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
-       function PelanggaranTab({ students, onAddPelanggaran }) {
-           const [searchQuery, setSearchQuery] = useState('');
-           const [selectedStudent, setSelectedStudent] = useState(null);
-           const [jenis, setJenis] = useState('');
-           const [sanksi, setSanksi] = useState('');
-           const [catatan, setCatatan] = useState('');
-           const [msg, setMsg] = useState('');
+                        {/* 4. PELANGGARAN TAB */}
+                        {activeTab === 'pelanggaran' && (
+                            <div className="space-y-4">
+                                <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Catat Pelanggaran Kedisiplinan</h2>
+                                <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700 shadow-md">
+                                    <input 
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Cari Siswa..."
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3.5 text-sm text-white mb-3"
+                                    />
+                                    {/* Hasil pencarian siswa untuk pelanggaran */}
+                                    {searchQuery.trim() !== '' && (
+                                        <div className="bg-gray-900 rounded-2xl border border-gray-700 max-h-48 overflow-y-auto mb-3">
+                                            {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 5).map(student => (
+                                                <div key={student.nisn} onClick={() => { setSelectedStudent(student); setRecordType('pelanggaran'); }} className="px-4 py-3 border-b border-gray-800 hover:bg-gray-800 cursor-pointer">
+                                                    <div className="font-bold text-sm text-white">{student.name} ({student.class})</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {selectedStudent && recordType === 'pelanggaran' && (
+                                        <div className="bg-gray-900/50 border border-amber-900/50 p-4 rounded-2xl space-y-3">
+                                            <div className="text-xs font-bold text-amber-400">Target: {selectedStudent.name}</div>
+                                            <textarea 
+                                                value={customReasonInput} 
+                                                onChange={(e) => setCustomReasonInput(e.target.value)} 
+                                                placeholder="Deskripsi pelanggaran..." 
+                                                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs text-white" rows="3">
+                                            </textarea>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleRecord(customReasonInput || 'Pelanggaran Umum')} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl text-xs font-bold transition">Simpan</button>
+                                                <button onClick={() => setSelectedStudent(null)} className="bg-gray-700 px-4 rounded-xl text-xs font-bold">Batal</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()));
+                                <div>
+                                    <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Riwayat Pelanggaran Terbaru</h3>
+                                    <div className="space-y-2">
+                                        {allLogs.filter(l => l.kategori === 'pelanggaran').slice(0,10).map((log, i) => (
+                                            <div key={i} className="bg-gray-800 p-3 rounded-2xl border border-gray-750 flex flex-col gap-1">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-bold text-sm text-white">{log.name}</span>
+                                                    <span className="text-[10px] bg-amber-900/40 text-amber-500 px-2 rounded font-bold">Bimbingan</span>
+                                                </div>
+                                                <span className="text-xs text-gray-400">{log.type}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
-           const submitPelanggaran = () => {
-               onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: jenis, sanksi, catatan }, (ok, text) => {
-                   setMsg(text); setTimeout(() => setMsg(''), 3000);
-               });
-               setSelectedStudent(null); setSearchQuery(''); setJenis(''); setSanksi(''); setCatatan('');
-           };
+                        {/* 5. LAINNYA TAB */}
+                        {activeTab === 'lainnya' && (
+                            <div className="space-y-4">
+                                {subTabLainnya === 'menu' && (
+                                    <div className="space-y-2">
+                                        <button onClick={() => setSubTabLainnya('statistik')} className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-blue-900/50 p-2 rounded-xl text-blue-400">📊</div>
+                                                <span className="font-bold text-sm text-white">Statistik & Rekap Kelas</span>
+                                            </div>
+                                            <span className="text-gray-500">➔</span>
+                                        </button>
+                                        <button className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-emerald-900/50 p-2 rounded-xl text-emerald-400">👥</div>
+                                                <span className="font-bold text-sm text-white">Kelola Guru Piket (Admin)</span>
+                                            </div>
+                                            <span className="text-gray-500">➔</span>
+                                        </button>
+                                        <button className="w-full bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:bg-gray-750 transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-purple-900/50 p-2 rounded-xl text-purple-400">⚙️</div>
+                                                <span className="font-bold text-sm text-white">Pengaturan Aplikasi</span>
+                                            </div>
+                                            <span className="text-gray-500">➔</span>
+                                        </button>
+                                    </div>
+                                )}
 
-           return (
-               <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran</h2>
-                   {msg && <div className="text-xs text-sky-dim text-center bg-sky-dim/15 py-2 rounded-lg">{msg}</div>}
-                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm shadow-sm" />
-                   {searchQuery.trim() !== '' && (
-                       <div className="bg-white rounded-2xl border border-slate-200 max-h-48 overflow-y-auto">
-                           {filtered.map(s => (
-                               <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b hover:bg-slate-50 cursor-pointer text-xs font-semibold">{s.name} ({s.class})</div>
-                           ))}
-                       </div>
-                   )}
-                   {selectedStudent && (
-                       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-pop">
-                               <div className="font-bold text-base text-center">{selectedStudent.name}</div>
-                               <input type="text" value={jenis} onChange={(e) => setJenis(e.target.value)} placeholder="Jenis Pelanggaran..." className="w-full border p-2.5 rounded-xl text-xs" />
-                               <input type="text" value={sanksi} onChange={(e) => setSanksi(e.target.value)} placeholder="Sanksi..." className="w-full border p-2.5 rounded-xl text-xs" />
-                               <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan (opsional)..." className="w-full border p-2.5 rounded-xl text-xs" />
-                               <button onClick={submitPelanggaran} className="w-full bg-sky text-white py-2.5 rounded-xl text-xs font-bold">Simpan</button>
-                               <button onClick={() => setSelectedStudent(null)} className="w-full border py-2 rounded-xl text-xs text-slate-500">Batal</button>
-                           </div>
-                       </div>
-                   )}
-               </div>
-           );
-       }
+                                {subTabLainnya === 'statistik' && (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                                        <button onClick={() => setSubTabLainnya('menu')} className="text-xs text-blue-400 font-bold mb-2 flex items-center gap-1">
+                                            <span>⬅ Kembali</span>
+                                        </button>
+                                        <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700">
+                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Rekap Terlambat Per Kelas (Hari Ini)</h3>
+                                            <div className="space-y-2">
+                                                {/* Logic Kalkulasi Rekap Kelas */}
+                                                {Object.entries(todayLogs.filter(l => l.kategori === 'terlambat').reduce((acc, curr) => {
+                                                    acc[curr.class] = (acc[curr.class] || 0) + 1; return acc;
+                                                }, {})).sort((a,b) => b[1]-a[1]).map(([className, count], i) => (
+                                                    <div key={className} className="flex justify-between items-center bg-gray-900 p-3 rounded-xl">
+                                                        <span className="font-bold text-sm text-white">{className}</span>
+                                                        <span className="text-xs bg-rose-900/50 text-rose-400 px-3 py-1 rounded-lg font-bold">{count} Siswa</span>
+                                                    </div>
+                                                ))}
+                                                {todayLogs.filter(l => l.kategori === 'terlambat').length === 0 && <div className="text-xs text-gray-500 text-center py-4">Belum ada data rekap hari ini.</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-       function BimbinganTab({ bimbinganList, onUpdateStatus }) {
-           return (
-               <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Bimbingan Khusus</h2>
-                   <div className="space-y-2.5">
-                       {bimbinganList.map((b, idx) => {
-                           const isDone = b.status === 'selesai';
-                           return (
-                               <div key={idx} className={`bg-white border p-3.5 rounded-xl space-y-2 ${isDone ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'}`}>
-                                   <div className="flex items-center justify-between">
-                                       <div className="font-semibold text-sm">{b.name} ({b.class})</div>
-                                       {isDone ? <Badge tone="green">Selesai</Badge> : <Badge tone="crimson">Belum</Badge>}
-                                   </div>
-                                   <div className="text-[11px] text-slate-600">{b.catatan}</div>
-                                   <button onClick={() => onUpdateStatus(b.id || idx, isDone ? 'belum' : 'selesai')} className="text-[10px] font-semibold bg-slate-100 border px-3 py-1.5 rounded-lg">
-                                       {isDone ? 'Tandai Belum' : 'Tandai Sudah Ditindaklanjuti'}
-                                   </button>
-                               </div>
-                           );
-                       })}
-                       {bimbinganList.length === 0 && <EmptyState emoji="🤝" text="Belum ada catatan bimbingan." />}
-                   </div>
-               </div>
-           );
-       }
+                    </div>
 
-       function KelolaTab({ teachers, onToggleStatus }) {
-           return (
-               <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kelola Guru</h2>
-                   <div className="bg-white border rounded-2xl p-4 space-y-2.5">
-                       {teachers.map(t => {
-                           const isActive = t.status !== 'nonaktif';
-                           return (
-                               <div key={t.id} className="flex items-center justify-between border-b pb-2">
-                                   <div>
-                                       <div className="text-xs font-semibold">{t.name} {!isActive && <Badge tone="crimson">Nonaktif</Badge>}</div>
-                                       <div className="text-[10px] text-slate-400">{t.id} • {t.role}</div>
-                                   </div>
-                                   <button onClick={() => onToggleStatus(t.id, isActive ? 'nonaktif' : 'aktif')} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${isActive ? 'bg-crimson/10 text-crimson border-crimson/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                       {isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                                   </button>
-                               </div>
-                           );
-                       })}
-                   </div>
-               </div>
-           );
-       }
+                    {/* MODAL INPUT RECORD DARI GERBANG (UNTUK TERLAMBAT & SURAT) */}
+                    {selectedStudent && activeTab === 'gerbang' && (
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                            <div className="bg-gray-800 w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-gray-700 shadow-2xl space-y-5 animate-in slide-in-from-bottom-4">
+                                <div className="text-center">
+                                    <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-4 sm:hidden"></div>
+                                    <h3 className="text-[10px] text-blue-400 uppercase tracking-widest font-bold">
+                                        Catat {recordType === 'terlambat' ? 'Keterlambatan' : 'Surat Masuk'}
+                                    </h3>
+                                    <div className="text-xl font-extrabold text-white mt-1">{selectedStudent.name}</div>
+                                    <div className="text-xs text-gray-400 font-medium bg-gray-900 inline-block px-3 py-1 rounded-full mt-2 border border-gray-700">{selectedStudent.class}</div>
+                                </div>
 
-       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose }) {
-           return (
-               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                   <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-pop">
-                       <div className="text-center font-display text-lg font-bold">{student.name}</div>
-                       <button onClick={() => onRecord('Terlambat bangun')} className="w-full bg-slate-100 py-3 rounded-xl text-xs font-semibold">⏰ Telat Bangun</button>
-                       <button onClick={() => onRecord('Hujan')} className="w-full bg-slate-100 py-3 rounded-xl text-xs font-semibold">🌧️ Hujan</button>
-                       <div className="flex gap-2">
-                           <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Alasan lain..." className="flex-1 border rounded-xl px-3 py-2 text-xs" />
-                           <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky text-white px-4 py-2 rounded-xl text-xs font-bold">Simpan</button>
-                       </div>
-                       <button onClick={onClose} className="w-full border py-2.5 rounded-xl text-xs font-bold text-slate-500">Batal</button>
-                   </div>
-               </div>
-           );
-       }
+                                {recordType === 'terlambat' ? (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <button onClick={() => handleRecord('Telat Bangun')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">⏰ Bangun</button>
+                                        <button onClick={() => handleRecord('Hujan')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">🌧️ Hujan</button>
+                                        <button onClick={() => handleRecord('Kendaraan')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">🏍️ Kendaraan</button>
+                                        <button onClick={() => handleRecord('Keluarga')} className="bg-gray-750 hover:bg-gray-700 border border-gray-600 py-3 rounded-2xl font-medium text-xs">👥 Keluarga</button>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <button onClick={() => handleRecord('Sakit')} className="bg-blue-900/30 hover:bg-blue-800/40 border border-blue-700/50 text-blue-300 py-3 rounded-2xl font-bold text-xs">🤒 Sakit</button>
+                                        <button onClick={() => handleRecord('Izin')} className="bg-emerald-900/30 hover:bg-emerald-800/40 border border-emerald-700/50 text-emerald-300 py-3 rounded-2xl font-bold text-xs">✉️ Izin</button>
+                                    </div>
+                                )}
 
-       function App() {
-           const [user, setUser] = useState(null);
-           const [sessionToken, setSessionToken] = useState(null);
-           const [passwordInput, setPasswordInput] = useState('');
-           const [loadingLogin, setLoadingLogin] = useState(false);
-           const [loginError, setLoginError] = useState('');
-           const [activeTab, setActiveTab] = useState('scan');
-           const [selectedStudent, setSelectedStudent] = useState(null);
-           const [customReasonInput, setCustomReasonInput] = useState('');
-           const [toast, setToast] = useState(null);
+                                <div className="pt-2">
+                                    <label className="text-[10px] text-gray-400 font-bold mb-1.5 block uppercase tracking-wider">Keterangan Khusus (Opsional):</label>
+                                    <div className="flex gap-2">
+                                        <input type="text" value={customReasonInput} onChange={(e) => setCustomReasonInput(e.target.value)} placeholder="Ketik keterangan..." className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-2.5 text-xs text-white" />
+                                        <button onClick={() => handleRecord(customReasonInput || 'Lainnya')} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold">Simpan</button>
+                                    </div>
+                                </div>
+                                <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-gray-600 text-gray-400 py-3 rounded-2xl font-bold text-xs">Batal</button>
+                            </div>
+                        </div>
+                    )}
 
-           const [students, setStudents] = useState([]);
-           const [allLogs, setAllLogs] = useState([]);
-           const [pelanggaranList, setPelanggaranList] = useState([]);
-           const [suratList, setSuratList] = useState([]);
-           const [bimbinganList, setBimbinganList] = useState([]);
-           const [teachers, setTeachers] = useState([]);
+                    {/* BOTTOM NAVIGATION BARS */}
+                    <div className="absolute bottom-0 inset-x-0 bg-gray-800/90 backdrop-blur-md border-t border-gray-700 flex justify-around py-3 px-1 z-40 pb-safe">
+                        
+                        <button onClick={() => setActiveTab('gerbang')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'gerbang' ? 'text-blue-400' : 'text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='gerbang'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5zM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" /></svg>
+                            <span className="text-[9px] font-bold">Gerbang</span>
+                        </button>
 
-           const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
-           const roleConfig = ROLES[roleKey];
+                        <button onClick={() => setActiveTab('beranda')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'beranda' ? 'text-blue-400' : 'text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='beranda'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                            <span className="text-[9px] font-bold">Beranda</span>
+                        </button>
 
-           const fetchData = () => {
-               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setStudents(d.students); }).catch(() => {});
-               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setAllLogs(d.logs); }).catch(() => {});
-               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setSuratList(d.surat); }).catch(() => {});
-               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setPelanggaranList(d.pelanggaran); }).catch(() => {});
-               if (roleKey === 'admin') fetch(`${API_URL}?action=getTeachers&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setTeachers(d.teachers); }).catch(() => {});
-               if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') fetch(`${API_URL}?action=getBimbingan&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(d => { if (d.status === 'success') setBimbinganList(d.bimbingan); }).catch(() => {});
-           };
+                        <button onClick={() => setActiveTab('riwayat')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'riwayat' ? 'text-blue-400' : 'text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='riwayat'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                            <span className="text-[9px] font-bold">Riwayat</span>
+                        </button>
 
-           useEffect(() => { if (user) { setActiveTab(roleConfig.menus[0]); fetchData(); } }, [user]);
+                        <button onClick={() => setActiveTab('pelanggaran')} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'pelanggaran' ? 'text-amber-400' : 'text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='pelanggaran'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                            <span className="text-[9px] font-bold">Pelanggaran</span>
+                        </button>
 
-           const handleLogin = (e) => {
-               e.preventDefault();
-               setLoadingLogin(true);
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
-                   .then(res => res.json())
-                   .then(data => {
-                       setLoadingLogin(false);
-                       if (data.status === 'success') { setUser(data.user); setSessionToken(data.sessionToken); }
-                       else setLoginError(data.message || 'Password salah!');
-                   }).catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal.'); });
-           };
+                        <button onClick={() => { setActiveTab('lainnya'); setSubTabLainnya('menu'); }} className={`flex flex-col items-center space-y-1 w-1/5 ${activeTab === 'lainnya' ? 'text-blue-400' : 'text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill={activeTab==='lainnya'?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
+                            <span className="text-[9px] font-bold">Lainnya</span>
+                        </button>
 
-           const handleRecord = (type) => {
-               if (!navigator.onLine) { setToast('Koneksi terputus! Data gagal disimpan.'); setTimeout(() => setToast(null), 4000); return; }
-               const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
-               const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken, token: API_TOKEN }) })
-                   .then(res => res.json())
-                   .then(d => { if (d.status === 'success') setAllLogs(prev => [newEntry, ...prev]); });
-               setToast(`Berhasil mencatat: ${selectedStudent.name}`);
-               setSelectedStudent(null); setCustomReasonInput('');
-               setTimeout(() => setToast(null), 3000);
-           };
+                    </div>
+                </div>
+            );
+        }
 
-           const handleAddSurat = (payload, callback) => {
-               if (!navigator.onLine) { callback(false, 'Koneksi terputus!'); return; }
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken, ...payload }) })
-                   .then(res => res.json())
-                   .then(data => {
-                       if (data.status === 'success') {
-                           setSuratList(prev => [{ timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name }, ...prev]);
-                           callback(true, 'Surat berhasil dicatat.');
-                       } else callback(false, 'Gagal mencatat surat.');
-                   }).catch(() => callback(false, 'Koneksi gagal.'));
-           };
-
-           const handleDeleteLog = (payload, callback) => {
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteLog', sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
-                   .then(data => {
-                       if (data.status === 'success') {
-                           if (payload.category === 'terlambat') setAllLogs(prev => prev.filter(l => (l.id || l.timestamp) !== payload.id));
-                           if (payload.category === 'pelanggaran') setPelanggaranList(prev => prev.filter(p => (p.id || p.timestamp) !== payload.id));
-                           if (payload.category === 'surat') setSuratList(prev => prev.filter(s => (s.id || s.timestamp) !== payload.id));
-                           callback(true, 'Catatan berhasil dihapus.');
-                       } else callback(false, 'Gagal menghapus.');
-                   }).catch(() => callback(false, 'Koneksi gagal.'));
-           };
-
-           const handleAddPelanggaran = (payload, callback) => {
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, sessionToken, ...payload }) })
-                   .then(res => res.json())
-                   .then(data => {
-                       if (data.status === 'success') {
-                           setPelanggaranList(prev => [{ timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name }, ...prev]);
-                           callback(true, 'Pelanggaran berhasil dicatat.');
-                       } else callback(false, 'Gagal mencatat.');
-                   }).catch(() => callback(false, 'Koneksi gagal.'));
-           };
-
-           const handleToggleTeacherStatus = (targetId, newStatus) => {
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'toggleTeacherStatus', sessionToken, token: API_TOKEN, targetId, status: newStatus }) })
-                   .then(res => res.json())
-                   .then(data => { if (data.status === 'success') setTeachers(prev => prev.map(t => t.id === targetId ? { ...t, status: newStatus } : t)); }).catch(() => {});
-           };
-
-           return (
-               <div>
-                   {!user ? (
-                       <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
-                   ) : (
-                       <div className="min-h-screen bg-slate-100 text-slate-900 relative">
-                           <Header user={user} roleLabel={roleConfig.label} onLogout={() => { setUser(null); setSessionToken(null); }} />
-                           {toast && (
-                               <div className="fixed bottom-24 inset-x-0 z-50 px-4">
-                                   <div className="max-w-2xl mx-auto bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between">{toast}</div>
-                               </div>
-                           )}
-                           <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
-                               {activeTab === 'scan' && <GerbangTab students={students} onSelectLate={setSelectedStudent} onAddSurat={handleAddSurat} />}
-                               {activeTab === 'dashboard' && <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} />}
-                               {activeTab === 'log' && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onDeleteLog={handleDeleteLog} />}
-                               {activeTab === 'stats' && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
-                               {activeTab === 'pelanggaran' && <PelanggaranTab students={students} onAddPelanggaran={handleAddPelanggaran} />}
-                               {activeTab === 'bimbingan' && <BimbinganTab bimbinganList={bimbinganList} onUpdateStatus={(id, st) => setBimbinganList(prev => prev.map((b, i) => (b.id === id || i === id) ? { ...b, status: st } : b))} />}
-                               {activeTab === 'kelola' && <KelolaTab teachers={teachers} onToggleStatus={handleToggleTeacherStatus} />}
-                           </div>
-                           {selectedStudent && <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} />}
-                           <BottomNav menus={roleConfig.menus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
-                       </div>
-                   )}
-               </div>
-           );
-       }
-
-       ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-   </script>
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
 </body>
 </html>
