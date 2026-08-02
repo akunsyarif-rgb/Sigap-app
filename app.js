@@ -179,6 +179,18 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           const handleToggleStatus = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'toggleTeacherStatus', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, status: data.newStatus } : t));
+                           callback(true, data.newStatus === 'nonaktif' ? '✓ Akun dinonaktifkan.' : '✓ Akun diaktifkan kembali.');
+                       } else callback(false, data.message || 'Gagal mengubah status akun.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleAddSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json())
@@ -285,7 +297,7 @@
                                {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
                                {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
                                {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && roleConfig.menus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
