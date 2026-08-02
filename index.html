@@ -91,46 +91,7 @@
        const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 
-       function getSemesterInfo(d) {
-           const m = d.getMonth();
-           if (m >= 6) return { label: 'Semester Ganjil', months: [6,7,8,9,10,11], year: d.getFullYear() };
-           return { label: 'Semester Genap', months: [0,1,2,3,4,5], year: d.getFullYear() };
-       }
-
        function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
-       function countInRange(logs, start, end) { return logs.filter(l => inRange(l.timestamp, start, end)).length; }
-
-       function buildPeriodSeries(period, logs) {
-           const now = new Date();
-           if (period === 'mingguan') {
-               const start = startOfWeek(now);
-               return Array.from({ length: 7 }, (_, i) => {
-                   const d = new Date(start); d.setDate(start.getDate() + i);
-                   return { label: d.toLocaleDateString('id-ID', { weekday: 'short' }), dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length };
-               });
-           }
-           if (period === 'bulanan') {
-               const start = startOfMonth(now);
-               const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-               const weeks = Math.ceil(daysInMonth / 7);
-               return Array.from({ length: weeks }, (_, i) => {
-                   const wStart = new Date(start); wStart.setDate(start.getDate() + i * 7);
-                   const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
-                   return { label: `M${i + 1}`, dateStr: `${wStart.getDate()}-${wEnd.getDate()}`, count: countInRange(logs, wStart, wEnd) };
-               });
-           }
-           if (period === 'semester') {
-               const info = getSemesterInfo(now);
-               return info.months.map(m => {
-                   const s = new Date(info.year, m, 1); const e = new Date(info.year, m + 1, 0, 23, 59, 59, 999);
-                   return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
-               });
-           }
-           return Array.from({ length: 12 }, (_, m) => {
-               const s = new Date(now.getFullYear(), m, 1); const e = new Date(now.getFullYear(), m + 1, 0, 23, 59, 59, 999);
-               return { label: s.toLocaleDateString('id-ID', { month: 'short' }), count: countInRange(logs, s, e) };
-           });
-       }
 
        function Badge({ children, tone = 'sky' }) {
            const tones = { sky: 'bg-sky-dim/30 text-sky-dim border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', green: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
@@ -320,6 +281,8 @@
        function StatsTab({ allLogs, pelanggaranList, suratList }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
+           const [selectedClassDetail, setSelectedClassDetail] = useState(null);
+
            const categories = [{ key: 'terlambat', label: 'Terlambat', data: allLogs }, { key: 'pelanggaran', label: 'Pelanggaran', data: pelanggaranList }, { key: 'surat', label: 'Surat', data: suratList }];
            const activeCat = categories.find(c => c.key === category);
 
@@ -331,8 +294,12 @@
            });
 
            const classMap = {};
-           periodData.forEach(l => { classMap[l.class || 'Lainnya'] = (classMap[l.class || 'Lainnya'] || 0) + 1; });
-           const sortedClasses = Object.entries(classMap).sort((a, b) => b[1] - a[1]);
+           periodData.forEach(l => {
+               const cls = l.class || 'Lainnya';
+               if (!classMap[cls]) classMap[cls] = [];
+               classMap[cls].push(l);
+           });
+           const sortedClasses = Object.entries(classMap).map(([cls, items]) => [cls, items.length, items]).sort((a, b) => b[1] - a[1]);
 
            return (
                <div className="space-y-5 animate-rise">
@@ -343,17 +310,42 @@
                        {['mingguan', 'bulanan', 'semester', 'tahunan'].map(p => <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase ${period === p ? 'bg-navy text-white' : 'bg-white border text-slate-500'}`}>{p}</button>)}
                    </div>
                    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-                       <h3 className="text-xs font-display font-bold text-slate-800 uppercase">Rekapitulasi Seluruh Kelas</h3>
+                       <h3 className="text-xs font-display font-bold text-slate-800 uppercase">Rekapitulasi Seluruh Kelas (Klik kelas untuk detail)</h3>
                        <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
-                           {sortedClasses.map(([cls, count], idx) => (
-                               <div key={cls} className="py-2.5 flex items-center justify-between text-xs">
+                           {sortedClasses.map(([cls, count, items], idx) => (
+                               <div key={cls} onClick={() => setSelectedClassDetail({ cls, items })} className="py-3 flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 px-2 rounded-lg transition">
                                    <span className="font-semibold text-slate-800">{idx + 1}. {cls}</span>
-                                   <span className="font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1 rounded-lg">{count} kejadian</span>
+                                   <span className="font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1 rounded-lg">{count} kejadian ➔</span>
                                </div>
                            ))}
                            {sortedClasses.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data.</div>}
                        </div>
                    </div>
+
+                   {selectedClassDetail && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 animate-pop max-h-[80vh] flex flex-col">
+                               <div className="flex justify-between items-center border-b pb-3">
+                                   <div className="font-display font-bold text-sm text-slate-900">Daftar Kelas {selectedClassDetail.cls}</div>
+                                   <button onClick={() => setSelectedClassDetail(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">✕ Tutup</button>
+                               </div>
+                               <div className="overflow-y-auto space-y-2 flex-1 pr-1">
+                                   {selectedClassDetail.items.map((it, i) => {
+                                       const dt = parseTimestamp(it.timestamp);
+                                       return (
+                                           <div key={i} className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs space-y-1">
+                                               <div className="font-bold text-slate-900">{it.name}</div>
+                                               <div className="text-[10px] text-slate-500 flex justify-between">
+                                                   <span>{it.type || it.jenis_pelanggaran || it.jenis}</span>
+                                                   <span>{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                               </div>
+                                           </div>
+                                       );
+                                   })}
+                               </div>
+                           </div>
+                       </div>
+                   )}
                </div>
            );
        }
