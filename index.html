@@ -56,9 +56,7 @@
    <script type="text/babel">
        const { useState, useEffect, useMemo, useRef } = React;
 
-       // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
-       // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
        const ROLES = {
@@ -119,32 +117,10 @@
        }
 
        function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
-
-       function countInRange(logs, start, end) {
-           return logs.filter(l => inRange(l.timestamp, start, end)).length;
-       }
-
-       function topN(logs, keyFn, n = 3) {
-           const map = {};
-           logs.forEach(l => { const k = keyFn(l) || '—'; map[k] = (map[k] || 0) + 1; });
-           return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
-       }
+       function countInRange(logs, start, end) { return logs.filter(l => inRange(l.timestamp, start, end)).length; }
 
        function buildPeriodSeries(period, logs) {
            const now = new Date();
-           if (period === '5hari') {
-               const days = [];
-               let cursor = new Date(now);
-               while (days.length < 5) {
-                   if (cursor.getDay() !== 0 && cursor.getDay() !== 6) days.unshift(new Date(cursor));
-                   cursor.setDate(cursor.getDate() - 1);
-               }
-               return days.map(d => ({ 
-                   label: d.toLocaleDateString('id-ID', { weekday: 'short' }), 
-                   dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
-                   count: logs.filter(l => isSameDay(parseTimestamp(l.timestamp), d)).length 
-               }));
-           }
            if (period === 'mingguan') {
                const start = startOfWeek(now);
                return Array.from({ length: 7 }, (_, i) => {
@@ -180,11 +156,11 @@
        }
 
        function exportCSV(logs, filenameHint) {
-           const header = ['Nama', 'NISN', 'Kelas', 'Alasan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
+           const header = ['Nama', 'NISN', 'Kelas', 'Keterangan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
            const rows = logs.map(l => {
                const dt = parseTimestamp(l.timestamp);
                return [
-                   l.name, l.nisn || '', l.class, l.type,
+                   l.name, l.nisn || '', l.class, l.type || l.jenis_pelanggaran || l.jenis || '',
                    dt.toLocaleDateString('id-ID'),
                    dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
                    l.logged_by || '',
@@ -227,24 +203,6 @@
                                </div>
                                <span className="text-[9px] text-slate-600 mt-2 font-bold">{d.label}</span>
                                {d.dateStr && <span className="text-[8px] text-slate-400">{d.dateStr}</span>}
-                           </div>
-                       ))}
-                   </div>
-               </div>
-           );
-       }
-
-       function TopList({ title, items, unit }) {
-           return (
-               <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                   <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">{title}</h3>
-                   {items.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data.</div>}
-                   <div className="space-y-2.5">
-                       {items.map((it, i) => (
-                           <div key={i} className="flex items-center gap-3">
-                               <span className="w-5 h-5 rounded-full bg-navy-light text-sky-dim text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                               <span className="text-xs text-slate-800 font-medium flex-1 truncate">{it.label}</span>
-                               <span className="text-[10px] text-slate-500 font-semibold">{it.count} {unit}</span>
                            </div>
                        ))}
                    </div>
@@ -384,11 +342,7 @@
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
 
-           const showMsg = (ok, text) => {
-               setMsgTone(ok ? 'sky' : 'crimson');
-               setMsg(text);
-               setTimeout(() => setMsg(''), 3000);
-           };
+           const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
            const submitAdd = (e) => {
                e.preventDefault();
@@ -410,12 +364,7 @@
            return (
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kelola Guru</h2>
-
-                   {msg && (
-                       <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
-                           {msg}
-                       </div>
-                   )}
+                   {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
                    <form onSubmit={submitAdd} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
                        <h3 className="text-xs font-display font-bold text-slate-800">Tambah Guru Baru</h3>
@@ -542,7 +491,6 @@
                    ) : (
                        <EmptyState emoji="🏆" text="Belum ada aktivitas tercatat hari ini." />
                    )}
-
                    <p className="text-[11px] text-slate-400 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
                </div>
            );
@@ -600,8 +548,6 @@
                if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
            }).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
-
-           const activeFilterCount = [filterClass, filterSub, period !== 'semua' ? 'x' : ''].filter(Boolean).length;
 
            return (
                <div className="space-y-4 animate-rise">
@@ -674,12 +620,6 @@
                                                <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                                <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
-                                           {category === 'pelanggaran' && item.sanksi && (
-                                               <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
-                                           )}
-                                           {category === 'surat' && item.foto_url && (
-                                               <a href={item.foto_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-sky-dim underline inline-block">Lihat foto surat</a>
-                                           )}
                                        </div>
                                        {expandedStudent === item.nisn && (
                                            <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
@@ -729,12 +669,8 @@
 
            const periodData = sourceData.filter(l => {
                const now = new Date();
-               if (period === 'mingguan') {
-                   return inRange(l.timestamp, startOfWeek(now), now);
-               }
-               if (period === 'bulanan') {
-                   return inRange(l.timestamp, startOfMonth(now), now);
-               }
+               if (period === 'mingguan') return inRange(l.timestamp, startOfWeek(now), now);
+               if (period === 'bulanan') return inRange(l.timestamp, startOfMonth(now), now);
                if (period === 'semester') {
                    const semInfo = getSemesterInfo(now);
                    const s = new Date(semInfo.year, semInfo.months[0], 1);
@@ -743,6 +679,29 @@
                const s = new Date(now.getFullYear(), 0, 1);
                return inRange(l.timestamp, s, now);
            });
+
+           // 1. Rekapitulasi Lengkap Seluruh Kelas
+           const classSummaryMap = {};
+           periodData.forEach(l => {
+               const cls = l.class || 'Lainnya';
+               classSummaryMap[cls] = (classSummaryMap[cls] || 0) + 1;
+           });
+           const sortedClasses = Object.entries(classSummaryMap).sort((a, b) => b[1] - a[1]);
+
+           // 2. Daftar Siswa Sering Terlambat (>=3x dalam periode terpilih - khusus kategori terlambat)
+           const frequentStudents = useMemo(() => {
+               if (category !== 'terlambat') return [];
+               const studentMap = {};
+               periodData.forEach(l => {
+                   const key = l.nisn || l.name;
+                   if (!studentMap[key]) {
+                       studentMap[key] = { name: l.name, class: l.class, count: 0, items: [] };
+                   }
+                   studentMap[key].count += 1;
+                   studentMap[key].items.push(l);
+               });
+               return Object.values(studentMap).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
+           }, [periodData, category]);
 
            return (
                <div className="space-y-5 animate-rise">
@@ -766,8 +725,49 @@
                        <StatCard value={periodData.length} label={`Total ${activeCat.label} (${activePeriod.label})`} accent />
                    </div>
 
-                   <TopList title="Kelas Terbanyak (Periode Ini)" items={topN(periodData, l => l.class, 5)} unit="siswa" />
-                   <TopList title={`${activeCat.subLabel} Terbanyak (Periode Ini)`} items={topN(periodData, l => l[activeCat.subField], 5)} unit="kali" />
+                   {/* REKAPITULASI SELURUH KELAS */}
+                   <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                       <h3 className="text-xs font-display font-bold text-slate-800 uppercase tracking-wider">Rekapitulasi Seluruh Kelas ({activePeriod.label})</h3>
+                       {sortedClasses.length === 0 ? (
+                           <div className="text-xs text-slate-400 py-2">Belum ada data pada periode ini.</div>
+                       ) : (
+                           <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                               {sortedClasses.map(([cls, count], idx) => (
+                                   <div key={cls} className="py-2.5 flex items-center justify-between text-xs">
+                                       <div className="flex items-center gap-2">
+                                           <span className="w-5 text-slate-400 font-semibold">{idx + 1}.</span>
+                                           <span className="font-semibold text-slate-800">{cls}</span>
+                                       </div>
+                                       <span className="font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1 rounded-lg">{count} kejadian</span>
+                                   </div>
+                               ))}
+                           </div>
+                       )}
+                   </div>
+
+                   {/* DAFTAR SISWA SERING TERLAMBAT (>=3x) */}
+                   {category === 'terlambat' && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                           <h3 className="text-xs font-display font-bold text-crimson uppercase tracking-wider flex items-center gap-1.5">
+                               <span>⚠</span> Siswa Sering Terlambat ($\ge3\times$ dalam {activePeriod.label})
+                           </h3>
+                           {frequentStudents.length === 0 ? (
+                               <div className="text-xs text-slate-400 py-2">Tidak ada siswa yang terlambat 3 kali atau lebih pada periode ini.</div>
+                           ) : (
+                               <div className="space-y-2.5">
+                                   {frequentStudents.map((st, i) => (
+                                       <div key={i} className="bg-crimson/5 border border-crimson/20 p-3 rounded-xl flex items-center justify-between">
+                                           <div>
+                                               <div className="font-bold text-xs text-slate-900">{st.name}</div>
+                                               <div className="text-[10px] text-slate-500 mt-0.5">{st.class} • Tercatat <span className="font-bold text-crimson">{st.count} kali</span></div>
+                                           </div>
+                                           <Badge tone="crimson">Perlu Tindak Lanjut</Badge>
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                       </div>
+                   )}
 
                    {canExport && (
                        <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
@@ -775,38 +775,13 @@
                                <Icon path={<path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />} filled className="h-4 w-4" />
                                Ekspor Data (Admin)
                            </h3>
-                           <p className="text-[11px] text-slate-500 leading-relaxed">Seluruh log tersimpan di Google Sheets. Unduh sebagai CSV/Excel, cetak sebagai PDF, atau buka rekap lengkap di Spreadsheet.</p>
+                           <p className="text-[11px] text-slate-500 leading-relaxed">Seluruh log tersimpan di Google Sheets. Unduh sebagai CSV/Excel atau cetak sebagai PDF.</p>
                            <div className="grid grid-cols-2 gap-2">
                                <button onClick={() => exportCSV(sourceData, activeCat.label)} className="bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">Unduh CSV</button>
                                <button onClick={() => window.print()} className="bg-slate-100 border border-slate-300 hover:bg-slate-200 text-slate-800 py-2.5 rounded-xl text-[11px] font-bold transition">Cetak / PDF</button>
                            </div>
-                           <a href="https://docs.google.com/spreadsheets" target="_blank" className="block w-full text-center bg-transparent border-2 border-sky-dim text-sky-dim py-2.5 rounded-xl text-[11px] font-bold transition">
-                               Buka Google Spreadsheet
-                           </a>
                        </div>
                    )}
-
-                   <div className="print-report">
-                       <h2 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>Laporan {activeCat.label} — SIGAP SMAN 2 Tarakan</h2>
-                       <p style={{ fontSize: '11px', marginBottom: '12px' }}>Dicetak: {new Date().toLocaleString('id-ID')}</p>
-                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                           <thead><tr>{['Nama', 'Kelas', activeCat.subLabel, 'Tanggal', 'Waktu'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '4px', textAlign: 'left' }}>{h}</th>)}</tr></thead>
-                           <tbody>
-                               {sourceData.map((l, i) => {
-                                   const dt = parseTimestamp(l.timestamp);
-                                   return (
-                                       <tr key={i}>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.name}</td>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l.class}</td>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{l[activeCat.subField]}</td>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleDateString('id-ID')}</td>
-                                           <td style={{ border: '1px solid #999', padding: '4px' }}>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
-                                       </tr>
-                                   );
-                               })}
-                           </tbody>
-                       </table>
-                   </div>
                </div>
            );
        }
@@ -889,14 +864,14 @@
                setSearchQuery('');
                if (mode === 'terlambat') {
                    if (alreadyToday(allLogs, s.nisn)) {
-                       setBlockMsg(`${s.name} sudah tercatat terlambat hari ini — tidak bisa dicatat dua kali. Kalau ini keterlambatan setelah kegiatan di luar, catat lewat menu Pelanggaran.`);
+                       setBlockMsg(`${s.name} sudah tercatat terlambat hari ini.`);
                        setTimeout(() => setBlockMsg(''), 6000);
                        return;
                    }
                    onSelectLate(s);
                } else {
                    if (alreadyToday(suratList, s.nisn)) {
-                       setBlockMsg(`${s.name} sudah punya catatan surat hari ini — tidak bisa dicatat dua kali.`);
+                       setBlockMsg(`${s.name} sudah punya catatan surat hari ini.`);
                        setTimeout(() => setBlockMsg(''), 6000);
                        return;
                    }
@@ -966,11 +941,11 @@
                    {searchQuery.trim() !== '' && (
                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl animate-rise">
                            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                               Hasil ({filtered.length}) — mode: {mode === 'terlambat' ? 'Catat Terlambat' : 'Catat Surat'}
+                               Hasil ({filtered.length})
                            </div>
                            <div className="max-h-60 overflow-y-auto">
                                {filtered.length > 0 ? filtered.map(s => (
-                                   <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
+                                   <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 cursor-pointer transition">
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-400 font-normal">| NISN: {s.nisn}</span></div>
@@ -1050,7 +1025,6 @@
                                        </div>
                                    ) : (
                                        <button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="w-full bg-slate-100 border-2 border-dashed border-slate-300 text-slate-500 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />} className="h-4 w-4" />
                                            Foto Surat (Opsional)
                                        </button>
                                    )}
@@ -1066,7 +1040,6 @@
                </div>
            );
        }
-
 
        function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan }) {
            const [searchQuery, setSearchQuery] = useState('');
@@ -1091,7 +1064,6 @@
 
            const studentHistory = selectedStudent ? pelanggaranList.filter(p => p.nisn === selectedStudent.nisn) : [];
            const todayList = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), new Date())).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
-           const todayCount = todayList.length;
 
            const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
@@ -1112,7 +1084,7 @@
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
                        <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran</h2>
-                       <span className="text-[10px] text-slate-400 font-semibold">{todayCount} hari ini</span>
+                       <span className="text-[10px] text-slate-400 font-semibold">{todayList.length} hari ini</span>
                    </div>
 
                    {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
@@ -1135,7 +1107,7 @@
                    )}
 
                    <div className="pt-1">
-                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Pelanggaran Hari Ini ({todayList.length})</h3>
+                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Pelanggaran Hari Ini</h3>
                        {todayList.length > 0 ? (
                            <div className="space-y-2.5">
                                {todayList.map((p, idx) => {
@@ -1157,7 +1129,6 @@
                        ) : (
                            <EmptyState emoji="✅" text="Belum ada pelanggaran tercatat hari ini." />
                        )}
-                       <p className="text-[11px] text-slate-400 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
                    </div>
 
                    {selectedStudent && (
@@ -1168,16 +1139,6 @@
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{selectedStudent.name}</div>
                                    <div className="text-xs text-slate-500">{selectedStudent.class}</div>
                                </div>
-
-                               {studentHistory.length > 0 && (
-                                   <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
-                                       <div className="text-[10px] text-crimson font-bold uppercase tracking-wide">⚠ Sudah {studentHistory.length}x tercatat sebelumnya</div>
-                                       {studentHistory.slice(0, 3).map((h, i) => {
-                                           const hDt = parseTimestamp(h.timestamp);
-                                           return <div key={i} className="text-[11px] text-slate-600">{h.jenis_pelanggaran} — {hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} ({h.sanksi})</div>;
-                                       })}
-                                   </div>
-                               )}
 
                                <div>
                                    <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
@@ -1217,30 +1178,10 @@
                                </div>
                                <textarea value={bimbinganCatatan} onChange={(e) => setBimbinganCatatan(e.target.value)} placeholder="Catatan untuk Admin..." rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                <button onClick={submitBimbingan} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold">Simpan (hanya Admin bisa lihat)</button>
-                               <button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-xl font-bold text-xs">Batal</button>
+                               <button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
                            </div>
                        </div>
                    )}
-
-                   <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{pelanggaranList.length} catatan pelanggaran</h3>
-                   <div className="space-y-2.5">
-                       {pelanggaranList.slice(0, 30).map((p, idx) => {
-                           const dt = parseTimestamp(p.timestamp);
-                           return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
-                                   <div className="flex items-center justify-between">
-                                       <div className="font-semibold text-sm text-slate-900">{p.name}</div>
-                                       <span className="text-[9px] bg-crimson/15 text-crimson px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
-                                   </div>
-                                   <div className="text-[10px] text-slate-400 flex justify-between gap-2">
-                                       <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                                       <span className="truncate">{p.sanksi}</span>
-                                   </div>
-                               </div>
-                           );
-                       })}
-                       {pelanggaranList.length === 0 && <EmptyState emoji="📋" text="Belum ada catatan pelanggaran." />}
-                   </div>
                </div>
            );
        }
@@ -1249,7 +1190,6 @@
            return (
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Perlu Bimbingan Khusus (Admin)</h2>
-                   <p className="text-[11px] text-slate-400">Daftar ini hanya terlihat oleh Admin.</p>
                    <div className="space-y-2.5">
                        {bimbinganList.map((b, idx) => {
                            const dt = parseTimestamp(b.timestamp);
@@ -1283,7 +1223,6 @@
            const [msgTone, setMsgTone] = useState('sky');
 
            const jenisPresets = ['Atribut Tidak Lengkap', 'Tidak Tertib', 'Terlambat Baris'];
-
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1301,7 +1240,6 @@
            return (
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran Upacara</h2>
-
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky" />
@@ -1359,7 +1297,6 @@
                                        <span>{u.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                    </div>
-                                   {!isOsis && <div className="text-[10px] text-slate-400">Dicatat oleh: {u.logged_by}</div>}
                                </div>
                            );
                        })}
@@ -1389,7 +1326,6 @@
                setFontScale(next);
                try { localStorage.setItem('sigap_font_scale', String(next)); } catch (e) {}
            };
-           const [riwayatCategory, setRiwayatCategory] = useState('terlambat');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
@@ -1564,7 +1500,7 @@
                                const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, catatan: payload.catatan, logged_by: user.name };
                                setBimbinganList(prev => [newEntry, ...prev]);
                            }
-                           callback(true, 'Berhasil dicatat (hanya Admin/BK bisa lihat).');
+                           callback(true, 'Berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -1607,7 +1543,7 @@
                                {activeTab === 'dashboard' && (
                                    <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} />
                                )}
-                               {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
+                               {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} />}
                                {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
                                {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
                                    <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
