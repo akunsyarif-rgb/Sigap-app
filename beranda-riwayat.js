@@ -44,13 +44,10 @@
            );
        }
 
-       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh, loading }) {
-           const now = new Date();
-           const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
-           const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
-           const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
-
-           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat
+       function DashboardTab({ todayLate, todaySurat, todayPelanggaran, lateForBanner, onRefresh, loading }) {
+           // todayLate/todaySurat/todayPelanggaran sudah di-scope ke HARI INI SAJA
+           // oleh server (action getTodayData) — tidak perlu filter isSameDay lagi
+           // di sini. Untuk data lebih lama, arahkan ke menu Riwayat.
            const combinedFeed = [
                ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
                ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
@@ -58,9 +55,9 @@
            ].sort((a, b) => b._time - a._time);
 
            // Banner "Siswa Sering Terlambat" — muncul otomatis kalau ada siswa
-           // ≥3x terlambat minggu ini ATAU ≥5x bulan ini (kriteria beda dengan
-           // daftar sejenis di Statistik, tapi berbagi helper groupLateByStudent).
-           const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
+           // ≥3x terlambat minggu ini ATAU ≥5x bulan ini. lateForBanner sudah
+           // di-scope server ke rentang minggu/bulan ini saja (bukan allLogs penuh).
+           const frequentLatecomers = getFrequentLatecomersBanner(lateForBanner);
 
            return (
                <div className="space-y-5 animate-rise">
