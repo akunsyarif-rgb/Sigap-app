@@ -1,4 +1,398 @@
-<!DOCTYPE html>
+// ===== UTILITAS DASAR =====
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function checkToken(token) {
+  var validToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+  return token && validToken && token === validToken;
+}
+
+function hashPassword(password) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password.toLowerCase().trim());
+  return raw.map(function(byte) {
+    var v = (byte < 0 ? byte + 256 : byte).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+function isSameDayServer(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function getOrCreateSheet(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function uploadFotoSurat(base64Data, fileName) {
+  var folderName = 'SIGAP_Foto_Surat';
+  var folders = DriveApp.getFoldersByName(folderName);
+  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+  var decoded = Utilities.base64Decode(base64Data);
+  var blob = Utilities.newBlob(decoded, 'image/jpeg', fileName);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+// ===== SESI LOGIN (diverifikasi server, bukan dipercaya begitu saja dari client) =====
+function createSession(user) {
+  var token = Utilities.getUuid();
+  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(user), 21600); // 6 jam
+  return token;
+}
+
+function getSessionUser(token) {
+  if (!token) return null;
+  var raw = CacheService.getScriptCache().get('sess_' + token);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeRole(role) {
+  return String(role || '').toLowerCase().trim();
+}
+
+function isAdminRole(role) {
+  return normalizeRole(role) === 'admin';
+}
+
+function isBkRole(role) {
+  var r = normalizeRole(role);
+  return r === 'admin' || r === 'bk_kesiswaan';
+}
+
+function isOsisRole(role) {
+  return normalizeRole(role) === 'osis';
+}
+
+// ===== doPost =====
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+
+    if (!checkToken(data.token)) {
+      return jsonOut({ status: 'error', message: 'Unauthorized' });
+    }
+
+    var action = data.action;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // ---- Login ----
+    if (action === 'login') {
+      var hashedInput = hashPassword(data.password);
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+
+      var loggedInUser = null;
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][2]) === hashedInput) {
+          loggedInUser = { id: rows[i][0], name: rows[i][1], role: rows[i][3] };
+          break;
+        }
+      }
+
+      if (loggedInUser) {
+        var sessionToken = createSession(loggedInUser);
+        return jsonOut({ status: 'success', user: loggedInUser, sessionToken: sessionToken });
+      }
+      return jsonOut({ status: 'error', message: 'Password salah!' });
+    }
+
+    var sessionUser = getSessionUser(data.sessionToken);
+    if (!sessionUser) {
+      return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+    }
+
+    if (action === 'record') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = ss.getSheetByName('Log_Gerbang');
+      var rows = sheet.getDataRange().getValues();
+      var today = new Date();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][1]) === String(data.nisn) && isSameDayServer(new Date(rows[i][0]), today)) {
+          return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
+        }
+      }
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.type, sessionUser.name]);
+      CacheService.getScriptCache().remove('today_logs');
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'addTeacher') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menambah guru' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.newId)) {
+          return jsonOut({ status: 'error', message: 'ID sudah dipakai, gunakan ID lain' });
+        }
+      }
+      var hashed = hashPassword(data.newPassword);
+      sheet.appendRow([data.newId, data.newName, hashed, data.newRole]);
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'updatePassword') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah password' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 3).setValue(hashPassword(data.newPassword));
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'addSurat') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Surat_Masuk', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis', 'Keterangan', 'Foto_URL', 'Dicatat_Oleh']);
+      var existingRows = sheet.getDataRange().getValues();
+      var todaySurat = new Date();
+      for (var i = 1; i < existingRows.length; i++) {
+        if (String(existingRows[i][1]) === String(data.nisn) && isSameDayServer(new Date(existingRows[i][0]), todaySurat)) {
+          return jsonOut({ status: 'error', message: data.name + ' sudah punya catatan surat hari ini.' });
+        }
+      }
+      var fotoUrl = '';
+      if (data.fotoBase64) {
+        try {
+          fotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
+        } catch (err) {
+          fotoUrl = '';
+        }
+      }
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', fotoUrl, sessionUser.name]);
+      CacheService.getScriptCache().remove('surat_list');
+      return jsonOut({ status: 'success', fotoUrl: fotoUrl });
+    }
+
+    if (action === 'deleteSurat') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus data surat' });
+      }
+      var sheet = ss.getSheetByName('Surat_Masuk');
+      if (!sheet) {
+        return jsonOut({ status: 'error', message: 'Belum ada data surat' });
+      }
+      var rows = sheet.getDataRange().getValues();
+      var month = parseInt(data.month, 10);
+      var year = parseInt(data.year, 10);
+      var deletedCount = 0;
+      for (var i = rows.length - 1; i >= 1; i--) {
+        var ts = new Date(rows[i][0]);
+        if ((ts.getMonth() + 1) === month && ts.getFullYear() === year) {
+          sheet.deleteRow(i + 1);
+          deletedCount++;
+        }
+      }
+      CacheService.getScriptCache().remove('surat_list');
+      return jsonOut({ status: 'success', deletedCount: deletedCount });
+    }
+
+    if (action === 'addPelanggaran') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
+      CacheService.getScriptCache().remove('pelanggaran_list');
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'addBimbingan') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Bimbingan_Khusus', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Dicatat_Oleh']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.catatan, sessionUser.name]);
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'addPelanggaranUpacara') {
+      if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses mencatat pelanggaran upacara.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Pelanggaran_Upacara', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
+      CacheService.getScriptCache().remove('pelanggaran_upacara_list');
+      return jsonOut({ status: 'success' });
+    }
+
+    return jsonOut({ status: 'error', message: 'Action tidak dikenali' });
+
+  } catch (error) {
+    return jsonOut({ status: 'error', message: error.toString() });
+  }
+}
+
+// ===== doGet =====
+
+function doGet(e) {
+  var token = e.parameter.token;
+  if (!checkToken(token)) {
+    return jsonOut({ status: 'error', message: 'Unauthorized' });
+  }
+
+  var action = e.parameter.action;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var cache = CacheService.getScriptCache();
+
+  if (!action) {
+    return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+  }
+
+  var sessionUser = getSessionUser(e.parameter.sessionToken);
+  if (!sessionUser) {
+    return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+  }
+
+  if (action === 'getStudents') {
+    var cached = cache.get('students_list');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Master_Siswa');
+    var rows = sheet.getDataRange().getValues();
+    var students = [];
+    for (var i = 1; i < rows.length; i++) {
+      students.push({ nisn: rows[i][0], name: rows[i][1], class: rows[i][2] });
+    }
+    var result = JSON.stringify({ status: 'success', students: students });
+    cache.put('students_list', result, 21600);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getLogs') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('today_logs');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Log_Gerbang');
+    var rows = sheet.getDataRange().getValues();
+    var logs = [];
+    for (var i = 1; i < rows.length; i++) {
+      logs.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
+    }
+    logs.reverse();
+    var result = JSON.stringify({ status: 'success', logs: logs });
+    cache.put('today_logs', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getTeachers') {
+    if (!isAdminRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Master_Guru');
+    var rows = sheet.getDataRange().getValues();
+    var teachers = [];
+    for (var i = 1; i < rows.length; i++) {
+      teachers.push({ id: rows[i][0], name: rows[i][1], role: rows[i][3] });
+    }
+    return jsonOut({ status: 'success', teachers: teachers });
+  }
+
+  if (action === 'getSurat') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('surat_list');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Surat_Masuk');
+    var surat = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        surat.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+      }
+      surat.reverse();
+    }
+    var result = JSON.stringify({ status: 'success', surat: surat });
+    cache.put('surat_list', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getPelanggaran') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('pelanggaran_list');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Pelanggaran');
+    var pelanggaran = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        pelanggaran.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], sanksi: rows[i][5], catatan: rows[i][6], logged_by: rows[i][7] });
+      }
+      pelanggaran.reverse();
+    }
+    var result = JSON.stringify({ status: 'success', pelanggaran: pelanggaran });
+    cache.put('pelanggaran_list', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getBimbingan') {
+    if (!isBkRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Bimbingan_Khusus');
+    var bimbingan = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        bimbingan.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], catatan: rows[i][4], logged_by: rows[i][5] });
+      }
+      bimbingan.reverse();
+    }
+    return jsonOut({ status: 'success', bimbingan: bimbingan });
+  }
+
+  if (action === 'getPelanggaranUpacara') {
+    if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
+      return jsonOut({ status: 'error', message: 'Unauthorized' });
+    }
+    var sheet = ss.getSheetByName('Pelanggaran_Upacara');
+    var upacara = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (isOsisRole(sessionUser.role) && String(rows[i][7]) !== String(sessionUser.id)) {
+          continue; 
+        }
+        upacara.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], catatan: rows[i][5], logged_by: rows[i][6] });
+      }
+      upacara.reverse();
+    }
+    return jsonOut({ status: 'success', upacara: upacara });
+  }
+
+  return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+} <!DOCTYPE html>
 <html lang="id">
 <head>
    <meta charset="UTF-8">
@@ -56,16 +450,9 @@
    <script type="text/babel">
        const { useState, useEffect, useMemo, useRef } = React;
 
-       // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
-       // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
-       // 4 tingkat akses:
-       // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
-       // - bk_kesiswaan: sama seperti guru + Bimbingan Khusus + Pelanggaran Upacara (guru BK & tim kesiswaan)
-       // - guru: menu operasional harian (Gerbang, Beranda, Riwayat, Pelanggaran, Statistik) — sama untuk semua guru
-       // - osis: HANYA menu Upacara (catat + riwayat catatan sendiri), tidak lihat apa pun yang lain
        const ROLES = {
            admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran', 'bimbingan', 'upacara', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true },
            bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran', 'bimbingan', 'upacara'],             primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false },
@@ -517,7 +904,6 @@
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
            const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
 
-           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat
            const combinedFeed = [
                ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
                ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
@@ -580,7 +966,6 @@
            const activeCat = categories.find(c => c.key === category);
            const sourceData = activeCat.data;
 
-           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya
            useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); }, [category]);
 
            const classes = useMemo(() => [...new Set(sourceData.map(l => l.class))].sort(), [sourceData]);
@@ -911,8 +1296,6 @@
                }
            };
 
-           // Kompres foto di sisi browser (maks lebar 800px, kualitas 60%) sebelum
-           // dikirim, supaya ukuran data tetap kecil dan tidak membebani penyimpanan.
            const handleFotoChange = (e) => {
                const file = e.target.files[0];
                if (!file) return;
@@ -959,6 +1342,8 @@
 
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
                    {blockMsg && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2.5 px-3 rounded-lg leading-relaxed">{blockMsg}</div>}
+                   
+                   <div>
                        <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
                        <div className="relative">
                            <input
@@ -1411,7 +1796,6 @@
            const [bimbinganList, setBimbinganList] = useState([]);
            const [upacaraList, setUpacaraList] = useState([]);
 
-           // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
            const roleConfig = ROLES[roleKey];
 
@@ -1445,8 +1829,6 @@
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
                    if (roleKey === 'osis') {
-                       // OSIS cuma butuh cari siswa + riwayat upacara mereka sendiri —
-                       // tidak perlu (dan tidak diizinkan server) menarik data lain
                        fetchStudentsOnly();
                        fetchUpacara();
                    } else {
