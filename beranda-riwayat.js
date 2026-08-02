@@ -57,6 +57,11 @@
                ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
+           // Banner "Siswa Sering Terlambat" — muncul otomatis kalau ada siswa
+           // ≥3x terlambat minggu ini ATAU ≥5x bulan ini (kriteria beda dengan
+           // daftar sejenis di Statistik, tapi berbagi helper groupLateByStudent).
+           const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
+
            return (
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
@@ -69,6 +74,23 @@
                        <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
+
+                   {frequentLatecomers.length > 0 && (
+                       <div className="bg-crimson/10 border border-crimson/30 rounded-2xl p-4 space-y-2.5">
+                           <div className="text-[10px] text-crimson font-bold uppercase tracking-wide flex items-center gap-1.5">
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3.5 w-3.5" />
+                               Siswa Sering Terlambat
+                           </div>
+                           <div className="space-y-1.5">
+                               {frequentLatecomers.map((s, idx) => (
+                                   <div key={idx} className="flex items-center justify-between gap-2 text-xs">
+                                       <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                       <span className="text-crimson font-bold flex-shrink-0">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
+                                   </div>
+                               ))}
+                           </div>
+                       </div>
+                   )}
 
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
