@@ -37,6 +37,7 @@
            const [pelanggaranList, setPelanggaranList] = useState([]);
            const [bimbinganList, setBimbinganList] = useState([]);
            const [upacaraList, setUpacaraList] = useState([]);
+           const [auditLog, setAuditLog] = useState([]);
 
            // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
@@ -68,6 +69,13 @@
                    .then(data => { if (data.status === 'success') setStudents(data.students); });
            };
 
+           const fetchAuditLog = () => {
+               if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
+               fetch(`${API_URL}?action=getAuditLog&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json())
+                   .then(data => { if (data.status === 'success') setAuditLog(data.auditLog); });
+           };
+
            useEffect(() => {
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
@@ -79,7 +87,7 @@
                    } else {
                        fetchData();
                        if (roleKey === 'admin') fetchTeachers();
-                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
+                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
                    }
                }
            }, [user]);
@@ -111,6 +119,12 @@
                        else setLoginError(data.message || 'Password salah!');
                    })
                    .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+           };
+
+           const handleLogout = () => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', sessionToken: sessionToken, token: API_TOKEN }) }).catch(() => {});
+               setUser(null);
+               setSessionToken(null);
            };
 
            const handleRecord = (type) => {
@@ -149,6 +163,18 @@
                    .then(data => {
                        if (data.status === 'success') callback(true, '✓ Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleUpdateJabatan = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateJabatan', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, jabatan: payload.newJabatan } : t));
+                           callback(true, '✓ Jabatan berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah jabatan.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -230,7 +256,7 @@
                        <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                           <Header user={user} roleLabel={roleConfig.label} onLogout={() => { setUser(null); setSessionToken(null); }} fontScale={fontScale} onFontScaleChange={changeFontScale} />
+                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />
 
                            {toast && (
                                <div className="fixed bottom-24 inset-x-0 z-50 px-4">
@@ -259,7 +285,10 @@
                                {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
                                {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
                                {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} loading={loadingTeacherAction} />
+                               )}
+                               {activeTab === 'auditlog' && roleConfig.menus.includes('auditlog') && (
+                                   <AuditLogTab auditLog={auditLog} />
                                )}
                                {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
                                    <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
