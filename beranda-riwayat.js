@@ -1,6 +1,8 @@
 // ===== beranda-riwayat.js =====
 // Tab Beranda (ringkasan hari ini) dan Riwayat (pencarian & filter
-// lintas kategori: Terlambat/Pelanggaran/Surat).
+// lintas kategori: Terlambat/Pelanggaran/Surat), termasuk edit/hapus
+// 1 catatan (khusus Admin & BK/Kesiswaan, BK/Kesiswaan dibatasi 5 menit
+// sejak catatan dibuat — aturan sebenarnya ditegakkan di server).
 
        function SummaryCard({ value, label, tone }) {
            const toneClasses = {
@@ -55,9 +57,6 @@
                ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
-           // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu tindak lanjut BK
-           const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
-
            return (
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
@@ -71,28 +70,10 @@
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
 
-                   {frequentLatecomers.length > 0 && (
-                       <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-4 space-y-2">
-                           <div className="flex items-center gap-2">
-                               <span className="text-lg">⚠️</span>
-                               <h3 className="text-[11px] font-bold text-crimson uppercase tracking-wide">Perlu Tindak Lanjut — Sering Terlambat</h3>
-                           </div>
-                           <div className="space-y-1.5">
-                               {frequentLatecomers.slice(0, 5).map((s, idx) => (
-                                   <div key={idx} className="flex items-center justify-between text-[11px]">
-                                       <span className="text-slate-700 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
-                                       <span className="text-crimson font-semibold flex-shrink-0 ml-2">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
-                                   </div>
-                               ))}
-                           </div>
-                           {frequentLatecomers.length > 5 && <p className="text-[10px] text-slate-500">+{frequentLatecomers.length - 5} siswa lainnya</p>}
-                       </div>
-                   )}
-
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
                    {loading ? (
-                       <SkeletonList count={4} />
+                       <div className="text-center py-10 text-xs text-slate-400">Memuat data...</div>
                    ) : combinedFeed.length > 0 ? (
                        <div className="space-y-2.5">
                            {combinedFeed.map((item, idx) => <FeedItem key={idx} item={item} />)}
@@ -106,7 +87,9 @@
            );
        }
 
-       function LogTab({ allLogs, pelanggaranList, suratList, initialCategory }) {
+       const EDIT_WINDOW_MS = 5 * 60 * 1000; // 5 menit — sinkron dengan aturan server
+
+       function LogTab({ allLogs, pelanggaranList, suratList, initialCategory, canManage, isAdmin, onEditEntry, onDeleteEntry }) {
            const [category, setCategory] = useState(initialCategory || 'terlambat');
            const [period, setPeriod] = useState('semua');
            const [customDate, setCustomDate] = useState('');
@@ -115,6 +98,22 @@
            const [search, setSearch] = useState('');
            const [expandedStudent, setExpandedStudent] = useState(null);
            const [showFilters, setShowFilters] = useState(false);
+
+           // ---- State untuk Edit/Hapus 1 catatan ----
+           const [manageTarget, setManageTarget] = useState(null);
+           const [editType, setEditType] = useState('');
+           const [editJenisPelanggaran, setEditJenisPelanggaran] = useState('');
+           const [editSanksi, setEditSanksi] = useState('');
+           const [editCatatan, setEditCatatan] = useState('');
+           const [editJenisSurat, setEditJenisSurat] = useState('');
+           const [editKeterangan, setEditKeterangan] = useState('');
+           const [editFotoPreview, setEditFotoPreview] = useState(null);
+           const [editFotoBase64, setEditFotoBase64] = useState(null);
+           const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
+           const [manageMsg, setManageMsg] = useState('');
+           const [manageMsgTone, setManageMsgTone] = useState('sky');
+           const [manageLoading, setManageLoading] = useState(false);
+           const editFileInputRef = useRef(null);
 
            const periods = [
                { key: 'semua', label: 'Semua' },
@@ -161,6 +160,96 @@
            }).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
 
            const activeFilterCount = [filterClass, filterSub, period !== 'semua' ? 'x' : ''].filter(Boolean).length;
+
+           // Penanda visual saja — batas waktu SEBENARNYA ditegakkan di server.
+           const canEditNow = (item) => isAdmin || (Date.now() - parseTimestamp(item.timestamp).getTime()) <= EDIT_WINDOW_MS;
+
+           const showManageMsg = (ok, text) => { setManageMsgTone(ok ? 'sky' : 'crimson'); setManageMsg(text); };
+
+           const openManage = (item) => {
+               setManageMsg('');
+               setManageTarget(item);
+               if (category === 'terlambat') {
+                   setEditType(item.type || '');
+               } else if (category === 'pelanggaran') {
+                   setEditJenisPelanggaran(item.jenis_pelanggaran || '');
+                   setEditSanksi(item.sanksi || '');
+                   setEditCatatan(item.catatan || '');
+               } else if (category === 'surat') {
+                   setEditJenisSurat(item.jenis || '');
+                   setEditKeterangan(item.keterangan || '');
+                   setEditFotoPreview(item.foto_url || null);
+                   setEditFotoBase64(null);
+               }
+           };
+
+           const closeManage = () => {
+               setManageTarget(null);
+               setEditFotoPreview(null);
+               setEditFotoBase64(null);
+               setManageMsg('');
+           };
+
+           // Kompres foto (maks lebar 800px, kualitas 60%) — sama seperti di form Catat Surat
+           const handleEditFotoChange = (e) => {
+               const file = e.target.files[0];
+               if (!file) return;
+               const reader = new FileReader();
+               reader.onload = (ev) => {
+                   const img = new Image();
+                   img.onload = () => {
+                       const maxWidth = 800;
+                       const scale = Math.min(1, maxWidth / img.width);
+                       const canvas = document.createElement('canvas');
+                       canvas.width = img.width * scale;
+                       canvas.height = img.height * scale;
+                       const ctx = canvas.getContext('2d');
+                       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                       const compressed = canvas.toDataURL('image/jpeg', 0.6);
+                       setEditFotoPreview(compressed);
+                       setEditFotoBase64(compressed.split(',')[1]);
+                   };
+                   img.src = ev.target.result;
+               };
+               reader.readAsDataURL(file);
+           };
+
+           const submitEdit = () => {
+               if (!manageTarget) return;
+               setManageLoading(true);
+               const payload = { category, nisn: manageTarget.nisn, name: manageTarget.name, timestamp: manageTarget.timestamp };
+               if (category === 'terlambat') {
+                   payload.type = editType;
+               } else if (category === 'pelanggaran') {
+                   payload.jenis_pelanggaran = editJenisPelanggaran;
+                   payload.sanksi = editSanksi;
+                   payload.catatan = editCatatan;
+               } else if (category === 'surat') {
+                   payload.jenis = editJenisSurat;
+                   payload.keterangan = editKeterangan;
+                   if (editFotoBase64) payload.fotoBase64 = editFotoBase64;
+               }
+               onEditEntry(payload, (ok, text) => {
+                   setManageLoading(false);
+                   showManageMsg(ok, text);
+                   if (ok) setTimeout(closeManage, 900);
+               });
+           };
+
+           const submitDelete = () => {
+               if (!confirmDeleteTarget) return;
+               setManageLoading(true);
+               const payload = { category, nisn: confirmDeleteTarget.nisn, name: confirmDeleteTarget.name, timestamp: confirmDeleteTarget.timestamp };
+               onDeleteEntry(payload, (ok, text) => {
+                   setManageLoading(false);
+                   if (ok) {
+                       setConfirmDeleteTarget(null);
+                       closeManage();
+                   } else {
+                       showManageMsg(ok, text);
+                   }
+               });
+           };
 
            return (
                <div className="space-y-4 animate-rise">
@@ -222,6 +311,7 @@
                            {filtered.map((item, idx) => {
                                const dt = parseTimestamp(item.timestamp);
                                const subValue = item[activeCat.subField];
+                               const editable = canManage && canEditNow(item);
                                return (
                                    <div key={idx}>
                                        <div onClick={() => setExpandedStudent(expandedStudent === item.nisn ? null : item.nisn)} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-slate-100 transition">
@@ -229,9 +319,29 @@
                                                <div className="font-semibold text-sm text-slate-900">{item.name}</div>
                                                <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{subValue}</span>
                                            </div>
-                                           <div className="text-[10px] text-slate-400 flex justify-between">
+                                           <div className="text-[10px] text-slate-400 flex justify-between items-center">
                                                <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                               <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                               <span className="flex items-center gap-2">
+                                                   <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                   {canManage && (
+                                                       <span className="flex items-center gap-0.5">
+                                                           <button
+                                                               onClick={(e) => { e.stopPropagation(); if (editable) openManage(item); }}
+                                                               title={editable ? 'Edit catatan' : 'Sudah lewat 5 menit — hanya admin yang bisa ubah'}
+                                                               className={`p-1 rounded-lg transition ${editable ? 'text-sky-dim hover:bg-sky-dim/10' : 'text-slate-300 cursor-not-allowed'}`}
+                                                           >
+                                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />} className="h-3.5 w-3.5" />
+                                                           </button>
+                                                           <button
+                                                               onClick={(e) => { e.stopPropagation(); if (editable) { setManageMsg(''); setConfirmDeleteTarget(item); } }}
+                                                               title={editable ? 'Hapus catatan' : 'Sudah lewat 5 menit — hanya admin yang bisa hapus'}
+                                                               className={`p-1 rounded-lg transition ${editable ? 'text-crimson hover:bg-crimson/10' : 'text-slate-300 cursor-not-allowed'}`}
+                                                           >
+                                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />} className="h-3.5 w-3.5" />
+                                                           </button>
+                                                       </span>
+                                                   )}
+                                               </span>
                                            </div>
                                            {category === 'pelanggaran' && item.sanksi && (
                                                <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
@@ -261,7 +371,97 @@
                    ) : (
                        <EmptyState emoji="🔍" text={`Tidak ada catatan ${activeCat.label.toLowerCase()} yang cocok.`} />
                    )}
+
+                   {manageTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
+                               <div className="text-center">
+                                   <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Edit Catatan {activeCat.label}</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{manageTarget.name}</div>
+                                   <div className="text-xs text-slate-500">{manageTarget.class}</div>
+                               </div>
+
+                               {!isAdmin && (Date.now() - parseTimestamp(manageTarget.timestamp).getTime()) > EDIT_WINDOW_MS && (
+                                   <div className="text-[10px] text-crimson bg-crimson/10 border border-crimson/30 rounded-lg px-3 py-2 text-center">Sudah lewat 5 menit sejak dicatat — server kemungkinan menolak perubahan ini (hanya admin yang bisa).</div>
+                               )}
+
+                               {category === 'terlambat' && (
+                                   <div>
+                                       <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Alasan Terlambat</label>
+                                       <input type="text" value={editType} onChange={(e) => setEditType(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                   </div>
+                               )}
+
+                               {category === 'pelanggaran' && (
+                                   <div className="space-y-3">
+                                       <div>
+                                           <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Jenis Pelanggaran</label>
+                                           <input type="text" value={editJenisPelanggaran} onChange={(e) => setEditJenisPelanggaran(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                       </div>
+                                       <div>
+                                           <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Sanksi</label>
+                                           <input type="text" value={editSanksi} onChange={(e) => setEditSanksi(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                       </div>
+                                       <div>
+                                           <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Catatan</label>
+                                           <input type="text" value={editCatatan} onChange={(e) => setEditCatatan(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                       </div>
+                                   </div>
+                               )}
+
+                               {category === 'surat' && (
+                                   <div className="space-y-3">
+                                       <div className="grid grid-cols-3 gap-2">
+                                           {['Sakit', 'Izin', 'Lainnya'].map(j => (
+                                               <button key={j} onClick={() => setEditJenisSurat(j)} className={`py-2.5 rounded-xl text-xs font-bold ${editJenisSurat === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
+                                           ))}
+                                       </div>
+                                       <input type="text" value={editKeterangan} onChange={(e) => setEditKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                       <div>
+                                           <input ref={editFileInputRef} type="file" accept="image/*" capture="environment" onChange={handleEditFotoChange} className="hidden" />
+                                           {editFotoPreview ? (
+                                               <div className="relative">
+                                                   <img src={editFotoPreview} alt="Preview surat" className="w-full h-32 object-cover rounded-xl border border-slate-300" />
+                                                   <button onClick={() => { setEditFotoPreview(null); setEditFotoBase64(null); }} className="absolute top-2 right-2 bg-crimson text-white text-[10px] font-bold px-2 py-1 rounded-lg">Hapus Foto</button>
+                                               </div>
+                                           ) : (
+                                               <button onClick={() => editFileInputRef.current && editFileInputRef.current.click()} className="w-full bg-slate-100 border-2 border-dashed border-slate-300 text-slate-500 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />} className="h-4 w-4" />
+                                                   Ganti Foto Surat
+                                               </button>
+                                           )}
+                                       </div>
+                                   </div>
+                               )}
+
+                               {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
+
+                               <button onClick={submitEdit} disabled={manageLoading} className="w-full bg-sky hover:bg-sky-light disabled:opacity-50 text-white py-3 rounded-2xl font-bold text-sm">
+                                   {manageLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                               </button>
+                               <button onClick={closeManage} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmDeleteTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Catatan {activeCat.label}?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteTarget.name}</div>
+                                   <div className="text-xs text-slate-500">{confirmDeleteTarget.class}</div>
+                                   <p className="text-[11px] text-slate-400 mt-2">Tindakan ini tidak bisa dibatalkan.</p>
+                               </div>
+                               {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
+                               <button onClick={submitDelete} disabled={manageLoading} className="w-full bg-crimson hover:bg-crimson-dim disabled:opacity-50 text-white py-3 rounded-2xl font-bold text-sm">
+                                   {manageLoading ? 'Menghapus...' : 'Ya, Hapus'}
+                               </button>
+                               <button onClick={() => { setConfirmDeleteTarget(null); setManageMsg(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
                </div>
            );
        }
-
