@@ -93,6 +93,19 @@
 
        function inRange(ts, start, end) { const t = parseTimestamp(ts).getTime(); return t >= start.getTime() && t <= end.getTime(); }
 
+       function exportCSV(logs, filenameHint) {
+           const header = ['Nama', 'NISN', 'Kelas', 'Keterangan', 'Tanggal', 'Waktu', 'Dicatat Oleh'];
+           const rows = logs.map(l => {
+               const dt = parseTimestamp(l.timestamp);
+               return [l.name, l.nisn || '', l.class, l.type || l.jenis_pelanggaran || l.jenis || '', dt.toLocaleDateString('id-ID'), dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), l.logged_by || ''];
+           });
+           const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+           const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+           const url = URL.createObjectURL(blob);
+           const a = document.createElement('a'); a.href = url; a.download = `SIGAP_${filenameHint}_${new Date().toISOString().slice(0, 10)}.csv`;
+           document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+       }
+
        function Badge({ children, tone = 'sky' }) {
            const tones = { sky: 'bg-sky-dim/30 text-sky-dim border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', green: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
@@ -186,24 +199,62 @@
            );
        }
 
-       function GerbangTab({ students, onSelectLate }) {
+       function GerbangTab({ students, onSelectLate, onAddSurat }) {
+           const [mode, setMode] = useState('terlambat');
            const [searchQuery, setSearchQuery] = useState('');
+           const [suratStudent, setSuratStudent] = useState(null);
+           const [jenis, setJenis] = useState('Sakit');
+           const [keterangan, setKeterangan] = useState('');
+           const [savingSurat, setSavingSurat] = useState(false);
+           const [msg, setMsg] = useState('');
+
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || (s.nisn && s.nisn.toString().includes(searchQuery.trim())));
+
+           const handleSelect = (s) => {
+               setSearchQuery('');
+               if (mode === 'terlambat') onSelectLate(s);
+               else setSuratStudent(s);
+           };
+
+           const submitSurat = () => {
+               setSavingSurat(true);
+               onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan }, (ok, text) => {
+                   setSavingSurat(false);
+                   setMsg(text); setTimeout(() => setMsg(''), 3000);
+               });
+               setSuratStudent(null); setJenis('Sakit'); setKeterangan('');
+           };
+
            return (
                <div className="space-y-4 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Pencatatan Gerbang</h2>
-                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm" />
+                   <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
+                       <button onClick={() => setMode('terlambat')} className={`py-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
+                       <button onClick={() => setMode('surat')} className={`py-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
+                   </div>
+                   {msg && <div className="text-xs text-sky-dim text-center bg-sky-dim/15 py-2 rounded-lg">{msg}</div>}
+                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm shadow-sm" />
                    {searchQuery.trim() !== '' && (
                        <div className="bg-white rounded-2xl border border-slate-200 max-h-60 overflow-y-auto">
                            {filtered.map(s => (
-                               <div key={s.nisn} onClick={() => { onSelectLate(s); setSearchQuery(''); }} className="px-4 py-3.5 border-b flex items-center justify-between hover:bg-slate-50 cursor-pointer">
-                                   <div>
-                                       <div className="font-bold text-sm">{s.name}</div>
-                                       <div className="text-xs text-sky-dim">{s.class}</div>
-                                   </div>
+                               <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b flex items-center justify-between hover:bg-slate-50 cursor-pointer">
+                                   <div><div className="font-bold text-sm">{s.name}</div><div className="text-xs text-sky-dim">{s.class}</div></div>
                                    <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold">Pilih</span>
                                </div>
                            ))}
+                       </div>
+                   )}
+
+                   {suratStudent && (
+                       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-pop">
+                               <div className="font-display font-bold text-base text-center">{suratStudent.name} ({suratStudent.class})</div>
+                               <div className="grid grid-cols-3 gap-2">
+                                   {['Sakit', 'Izin', 'Lainnya'].map(j => <button key={j} onClick={() => setJenis(j)} className={`py-2 rounded-xl text-xs font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 text-slate-600'}`}>{j}</button>)}
+                               </div>
+                               <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan..." className="w-full border rounded-xl px-3 py-2 text-xs" />
+                               <button onClick={submitSurat} disabled={savingSurat} className="w-full bg-sky text-white py-2.5 rounded-xl text-xs font-bold">{savingSurat ? 'Menyimpan...' : 'Simpan Surat'}</button>
+                               <button onClick={() => setSuratStudent(null)} className="w-full border py-2 rounded-xl text-xs text-slate-500">Batal</button>
+                           </div>
                        </div>
                    )}
                </div>
@@ -244,8 +295,7 @@
            const handleDelete = (item) => {
                if (!confirm(`Hapus catatan untuk ${item.name}?`)) return;
                onDeleteLog({ category, id: item.id || item.timestamp, nisn: item.nisn }, (ok, text) => {
-                   setMsg(text);
-                   setTimeout(() => setMsg(''), 3000);
+                   setMsg(text); setTimeout(() => setMsg(''), 3000);
                });
            };
 
@@ -278,7 +328,7 @@
            );
        }
 
-       function StatsTab({ allLogs, pelanggaranList, suratList }) {
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
            const [selectedClassDetail, setSelectedClassDetail] = useState(null);
@@ -301,14 +351,26 @@
            });
            const sortedClasses = Object.entries(classMap).map(([cls, items]) => [cls, items.length, items]).sort((a, b) => b[1] - a[1]);
 
+           const frequentStudents = useMemo(() => {
+               if (category !== 'terlambat') return [];
+               const studentMap = {};
+               periodData.forEach(l => {
+                   const key = l.nisn || l.name;
+                   if (!studentMap[key]) studentMap[key] = { name: l.name, class: l.class, count: 0 };
+                   studentMap[key].count += 1;
+               });
+               return Object.values(studentMap).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
+           }, [periodData, category]);
+
            return (
                <div className="space-y-5 animate-rise">
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
                        {categories.map(c => <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold ${category === c.key ? 'bg-sky text-white' : 'text-slate-500'}`}>{c.label}</button>)}
                    </div>
-                   <div className="flex gap-1.5">
-                       {['mingguan', 'bulanan', 'semester', 'tahunan'].map(p => <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase ${period === p ? 'bg-navy text-white' : 'bg-white border text-slate-500'}`}>{p}</button>)}
+                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                       {['mingguan', 'bulanan', 'semester', 'tahunan'].map(p => <button key={p} onClick={() => setPeriod(p)} className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase whitespace-nowrap ${period === p ? 'bg-navy text-white' : 'bg-white border text-slate-500'}`}>{p}</button>)}
                    </div>
+
                    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
                        <h3 className="text-xs font-display font-bold text-slate-800 uppercase">Rekapitulasi Seluruh Kelas (Klik kelas untuk detail)</h3>
                        <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
@@ -318,16 +380,41 @@
                                    <span className="font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1 rounded-lg">{count} kejadian ➔</span>
                                </div>
                            ))}
-                           {sortedClasses.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data.</div>}
+                           {sortedClasses.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data pada periode ini.</div>}
                        </div>
                    </div>
+
+                   {category === 'terlambat' && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                           <h3 className="text-xs font-display font-bold text-crimson uppercase">⚠ Siswa Sering Terlambat ($\ge3\times$)</h3>
+                           {frequentStudents.length === 0 ? (
+                               <div className="text-xs text-slate-400 py-2">Tidak ada siswa terlambat 3x atau lebih.</div>
+                           ) : (
+                               <div className="space-y-2">
+                                   {frequentStudents.map((st, i) => (
+                                       <div key={i} className="bg-crimson/5 border border-crimson/20 p-3 rounded-xl flex items-center justify-between">
+                                           <div><div className="font-bold text-xs text-slate-900">{st.name}</div><div className="text-[10px] text-slate-500">{st.class} • <span className="font-bold text-crimson">{st.count}x</span></div></div>
+                                           <Badge tone="crimson">Perlu Tindak Lanjut</Badge>
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                       </div>
+                   )}
+
+                   {canExport && (
+                       <div className="grid grid-cols-2 gap-2 pt-2">
+                           <button onClick={() => exportCSV(activeCat.data, activeCat.label)} className="bg-sky text-white py-2.5 rounded-xl text-xs font-bold">Unduh CSV</button>
+                           <button onClick={() => window.print()} className="bg-slate-100 border text-slate-800 py-2.5 rounded-xl text-xs font-bold">Cetak / PDF</button>
+                       </div>
+                   )}
 
                    {selectedClassDetail && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 animate-pop max-h-[80vh] flex flex-col">
                                <div className="flex justify-between items-center border-b pb-3">
                                    <div className="font-display font-bold text-sm text-slate-900">Daftar Kelas {selectedClassDetail.cls}</div>
-                                   <button onClick={() => setSelectedClassDetail(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">✕ Tutup</button>
+                                   <button onClick={() => setSelectedClassDetail(null)} className="text-xs font-bold text-slate-400">✕ Tutup</button>
                                </div>
                                <div className="overflow-y-auto space-y-2 flex-1 pr-1">
                                    {selectedClassDetail.items.map((it, i) => {
@@ -343,6 +430,51 @@
                                        );
                                    })}
                                </div>
+                           </div>
+                       </div>
+                   )}
+               </div>
+           );
+       }
+
+       function PelanggaranTab({ students, onAddPelanggaran }) {
+           const [searchQuery, setSearchQuery] = useState('');
+           const [selectedStudent, setSelectedStudent] = useState(null);
+           const [jenis, setJenis] = useState('');
+           const [sanksi, setSanksi] = useState('');
+           const [catatan, setCatatan] = useState('');
+           const [msg, setMsg] = useState('');
+
+           const filtered = searchQuery.trim() === '' ? [] : students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+           const submitPelanggaran = () => {
+               onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: jenis, sanksi, catatan }, (ok, text) => {
+                   setMsg(text); setTimeout(() => setMsg(''), 3000);
+               });
+               setSelectedStudent(null); setSearchQuery(''); setJenis(''); setSanksi(''); setCatatan('');
+           };
+
+           return (
+               <div className="space-y-5 animate-rise">
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran</h2>
+                   {msg && <div className="text-xs text-sky-dim text-center bg-sky-dim/15 py-2 rounded-lg">{msg}</div>}
+                   <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm shadow-sm" />
+                   {searchQuery.trim() !== '' && (
+                       <div className="bg-white rounded-2xl border border-slate-200 max-h-48 overflow-y-auto">
+                           {filtered.map(s => (
+                               <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b hover:bg-slate-50 cursor-pointer text-xs font-semibold">{s.name} ({s.class})</div>
+                           ))}
+                       </div>
+                   )}
+                   {selectedStudent && (
+                       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-pop">
+                               <div className="font-bold text-base text-center">{selectedStudent.name}</div>
+                               <input type="text" value={jenis} onChange={(e) => setJenis(e.target.value)} placeholder="Jenis Pelanggaran..." className="w-full border p-2.5 rounded-xl text-xs" />
+                               <input type="text" value={sanksi} onChange={(e) => setSanksi(e.target.value)} placeholder="Sanksi..." className="w-full border p-2.5 rounded-xl text-xs" />
+                               <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan (opsional)..." className="w-full border p-2.5 rounded-xl text-xs" />
+                               <button onClick={submitPelanggaran} className="w-full bg-sky text-white py-2.5 rounded-xl text-xs font-bold">Simpan</button>
+                               <button onClick={() => setSelectedStudent(null)} className="w-full border py-2 rounded-xl text-xs text-slate-500">Batal</button>
                            </div>
                        </div>
                    )}
@@ -473,6 +605,18 @@
                setTimeout(() => setToast(null), 3000);
            };
 
+           const handleAddSurat = (payload, callback) => {
+               if (!navigator.onLine) { callback(false, 'Koneksi terputus!'); return; }
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setSuratList(prev => [{ timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name }, ...prev]);
+                           callback(true, 'Surat berhasil dicatat.');
+                       } else callback(false, 'Gagal mencatat surat.');
+                   }).catch(() => callback(false, 'Koneksi gagal.'));
+           };
+
            const handleDeleteLog = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteLog', sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json())
@@ -483,6 +627,17 @@
                            if (payload.category === 'surat') setSuratList(prev => prev.filter(s => (s.id || s.timestamp) !== payload.id));
                            callback(true, 'Catatan berhasil dihapus.');
                        } else callback(false, 'Gagal menghapus.');
+                   }).catch(() => callback(false, 'Koneksi gagal.'));
+           };
+
+           const handleAddPelanggaran = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, sessionToken, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setPelanggaranList(prev => [{ timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name }, ...prev]);
+                           callback(true, 'Pelanggaran berhasil dicatat.');
+                       } else callback(false, 'Gagal mencatat.');
                    }).catch(() => callback(false, 'Koneksi gagal.'));
            };
 
@@ -505,10 +660,11 @@
                                </div>
                            )}
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
-                               {activeTab === 'scan' && <GerbangTab students={students} onSelectLate={setSelectedStudent} />}
+                               {activeTab === 'scan' && <GerbangTab students={students} onSelectLate={setSelectedStudent} onAddSurat={handleAddSurat} />}
                                {activeTab === 'dashboard' && <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} />}
                                {activeTab === 'log' && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onDeleteLog={handleDeleteLog} />}
-                               {activeTab === 'stats' && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} />}
+                               {activeTab === 'stats' && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
+                               {activeTab === 'pelanggaran' && <PelanggaranTab students={students} onAddPelanggaran={handleAddPelanggaran} />}
                                {activeTab === 'bimbingan' && <BimbinganTab bimbinganList={bimbinganList} onUpdateStatus={(id, st) => setBimbinganList(prev => prev.map((b, i) => (b.id === id || i === id) ? { ...b, status: st } : b))} />}
                                {activeTab === 'kelola' && <KelolaTab teachers={teachers} onToggleStatus={handleToggleTeacherStatus} />}
                            </div>
