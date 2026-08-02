@@ -7,7 +7,7 @@
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
-       const API_TOKEN = "TOKEN_RAHASIA_KAMU";
+       const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
