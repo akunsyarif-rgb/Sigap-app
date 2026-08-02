@@ -71,7 +71,7 @@
                'app.js'
            ];
            try {
-               var combined = 'const { useState, useEffect, useMemo, useRef } = React;\n';
+               var combined = '';
                for (var i = 0; i < files.length; i++) {
                    var res = await fetch(files[i] + '?v=' + Date.now());
                    if (!res.ok) throw new Error('Gagal memuat ' + files[i] + ' (status ' + res.status + ')');
