@@ -8,6 +8,10 @@
 // Sekarang, begitu login berhasil, server menyimpan sesi (siapa & apa rolenya) dan
 // memberi client sebuah token sesi acak. Setiap aksi berikutnya diverifikasi lewat
 // token itu — server sendiri yang cek rolenya, bukan percaya klaim dari client.
+//
+// 21600 detik (6 jam) adalah batas MAKSIMUM yang diizinkan Apps Script untuk
+// CacheService.put() — bukan angka sembarang, tidak bisa diperpanjang lagi
+// tanpa ganti mekanisme penyimpanan sesi sama sekali.
 
 function createSession(user) {
   var token = Utilities.getUuid();
