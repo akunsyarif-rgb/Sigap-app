@@ -43,7 +43,6 @@
            const [students, setStudents] = useState([]);
            const [allLogs, setAllLogs] = useState([]);
            const [loadingLogs, setLoadingLogs] = useState(false);
-           const [slowConnection, setSlowConnection] = useState(false);
 
            const [teachers, setTeachers] = useState([]);
            const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
@@ -54,6 +53,7 @@
            const [auditLog, setAuditLog] = useState([]);
            const [jadwalPiket, setJadwalPiket] = useState([]);
            const [waliKelasMap, setWaliKelasMap] = useState([]);
+           const [slowConnection, setSlowConnection] = useState(false);
 
            // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
@@ -166,7 +166,7 @@
                        fetchJadwalPiket();
                        fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
-                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
+                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
                    }
                }
            }, [user]);
@@ -222,7 +222,7 @@
                        else setToast('Gagal menyimpan, coba lagi.');
                    })
                    .catch(() => setToast('Koneksi gagal, coba lagi.'));
-               setToast(`✓ Berhasil mencatat: ${selectedStudent.name}`);
+               setToast(`Berhasil mencatat: ${selectedStudent.name}`);
                setSelectedStudent(null); setCustomReasonInput('');
                setTimeout(() => setToast(null), 3000);
            };
@@ -245,7 +245,7 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
-                       if (data.status === 'success') callback(true, '✓ Password berhasil diubah.');
+                       if (data.status === 'success') callback(true, 'Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -322,7 +322,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
-                           callback(true, '✓ Surat berhasil dicatat.');
+                           callback(true, 'Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -339,7 +339,7 @@
                                const dt = parseTimestamp(s.timestamp);
                                return !((dt.getMonth() + 1) === month && dt.getFullYear() === year);
                            }));
-                           callback(true, `✓ Berhasil hapus ${data.deletedCount || 0} data.`);
+                           callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`);
                        } else callback(false, data.message || 'Gagal menghapus data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -352,7 +352,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
                            setPelanggaranList(prev => [newEntry, ...prev]);
-                           callback(true, '✓ Pelanggaran berhasil dicatat.');
+                           callback(true, 'Pelanggaran berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -367,8 +367,45 @@
                                const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, catatan: payload.catatan, logged_by: user.name };
                                setBimbinganList(prev => [newEntry, ...prev]);
                            }
-                           callback(true, '✓ Berhasil dicatat (hanya Admin/BK bisa lihat).');
+                           callback(true, 'Berhasil dicatat (hanya Admin/BK bisa lihat).');
                        } else callback(false, data.message || 'Gagal mencatat.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           // Cocokkan baris lokal lewat NISN + Timestamp (sama seperti server),
+           // supaya update/hapus di state tidak butuh fetch ulang seluruh data.
+           const sameEntry = (item, payload) => item.nisn === payload.nisn && parseTimestamp(item.timestamp).getTime() === parseTimestamp(payload.timestamp).getTime();
+
+           const handleEditEntry = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'editEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           if (payload.category === 'terlambat') {
+                               setAllLogs(prev => prev.map(item => sameEntry(item, payload) ? { ...item, type: payload.type } : item));
+                           } else if (payload.category === 'pelanggaran') {
+                               setPelanggaranList(prev => prev.map(item => sameEntry(item, payload) ? { ...item, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan } : item));
+                           } else if (payload.category === 'surat') {
+                               setSuratList(prev => prev.map(item => sameEntry(item, payload) ? { ...item, jenis: payload.jenis, keterangan: payload.keterangan } : item));
+                               if (payload.fotoBase64) fetchData(); // foto baru butuh URL asli dari server, sinkronkan ulang
+                           }
+                           callback(true, 'Berhasil diperbarui.');
+                       } else callback(false, data.message || 'Gagal memperbarui data.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleDeleteEntry = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           if (payload.category === 'terlambat') setAllLogs(prev => prev.filter(item => !sameEntry(item, payload)));
+                           else if (payload.category === 'pelanggaran') setPelanggaranList(prev => prev.filter(item => !sameEntry(item, payload)));
+                           else if (payload.category === 'surat') setSuratList(prev => prev.filter(item => !sameEntry(item, payload)));
+                           callback(true, 'Berhasil dihapus.');
+                       } else callback(false, data.message || 'Gagal menghapus data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -380,7 +417,7 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, catatan: payload.catatan || '', logged_by: user.name };
                            setUpacaraList(prev => [newEntry, ...prev]);
-                           callback(true, '✓ Pelanggaran upacara berhasil dicatat.');
+                           callback(true, 'Pelanggaran upacara berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -418,7 +455,13 @@
                                {activeTab === 'dashboard' && (
                                    <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} />
                                )}
-                               {activeTab === 'log' && effectiveMenus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
+                               {activeTab === 'log' && effectiveMenus.includes('log') && (
+                                   <LogTab
+                                       allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory}
+                                       canManage={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} isAdmin={roleKey === 'admin'}
+                                       onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
+                                   />
+                               )}
                                {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
                                {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
