@@ -1,10 +1,14 @@
 // ===== statistik.js =====
 // Tab Statistik: tren per kategori & periode, top kelas/jenis, ekspor.
 
-       function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
            const [freqWindow, setFreqWindow] = useState('1minggu');
+           // Mode Ranking (urut jumlah kasus terbanyak) khusus BK/Kesiswaan & Admin.
+           // Guru cuma dapat mode Per Kelas (urut A-Z) — lihat config.js canViewRanking
+           // untuk alasan pembatasannya. (Blueprint SIGAP v2, section VII & VIII)
+           const [kelasMode, setKelasMode] = useState(canViewRanking ? 'ranking' : 'perkelas');
 
            const categories = [
                { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
@@ -78,28 +82,46 @@
                        <StatCard value={periodData.length} label={`Total ${activeCat.label} (${activePeriod.label})`} accent />
                    </div>
 
-                   <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Rekap per Kelas (Periode Ini)</h3>
-                       {(() => {
-                           const perKelas = topN(periodData, l => l.class, 999); // semua kelas, bukan cuma top 5
-                           return perKelas.length > 0 ? (
-                               <div className="space-y-2">
-                                   {perKelas.map((k, i) => (
-                                       <div key={i} className="flex items-center justify-between">
-                                           <span className="text-xs text-slate-700 font-medium">{k.label}</span>
-                                           <span className="text-[11px] text-slate-500 font-semibold">{k.count} {activeCat.key === 'terlambat' ? 'siswa' : 'kali'}</span>
-                                       </div>
-                                   ))}
+                   {/* Rekap per Kelas & Siswa Sering Terlambat: cuma admin/BK/Kesiswaan
+                       (canViewRanking) — TANPA pengecualian wali kelas. Guru cuma dapat
+                       tren (BarChart di atas) & alasan terbanyak (TopList di bawah).
+                       Wali kelas yang mau lihat detail kelasnya sendiri, arahnya ke
+                       menu Rekap Kelas, bukan di sini. */}
+                   {canViewRanking && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                           <div className="flex items-center justify-between mb-3">
+                               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rekap per Kelas (Periode Ini)</h3>
+                               <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+                                   <button onClick={() => setKelasMode('ranking')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'ranking' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Ranking</button>
+                                   <button onClick={() => setKelasMode('perkelas')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'perkelas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>A-Z</button>
                                </div>
-                           ) : (
-                               <div className="text-xs text-slate-400 py-2 text-center">Belum ada data di periode ini.</div>
-                           );
-                       })()}
-                   </div>
+                           </div>
+                           {(() => {
+                               // Ranking: urut jumlah kasus terbanyak (topN sudah begitu).
+                               // Per Kelas: urut nama kelas A-Z — cara guru mencari data
+                               // ("kelas berapa dulu, baru siapa"), bukan bandingkan kelas.
+                               const perKelas = kelasMode === 'ranking'
+                                   ? topN(periodData, l => l.class, 999)
+                                   : topN(periodData, l => l.class, 999).sort((a, b) => String(a.label).localeCompare(String(b.label)));
+                               return perKelas.length > 0 ? (
+                                   <div className="space-y-2">
+                                       {perKelas.map((k, i) => (
+                                           <div key={i} className="flex items-center justify-between">
+                                               <span className="text-xs text-slate-700 font-medium">{k.label}</span>
+                                               <span className="text-[11px] text-slate-500 font-semibold">{k.count} {activeCat.key === 'terlambat' ? 'siswa' : 'kali'}</span>
+                                           </div>
+                                       ))}
+                                   </div>
+                               ) : (
+                                   <div className="text-xs text-slate-400 py-2 text-center">Belum ada data di periode ini.</div>
+                               );
+                           })()}
+                       </div>
+                   )}
 
                    <TopList title={`${activeCat.subLabel} Terbanyak (Periode Ini)`} items={topN(periodData, l => l[activeCat.subField], 5)} unit="kali" />
 
-                   {category === 'terlambat' && (
+                   {canViewRanking && category === 'terlambat' && (
                        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Siswa Sering Terlambat (≥3x)</h3>
                            <div className="flex gap-1.5 overflow-x-auto pb-1">

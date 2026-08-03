@@ -2,9 +2,23 @@
 // Komponen utama App(): login, sesi, fetch data, semua handler simpan,
 // dan render seluruh tampilan. Dimuat PALING TERAKHIR.
 
+       // Sesi login disimpan di localStorage supaya tidak logout tiap refresh —
+       // sesi di server (CacheService) hidup 6 jam sejak login (lihat
+       // createSession di Auth.gs); localStorage cuma "mengingat" token itu,
+       // validitas sebenarnya tetap ditentukan server di setiap panggilan API.
+       function loadStoredSession() {
+           try {
+               const token = localStorage.getItem('sigap_session_token');
+               const rawUser = localStorage.getItem('sigap_user');
+               if (token && rawUser) return { token, user: JSON.parse(rawUser) };
+           } catch (e) {}
+           return { token: null, user: null };
+       }
+
        function App() {
-           const [user, setUser] = useState(null);
-           const [sessionToken, setSessionToken] = useState(null);
+           const storedSession = loadStoredSession();
+           const [user, setUser] = useState(storedSession.user);
+           const [sessionToken, setSessionToken] = useState(storedSession.token);
            const [passwordInput, setPasswordInput] = useState('');
            const [loadingLogin, setLoadingLogin] = useState(false);
            const [loginError, setLoginError] = useState('');
@@ -36,35 +50,107 @@
            const [pelanggaranList, setPelanggaranList] = useState([]);
            const [bimbinganList, setBimbinganList] = useState([]);
            const [upacaraList, setUpacaraList] = useState([]);
+           const [auditLog, setAuditLog] = useState([]);
+           const [jadwalPiket, setJadwalPiket] = useState([]);
+           const [waliKelasMap, setWaliKelasMap] = useState([]);
+           const [slowConnection, setSlowConnection] = useState(false);
 
            // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
            const roleConfig = ROLES[roleKey];
 
+           // Siapa boleh lihat detail per-kelas (Rekap Kelas & daftar pelanggaran):
+           // admin/BK/Kesiswaan (semua kelas) ATAU guru yang jadi wali kelas
+           // (kelasnya sendiri saja). Guru biasa non-wali-kelas: tidak dapat.
+           // Beda dengan canViewRanking (Statistik) yang TIDAK punya pengecualian
+           // wali kelas — itu sengaja, lihat statistik.js.
+           const canSeeClassDetail = roleConfig.canViewRanking || !!(user && user.waliKelas);
+
+           // Menu 'rekap' cuma statis untuk admin/bk_kesiswaan di config.js —
+           // untuk guru yang kebetulan wali kelas, ditambahkan di sini secara
+           // runtime (bukan per-role, tapi per-orang, tergantung user.waliKelas).
+           const effectiveMenus = roleKey === 'guru' && user && user.waliKelas && !roleConfig.menus.includes('rekap')
+               ? [...roleConfig.menus, 'rekap']
+               : roleConfig.menus;
+
+           // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
+           // — bedanya cuma pesan yang ditampilkan di layar login.
+           const clearSession = (errorMessage) => {
+               try {
+                   localStorage.removeItem('sigap_session_token');
+                   localStorage.removeItem('sigap_user');
+               } catch (e) {}
+               setUser(null);
+               setSessionToken(null);
+               setLoginError(errorMessage || '');
+           };
+
+           // Dipasang di setiap respons API (lewat .then(checkSession) setelah
+           // res.json()) — kalau server bilang sesi sudah tidak valid, langsung
+           // kembalikan ke layar login dengan pesan yang jelas, alih-alih
+           // diam-diam gagal (list kosong tanpa penjelasan).
+           const checkSession = (data) => {
+               if (data && data.status === 'error' && /sesi berakhir/i.test(data.message || '')) {
+                   clearSession(data.message || 'Sesi berakhir, silakan login ulang.');
+               }
+               return data;
+           };
+
            const fetchTeachers = () => {
                if (roleKey !== 'admin') return;
                fetch(`${API_URL}?action=getTeachers&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setTeachers(data.teachers); });
            };
 
            const fetchBimbingan = () => {
                if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
                fetch(`${API_URL}?action=getBimbingan&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setBimbinganList(data.bimbingan); });
            };
 
            const fetchUpacara = () => {
                fetch(`${API_URL}?action=getPelanggaranUpacara&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setUpacaraList(data.upacara); });
            };
 
            const fetchStudentsOnly = () => {
                fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setStudents(data.students); });
+           };
+
+           // On-demand, 1 siswa per panggilan — dipakai peringatan "sudah Nx
+           // tercatat" di modal Catat Pelanggaran untuk guru yang tidak lihat
+           // daftar pelanggaran lengkap. Cuma kirim angka (lihat Code.gs).
+           const fetchPelanggaranCount = (nisn) => {
+               return fetch(`${API_URL}?action=getPelanggaranCountForStudent&nisn=${encodeURIComponent(nisn)}&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => data.status === 'success' ? data.count : 0)
+                   .catch(() => 0);
+           };
+
+           const fetchAuditLog = () => {
+               if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
+               fetch(`${API_URL}?action=getAuditLog&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => { if (data.status === 'success') setAuditLog(data.auditLog); });
+           };
+
+           // Jadwal Piket & peta Wali Kelas — referensi kecil, sama untuk semua
+           // role non-OSIS, dipakai Dashboard (konteks harian) & Rekap Kelas.
+           const fetchJadwalPiket = () => {
+               fetch(`${API_URL}?action=getJadwalPiket&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => { if (data.status === 'success') setJadwalPiket(data.jadwal); });
+           };
+
+           const fetchWaliKelasMap = () => {
+               fetch(`${API_URL}?action=getWaliKelasMap&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => { if (data.status === 'success') setWaliKelasMap(data.waliKelasMap); });
            };
 
            useEffect(() => {
@@ -77,6 +163,8 @@
                        fetchUpacara();
                    } else {
                        fetchData();
+                       fetchJadwalPiket();
+                       fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
                    }
@@ -85,13 +173,17 @@
 
            const fetchData = () => {
                setLoadingLogs(true);
-               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
-               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => {
+               setSlowConnection(false);
+               const slowTimer = setTimeout(() => setSlowConnection(true), 3000);
+               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setStudents(data.students); });
+               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => {
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
-               }).catch(() => setLoadingLogs(false));
-               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setSuratList(data.surat); });
-               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
+                   clearTimeout(slowTimer);
+                   setSlowConnection(false);
+               }).catch(() => { setLoadingLogs(false); clearTimeout(slowTimer); setSlowConnection(false); });
+               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setSuratList(data.surat); });
+               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
            };
 
            const handleLogin = (e) => {
@@ -99,13 +191,24 @@
                setLoadingLogin(true);
                setLoginError('');
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingLogin(false);
-                       if (data.status === 'success') { setUser(data.user); setSessionToken(data.sessionToken); }
-                       else setLoginError(data.message || 'Password salah!');
+                       if (data.status === 'success') {
+                           setUser(data.user);
+                           setSessionToken(data.sessionToken);
+                           try {
+                               localStorage.setItem('sigap_session_token', data.sessionToken);
+                               localStorage.setItem('sigap_user', JSON.stringify(data.user));
+                           } catch (e) {}
+                       } else setLoginError(data.message || 'Password salah!');
                    })
                    .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+           };
+
+           const handleLogout = () => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', sessionToken: sessionToken, token: API_TOKEN }) }).catch(() => {});
+               clearSession();
            };
 
            const handleRecord = (type) => {
@@ -113,7 +216,7 @@
                const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') setAllLogs(prev => [newEntry, ...prev]);
                        else setToast('Gagal menyimpan, coba lagi.');
@@ -127,12 +230,12 @@
            const handleAddTeacher = (payload, callback) => {
                setLoadingTeacherAction(true);
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacher', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingTeacherAction(false);
                        if (data.status === 'success') {
-                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole }]);
-                           callback(true, 'Guru berhasil ditambahkan.');
+                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole, jabatan: payload.newJabatan || '', status: 'aktif', kelasWali: '' }]);
+                           callback(true, '✓ Guru berhasil ditambahkan.');
                        } else callback(false, data.message || 'Gagal menambah guru.');
                    })
                    .catch(() => { setLoadingTeacherAction(false); callback(false, 'Koneksi gagal, coba lagi.'); });
@@ -140,7 +243,7 @@
 
            const handleUpdatePassword = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') callback(true, 'Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
@@ -148,9 +251,73 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           const handleUpdateJabatan = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateJabatan', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, jabatan: payload.newJabatan } : t));
+                           callback(true, '✓ Jabatan berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah jabatan.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleToggleStatus = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'toggleTeacherStatus', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, status: data.newStatus } : t));
+                           callback(true, data.newStatus === 'nonaktif' ? '✓ Akun dinonaktifkan.' : '✓ Akun diaktifkan kembali.');
+                       } else callback(false, data.message || 'Gagal mengubah status akun.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleUpdateRole = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateRole', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, role: payload.newRole } : t));
+                           callback(true, '✓ Role berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah role.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleUpdateWaliKelas = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateWaliKelas', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, kelasWali: payload.newKelasWali } : t));
+                           fetchWaliKelasMap();
+                           callback(true, '✓ Kelas wali berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah kelas wali.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           // payload.schedule = [{ hari, guruId }, ...] — kirim seluruh jadwal
+           // seminggu sekaligus (bukan per-baris), lalu tarik ulang biar nama
+           // guru & urutan selalu sinkron dengan yang tersimpan di server.
+           const handleSetJadwalPiket = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'setJadwalPiket', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchJadwalPiket();
+                           callback(true, '✓ Jadwal piket berhasil disimpan.');
+                       } else callback(false, data.message || 'Gagal menyimpan jadwal piket.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleAddSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
@@ -163,7 +330,7 @@
 
            const handleDeleteSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSurat', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const month = parseInt(payload.month, 10);
@@ -180,7 +347,7 @@
 
            const handleAddPelanggaran = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
@@ -193,7 +360,7 @@
 
            const handleAddBimbingan = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') {
@@ -245,7 +412,7 @@
 
            const handleAddUpacara = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranUpacara', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, catatan: payload.catatan || '', logged_by: user.name };
@@ -262,7 +429,7 @@
                        <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                           <Header user={user} roleLabel={roleConfig.label} onLogout={() => { setUser(null); setSessionToken(null); }} fontScale={fontScale} onFontScaleChange={changeFontScale} />
+                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />
 
                            {toast && (
                                <div className="fixed bottom-24 inset-x-0 z-50 px-4">
@@ -273,31 +440,45 @@
                                </div>
                            )}
 
+                           {slowConnection && loadingLogs && (
+                               <div className="fixed top-16 inset-x-0 z-40 px-4">
+                                   <div className="max-w-2xl mx-auto bg-amber-50 text-amber-700 text-[11px] px-4 py-2 rounded-xl shadow-md border border-amber-200 text-center animate-pop">
+                                       Masih mengambil data... koneksi internet sedang lambat.
+                                   </div>
+                               </div>
+                           )}
+
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
-                               {activeTab === 'scan' && roleConfig.menus.includes('scan') && (
+                               {activeTab === 'scan' && effectiveMenus.includes('scan') && (
                                    <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} />
+                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} />
                                )}
-                               {activeTab === 'log' && roleConfig.menus.includes('log') && (
+                               {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab
                                        allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory}
                                        canManage={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} isAdmin={roleKey === 'admin'}
                                        onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
                                    />
                                )}
-                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
-                               {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} loading={loadingTeacherAction} />
+                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
+                               {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
+                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
-                               {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
-                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
+                               {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
+                                   <KelolaTab teachers={teachers} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
                                )}
-                               {activeTab === 'bimbingan' && roleConfig.menus.includes('bimbingan') && (
+                               {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
+                                   <AuditLogTab auditLog={auditLog} />
+                               )}
+                               {activeTab === 'pelanggaran' && effectiveMenus.includes('pelanggaran') && (
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} />
+                               )}
+                               {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />
                                )}
-                               {activeTab === 'upacara' && roleConfig.menus.includes('upacara') && (
+                               {activeTab === 'upacara' && effectiveMenus.includes('upacara') && (
                                    <UpacaraTab students={students} upacaraList={upacaraList} onAddUpacara={handleAddUpacara} isOsis={roleKey === 'osis'} />
                                )}
                            </div>
@@ -306,7 +487,7 @@
                                <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} />
                            )}
 
-                           <BottomNav menus={roleConfig.menus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
+                           <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
                        </div>
                    )}
                </div>

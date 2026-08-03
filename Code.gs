@@ -1,0 +1,797 @@
+// ===== Code.gs (Main / Router) =====
+// Titik masuk utama Web App: doPost dan doGet menangani semua permintaan
+// dari index.html. Logika keamanan (checkToken, sesi) ada di Auth.gs/Utils.gs.
+
+// ===== doPost =====
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+
+    if (!checkToken(data.token)) {
+      return jsonOut({ status: 'error', message: 'Unauthorized' });
+    }
+
+    var action = data.action;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // ---- Login ----
+    if (action === 'login') {
+      var hashedInput = hashPassword(data.password);
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+
+      var loggedInUser = null;
+      var isDisabled = false;
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][2]) === hashedInput) {
+          if (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') {
+            isDisabled = true;
+            break;
+          }
+          // Kolom G (index 6) = Kelas_Wali. Kosong kalau guru ini bukan wali kelas.
+          loggedInUser = { id: rows[i][0], name: rows[i][1], role: rows[i][3], jabatan: rows[i][4] || '', waliKelas: rows[i][6] || '' };
+          break;
+        }
+      }
+
+      if (isDisabled) {
+        return jsonOut({ status: 'error', message: 'Akun ini sudah dinonaktifkan. Hubungi admin.' });
+      }
+      if (loggedInUser) {
+        var sessionToken = createSession(loggedInUser);
+        logAudit(loggedInUser, 'Login', '');
+        return jsonOut({ status: 'success', user: loggedInUser, sessionToken: sessionToken });
+      }
+      return jsonOut({ status: 'error', message: 'Password salah!' });
+    }
+
+    // ---- Logout (dicatat ke Audit Log, sesi dihapus dari server) ----
+    if (action === 'logout') {
+      var sessionUserForLogout = getSessionUser(data.sessionToken);
+      if (sessionUserForLogout) {
+        logAudit(sessionUserForLogout, 'Logout', '');
+        CacheService.getScriptCache().remove('sess_' + data.sessionToken);
+      }
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Semua aksi di bawah ini WAJIB sesi valid ----
+    var sessionUser = getSessionUser(data.sessionToken);
+    if (!sessionUser) {
+      return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+    }
+
+    // ---- Catat keterlambatan (bukan untuk OSIS) ----
+    if (action === 'record') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = ss.getSheetByName('Log_Gerbang');
+      var rows = sheet.getDataRange().getValues();
+      var today = new Date();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][1]) === String(data.nisn) && isSameDayServer(new Date(rows[i][0]), today)) {
+          return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
+        }
+      }
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.type, sessionUser.name]);
+      CacheService.getScriptCache().remove('today_logs');
+      CacheService.getScriptCache().remove('today_data');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Tambah guru baru (admin only) ----
+    if (action === 'addTeacher') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menambah guru' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.newId)) {
+          return jsonOut({ status: 'error', message: 'ID sudah dipakai, gunakan ID lain' });
+        }
+      }
+      var hashed = hashPassword(data.newPassword);
+      sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '']);
+      logAudit(sessionUser, 'Tambah Guru', data.newName + ' (' + data.newId + ', role: ' + data.newRole + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Reset password (admin only) ----
+    if (action === 'updatePassword') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah password' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 3).setValue(hashPassword(data.newPassword));
+          targetName = rows[i][1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      logAudit(sessionUser, 'Reset Password', targetName + ' (' + data.targetId + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Ubah jabatan tampilan (admin only) — misal jadikan akun BK/Kesiswaan
+    // tampil sebagai "Kepala Sekolah" tanpa mengubah hak aksesnya ----
+    if (action === 'updateJabatan') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah jabatan' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 5).setValue(data.newJabatan || '');
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      logAudit(sessionUser, 'Ubah Jabatan', data.targetId + ' -> "' + (data.newJabatan || '(kosong)') + '"');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Ubah role seorang guru (admin only) — kolom D di Master_Guru.
+    // Ini yang dipakai kalau guru biasa juga merangkap BK/Kesiswaan, atau
+    // sebaliknya. Tidak menyentuh Jabatan/Kelas Wali, itu field terpisah. ----
+    if (action === 'updateRole') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah role' });
+      }
+      var validRoles = ['guru', 'bk_kesiswaan', 'osis', 'admin'];
+      if (validRoles.indexOf(data.newRole) === -1) {
+        return jsonOut({ status: 'error', message: 'Role tidak dikenali: ' + data.newRole });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 4).setValue(data.newRole);
+          targetName = rows[i][1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      logAudit(sessionUser, 'Ubah Role', targetName + ' (' + data.targetId + ') -> ' + data.newRole);
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Ubah/atur Kelas Wali seorang guru (admin only) — kolom G di
+    // Master_Guru. Kirim newKelasWali kosong ('') untuk melepas status wali
+    // kelas guru itu. Dipakai untuk Dashboard kontekstual & Rekap Kelas
+    // (Blueprint SIGAP v2, section V & VI). ----
+    if (action === 'updateWaliKelas') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah kelas wali' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 7).setValue(data.newKelasWali || '');
+          targetName = rows[i][1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      CacheService.getScriptCache().remove('wali_kelas_map');
+      logAudit(sessionUser, 'Ubah Kelas Wali', targetName + ' (' + data.targetId + ') -> "' + (data.newKelasWali || '(kosong)') + '"');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Nonaktifkan / aktifkan akun guru (admin only) ----
+    if (action === 'toggleTeacherStatus') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah status akun' });
+      }
+      if (String(data.targetId) === String(sessionUser.id)) {
+        return jsonOut({ status: 'error', message: 'Tidak bisa menonaktifkan akun sendiri.' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      var newStatus = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          var currentStatus = String(rows[i][5]).toLowerCase().trim();
+          newStatus = currentStatus === 'nonaktif' ? 'aktif' : 'nonaktif';
+          sheet.getRange(i + 1, 6).setValue(newStatus);
+          targetName = rows[i][1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      logAudit(sessionUser, newStatus === 'nonaktif' ? 'Nonaktifkan Akun' : 'Aktifkan Akun', targetName + ' (' + data.targetId + ')');
+      return jsonOut({ status: 'success', newStatus: newStatus });
+    }
+
+    // ---- Atur ulang seluruh Jadwal Piket mingguan sekaligus (admin only).
+    // data.schedule = [{ hari: 'Senin', guruId: 'G01' }, ...] — sheet ditulis
+    // ulang total (bukan edit baris satu-satu), lebih sederhana dan tidak ada
+    // risiko baris nyasar kalau urutan berubah. Pola mingguan tetap (tanpa
+    // pengecualian per tanggal) sesuai keputusan Blueprint SIGAP v2. ----
+    if (action === 'setJadwalPiket') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah jadwal piket' });
+      }
+      var validHari = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      var guruSheet = ss.getSheetByName('Master_Guru');
+      var guruRows = guruSheet.getDataRange().getValues();
+      var validGuruIds = {};
+      for (var i = 1; i < guruRows.length; i++) validGuruIds[String(guruRows[i][0])] = true;
+
+      var schedule = data.schedule || [];
+      for (var j = 0; j < schedule.length; j++) {
+        if (validHari.indexOf(schedule[j].hari) === -1) {
+          return jsonOut({ status: 'error', message: 'Hari tidak valid: ' + schedule[j].hari });
+        }
+        if (!validGuruIds[String(schedule[j].guruId)]) {
+          return jsonOut({ status: 'error', message: 'ID guru tidak ditemukan: ' + schedule[j].guruId });
+        }
+      }
+
+      var sheet = getOrCreateSheet(ss, 'Jadwal_Piket', ['Hari', 'Guru_ID']);
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+      }
+      if (schedule.length > 0) {
+        var values = schedule.map(function (s) { return [s.hari, s.guruId]; });
+        sheet.getRange(2, 1, values.length, 2).setValues(values);
+      }
+      CacheService.getScriptCache().remove('jadwal_piket');
+      logAudit(sessionUser, 'Ubah Jadwal Piket', schedule.length + ' penugasan disimpan');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Catat surat masuk (bukan untuk OSIS) ----
+    if (action === 'addSurat') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Surat_Masuk', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis', 'Keterangan', 'Foto_URL', 'Dicatat_Oleh']);
+      var existingRows = sheet.getDataRange().getValues();
+      var todaySurat = new Date();
+      for (var i = 1; i < existingRows.length; i++) {
+        if (String(existingRows[i][1]) === String(data.nisn) && isSameDayServer(new Date(existingRows[i][0]), todaySurat)) {
+          return jsonOut({ status: 'error', message: data.name + ' sudah punya catatan surat hari ini.' });
+        }
+      }
+      var fotoUrl = '';
+      if (data.fotoBase64) {
+        try {
+          fotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
+        } catch (err) {
+          fotoUrl = '';
+        }
+      }
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', fotoUrl, sessionUser.name]);
+      CacheService.getScriptCache().remove('surat_list');
+      CacheService.getScriptCache().remove('today_data');
+      return jsonOut({ status: 'success', fotoUrl: fotoUrl });
+    }
+
+    // ---- Hapus data surat per bulan/tahun (admin only) ----
+    if (action === 'deleteSurat') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus data surat' });
+      }
+      var sheet = ss.getSheetByName('Surat_Masuk');
+      if (!sheet) {
+        return jsonOut({ status: 'error', message: 'Belum ada data surat' });
+      }
+      var rows = sheet.getDataRange().getValues();
+      var month = parseInt(data.month, 10);
+      var year = parseInt(data.year, 10);
+      var deletedCount = 0;
+      for (var i = rows.length - 1; i >= 1; i--) {
+        var ts = new Date(rows[i][0]);
+        if ((ts.getMonth() + 1) === month && ts.getFullYear() === year) {
+          sheet.deleteRow(i + 1);
+          deletedCount++;
+        }
+      }
+      CacheService.getScriptCache().remove('surat_list');
+      CacheService.getScriptCache().remove('today_data');
+      logAudit(sessionUser, 'Hapus Data Surat', deletedCount + ' data (bulan ' + month + '/' + year + ')');
+      return jsonOut({ status: 'success', deletedCount: deletedCount });
+    }
+
+    // ---- Catat pelanggaran & sanksi (bukan untuk OSIS) ----
+    if (action === 'addPelanggaran') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
+      CacheService.getScriptCache().remove('pelanggaran_list_raw');
+      CacheService.getScriptCache().remove('today_data');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Catat perlu bimbingan khusus (bukan untuk OSIS; hanya admin/BK bisa lihat) ----
+    if (action === 'addBimbingan') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Bimbingan_Khusus', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Dicatat_Oleh']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.catatan, sessionUser.name]);
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Catat pelanggaran upacara (OSIS, BK/Kesiswaan, Admin) ----
+    if (action === 'addPelanggaranUpacara') {
+      if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses mencatat pelanggaran upacara.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Pelanggaran_Upacara', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
+      CacheService.getScriptCache().remove('pelanggaran_upacara_list');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Edit 1 catatan (Terlambat/Pelanggaran/Surat) — admin & BK/Kesiswaan.
+    // BK/Kesiswaan hanya bisa dalam 5 menit sejak catatan dibuat (asumsi salah
+    // input). Lewat 5 menit, hanya admin yang bisa ubah. Baris dicari lewat
+    // kombinasi NISN+Timestamp persis (bukan nomor baris), supaya tidak salah
+    // kalau baris lain sudah ke-geser. ----
+    if (action === 'editEntry') {
+      if (!isBkRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getSheetForCategory(ss, data.category);
+      if (!sheet) {
+        return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
+      }
+      var found = findRowByNisnTimestamp(sheet, data.nisn, data.timestamp);
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'Data tidak ditemukan (mungkin sudah diubah/dihapus pengguna lain).' });
+      }
+      if (!isAdminRole(sessionUser.role)) {
+        var elapsedMs = new Date().getTime() - new Date(found.timestamp).getTime();
+        if (elapsedMs > 5 * 60 * 1000) {
+          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — hanya admin yang bisa mengubah data ini.' });
+        }
+      }
+      var rowIndex = found.rowIndex;
+      if (data.category === 'terlambat') {
+        sheet.getRange(rowIndex, 5).setValue(data.type || '');
+      } else if (data.category === 'pelanggaran') {
+        sheet.getRange(rowIndex, 5).setValue(data.jenis_pelanggaran || '');
+        sheet.getRange(rowIndex, 6).setValue(data.sanksi || '');
+        sheet.getRange(rowIndex, 7).setValue(data.catatan || '');
+      } else if (data.category === 'surat') {
+        sheet.getRange(rowIndex, 5).setValue(data.jenis || '');
+        sheet.getRange(rowIndex, 6).setValue(data.keterangan || '');
+        if (data.fotoBase64) {
+          try {
+            var newFotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
+            sheet.getRange(rowIndex, 7).setValue(newFotoUrl);
+          } catch (err) {
+            // Upload foto baru gagal — field lain tetap tersimpan, foto lama dipertahankan
+          }
+        }
+      } else {
+        return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
+      }
+      clearCacheForCategory(data.category);
+      logAudit(sessionUser, 'Edit Data ' + data.category, data.name + ' (' + data.nisn + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Hapus 1 catatan — aturan waktu sama seperti edit ----
+    if (action === 'deleteEntry') {
+      if (!isBkRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sheet = getSheetForCategory(ss, data.category);
+      if (!sheet) {
+        return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
+      }
+      var found = findRowByNisnTimestamp(sheet, data.nisn, data.timestamp);
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'Data tidak ditemukan (mungkin sudah diubah/dihapus pengguna lain).' });
+      }
+      if (!isAdminRole(sessionUser.role)) {
+        var elapsedMs = new Date().getTime() - new Date(found.timestamp).getTime();
+        if (elapsedMs > 5 * 60 * 1000) {
+          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — hanya admin yang bisa menghapus data ini.' });
+        }
+      }
+      sheet.deleteRow(found.rowIndex);
+      clearCacheForCategory(data.category);
+      logAudit(sessionUser, 'Hapus Data ' + data.category, data.name + ' (' + data.nisn + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    return jsonOut({ status: 'error', message: 'Action tidak dikenali' });
+
+  } catch (error) {
+    return jsonOut({ status: 'error', message: error.toString() });
+  }
+}
+
+// ===== doGet =====
+
+function doGet(e) {
+  var token = e.parameter.token;
+  if (!checkToken(token)) {
+    return jsonOut({ status: 'error', message: 'Unauthorized' });
+  }
+
+  var action = e.parameter.action;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var cache = CacheService.getScriptCache();
+
+  // Status publik, tidak perlu sesi — dipakai untuk cek API hidup
+  if (!action) {
+    return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+  }
+
+  // Semua aksi GET lainnya WAJIB sesi valid
+  var sessionUser = getSessionUser(e.parameter.sessionToken);
+  if (!sessionUser) {
+    return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+  }
+
+  // ---- Daftar siswa — semua role termasuk OSIS boleh (perlu untuk cari nama).
+  // Cache 5 menit (bukan 6 jam seperti sebelumnya) — Master_Siswa sering diedit
+  // LANGSUNG di Sheet (tambah/pindah siswa) tanpa lewat aplikasi, jadi tidak ada
+  // aksi yang bisa membersihkan cache saat itu terjadi. 5 menit cukup pendek
+  // supaya perubahan manual di Sheet muncul sendiri tanpa admin perlu tindakan
+  // apa pun, tapi cukup panjang untuk tetap meringankan beban saat banyak guru
+  // login bersamaan (misal pagi hari). ----
+  if (action === 'getStudents') {
+    var cached = cache.get('students_list');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Master_Siswa');
+    var rows = sheet.getDataRange().getValues();
+    var students = [];
+    for (var i = 1; i < rows.length; i++) {
+      students.push({ nisn: rows[i][0], name: rows[i][1], class: rows[i][2] });
+    }
+    var result = JSON.stringify({ status: 'success', students: students });
+    cache.put('students_list', result, 300);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---- Data ringkas hari ini (Terlambat/Surat/Pelanggaran) + data buat
+  // banner "Siswa Sering Terlambat" — dipakai Beranda & Gerbang. JAUH lebih
+  // ringan daripada tarik seluruh sheet (lihat getRowsSince di Utils.gs):
+  // cuma 2 panggilan Sheets API per kategori, berapa pun banyak baris total.
+  // CATATAN: respons ini di-cache GLOBAL (60 detik, sama untuk semua orang)
+  // — jangan pernah taruh data yang beda per-pengguna (mis. status piket
+  // pemanggil) di sini. Konteks personal (piket/wali kelas) ada di
+  // getJadwalPiket/getWaliKelasMap yang dihitung terpisah di frontend. ----
+  if (action === 'getTodayData') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('today_data');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    var logSheet = ss.getSheetByName('Log_Gerbang');
+    var todayLateRaw = logSheet ? getRowsSince(logSheet, todayStart, 6) : [];
+    var todayLate = todayLateRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], type: r[4], logged_by: r[5] }; }).reverse();
+
+    var suratSheet = ss.getSheetByName('Surat_Masuk');
+    var todaySuratRaw = suratSheet ? getRowsSince(suratSheet, todayStart, 8) : [];
+    var todaySurat = todaySuratRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], jenis: r[4], keterangan: r[5], foto_url: r[6], logged_by: r[7] }; }).reverse();
+
+    var pelanggaranSheet = ss.getSheetByName('Pelanggaran');
+    var todayPelanggaranRaw = pelanggaranSheet ? getRowsSince(pelanggaranSheet, todayStart, 8) : [];
+    var todayPelanggaran = todayPelanggaranRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], jenis_pelanggaran: r[4], sanksi: r[5], catatan: r[6], logged_by: r[7] }; }).reverse();
+
+    var weekStart = startOfWeekServer(now);
+    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    var bannerCutoff = weekStart < monthStart ? weekStart : monthStart;
+    var lateForBannerRaw = logSheet ? getRowsSince(logSheet, bannerCutoff, 6) : [];
+    var lateForBanner = lateForBannerRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], type: r[4], logged_by: r[5] }; });
+
+    var result = JSON.stringify({ status: 'success', todayLate: todayLate, todaySurat: todaySurat, todayPelanggaran: todayPelanggaran, lateForBanner: lateForBanner });
+    cache.put('today_data', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---- Riwayat keterlambatan 1 siswa saja (untuk peringatan "sudah Nx
+  // terlambat" di form Catat Terlambat) — on-demand per siswa yang dipilih ----
+  if (action === 'getStudentLateHistory') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var logSheet = ss.getSheetByName('Log_Gerbang');
+    var history = logSheet ? getLateHistoryForStudent(logSheet, e.parameter.nisn) : [];
+    return jsonOut({ status: 'success', history: history });
+  }
+
+  // ---- Data umum (bukan untuk OSIS) — dipakai Riwayat & Statistik, di-fetch
+  // lazy oleh frontend (baru ditarik saat salah satu tab itu pertama dibuka) ----
+  if (action === 'getLogs') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('today_logs');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Log_Gerbang');
+    var rows = sheet.getDataRange().getValues();
+    var logs = [];
+    for (var i = 1; i < rows.length; i++) {
+      logs.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
+    }
+    logs.reverse();
+    var result = JSON.stringify({ status: 'success', logs: logs });
+    cache.put('today_logs', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getTeachers') {
+    if (!isAdminRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Master_Guru');
+    var rows = sheet.getDataRange().getValues();
+    var teachers = [];
+    for (var i = 1; i < rows.length; i++) {
+      // Kolom G (index 6) = Kelas_Wali, dipakai panel Kelola untuk atur wali kelas.
+      teachers.push({ id: rows[i][0], name: rows[i][1], role: rows[i][3], jabatan: rows[i][4] || '', status: (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') ? 'nonaktif' : 'aktif', kelasWali: rows[i][6] || '' });
+    }
+    return jsonOut({ status: 'success', teachers: teachers });
+  }
+
+  if (action === 'getSurat') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('surat_list');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Surat_Masuk');
+    var surat = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        surat.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+      }
+      surat.reverse();
+    }
+    var result = JSON.stringify({ status: 'success', surat: surat });
+    cache.put('surat_list', result, 60);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas lihat
+  // kelasnya sendiri, guru biasa (bukan wali kelas) lihat catatan yang DIA
+  // SENDIRI tulis (dicocokkan lewat nama pencatat) — bukan dikosongkan total.
+  // Tujuannya supaya guru tidak merasa "disembunyikan", tapi tetap tidak bisa
+  // menelusuri catatan siswa/kelas/guru lain. Data mentah (semua kelas)
+  // di-cache GLOBAL 60 detik seperti biasa — tapi hasil akhir yang dikirim ke
+  // browser difilter per-pengguna SETELAH diambil dari cache, supaya tidak
+  // ada versi "sudah difilter untuk orang lain" yang ke-cache lalu salah
+  // kirim ke pengguna berikutnya. ----
+  if (action === 'getPelanggaran') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var pelanggaran;
+    var cachedRaw = cache.get('pelanggaran_list_raw');
+    if (cachedRaw) {
+      pelanggaran = JSON.parse(cachedRaw);
+    } else {
+      var sheet = ss.getSheetByName('Pelanggaran');
+      pelanggaran = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          pelanggaran.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], sanksi: rows[i][5], catatan: rows[i][6], logged_by: rows[i][7] });
+        }
+        pelanggaran.reverse();
+      }
+      cache.put('pelanggaran_list_raw', JSON.stringify(pelanggaran), 60);
+    }
+    if (!isBkRole(sessionUser.role)) {
+      var myKelas = sessionUser.waliKelas || '';
+      if (myKelas) {
+        pelanggaran = pelanggaran.filter(function (p) { return sameClass(p.class, myKelas); });
+      } else {
+        pelanggaran = pelanggaran.filter(function (p) { return p.logged_by === sessionUser.name; });
+      }
+    }
+    return jsonOut({ status: 'success', pelanggaran: pelanggaran });
+  }
+
+  // ---- Hitung TOTAL pelanggaran seorang siswa (semua guru, bukan cuma yang
+  // login) — dipakai peringatan "sudah Nx tercatat" saat mencatat pelanggaran
+  // baru. Sengaja cuma kirim ANGKA, bukan daftar isinya (jenis/sanksi/siapa)
+  // — supaya guru biasa tetap dapat konteks penting tanpa bisa mengintip
+  // detail catatan siswa/guru lain lewat celah ini. Dipanggil on-demand per
+  // 1 siswa yang dipilih (pola sama seperti getStudentLateHistory), bukan
+  // agregat semua siswa sekaligus — kalau semua nisn dikirim jadi peta
+  // sekaligus, guru bisa susun ranking siswa paling bermasalah se-sekolah,
+  // justru itu yang mau dicegah. ----
+  if (action === 'getPelanggaranCountForStudent') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Pelanggaran');
+    var count = 0;
+    if (sheet) {
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        var nisnValues = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+        for (var i = 0; i < nisnValues.length; i++) {
+          if (String(nisnValues[i][0]) === String(e.parameter.nisn)) count++;
+        }
+      }
+    }
+    return jsonOut({ status: 'success', count: count });
+  }
+
+  // ---- Bimbingan Khusus (admin + BK/Kesiswaan only) ----
+  if (action === 'getBimbingan') {
+    if (!isBkRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Bimbingan_Khusus');
+    var bimbingan = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        bimbingan.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], catatan: rows[i][4], logged_by: rows[i][5] });
+      }
+      bimbingan.reverse();
+    }
+    return jsonOut({ status: 'success', bimbingan: bimbingan });
+  }
+
+  // ---- Pelanggaran Upacara — OSIS cuma lihat punya sendiri, BK/Admin lihat semua ----
+  if (action === 'getPelanggaranUpacara') {
+    if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
+      return jsonOut({ status: 'error', message: 'Unauthorized' });
+    }
+    var sheet = ss.getSheetByName('Pelanggaran_Upacara');
+    var upacara = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (isOsisRole(sessionUser.role) && String(rows[i][7]) !== String(sessionUser.id)) {
+          continue; // OSIS hanya lihat catatan yang mereka input sendiri
+        }
+        upacara.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], catatan: rows[i][5], logged_by: rows[i][6] });
+      }
+      upacara.reverse();
+    }
+    return jsonOut({ status: 'success', upacara: upacara });
+  }
+
+  // ---- Audit Log (admin + BK/Kesiswaan only) — jejak keamanan permanen ----
+  if (action === 'getAuditLog') {
+    if (!isBkRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Audit_Log');
+    var auditLog = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      var start = Math.max(1, rows.length - 300); // batasi 300 terbaru biar tidak berat
+      for (var i = start; i < rows.length; i++) {
+        auditLog.push({ timestamp: rows[i][0], name: rows[i][1], id: rows[i][2], action: rows[i][3], detail: rows[i][4] });
+      }
+      auditLog.reverse();
+    }
+    return jsonOut({ status: 'success', auditLog: auditLog });
+  }
+
+  // ---- Jadwal Piket mingguan (bukan untuk OSIS) — pola tetap per hari,
+  // sama untuk semua orang yang lihat, jadi aman di-cache lebih lama (1 jam).
+  // Frontend yang menentukan "hari ini" & "apakah saya piket" dari daftar ini
+  // (lihat helpers.js), bukan dihitung di sini, supaya cache tidak perlu
+  // dipecah per-pengguna atau per-hari. ----
+  if (action === 'getJadwalPiket') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('jadwal_piket');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Jadwal_Piket');
+    var guruMap = {};
+    var guruSheet = ss.getSheetByName('Master_Guru');
+    var guruRows = guruSheet.getDataRange().getValues();
+    for (var i = 1; i < guruRows.length; i++) guruMap[String(guruRows[i][0])] = guruRows[i][1];
+
+    var jadwal = [];
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var j = 1; j < rows.length; j++) {
+        if (!rows[j][0]) continue;
+        jadwal.push({ hari: rows[j][0], guruId: rows[j][1], guruName: guruMap[String(rows[j][1])] || '(guru tidak ditemukan)' });
+      }
+    }
+    var result = JSON.stringify({ status: 'success', jadwal: jadwal });
+    cache.put('jadwal_piket', result, 3600);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---- Peta Kelas -> Wali Kelas (bukan untuk OSIS) — dipakai Dashboard
+  // (ringkasan kelas perwalian) & Rekap Kelas. Sama untuk semua orang yang
+  // lihat, aman di-cache 1 jam. ----
+  if (action === 'getWaliKelasMap') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cached = cache.get('wali_kelas_map');
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheet = ss.getSheetByName('Master_Guru');
+    var rows = sheet.getDataRange().getValues();
+    var map = [];
+    for (var i = 1; i < rows.length; i++) {
+      var kelasWali = rows[i][6];
+      if (kelasWali) {
+        map.push({ class: kelasWali, waliKelasName: rows[i][1], waliKelasId: rows[i][0] });
+      }
+    }
+    var result = JSON.stringify({ status: 'success', waliKelasMap: map });
+    cache.put('wali_kelas_map', result, 3600);
+    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+}
+function debugBannerData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var logSheet = ss.getSheetByName('Log_Gerbang');
+
+  Logger.log('=== INFO DASAR ===');
+  Logger.log('Sheet ditemukan: ' + (logSheet ? 'YA' : 'TIDAK'));
+  if (!logSheet) return;
+  Logger.log('Jumlah baris terisi (termasuk header): ' + logSheet.getLastRow());
+
+  var now = new Date();
+  var weekStart = startOfWeekServer(now);
+  var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  var bannerCutoff = weekStart < monthStart ? weekStart : monthStart;
+
+  Logger.log('=== TANGGAL ===');
+  Logger.log('now: ' + now);
+  Logger.log('weekStart (Senin minggu ini): ' + weekStart);
+  Logger.log('monthStart (awal bulan ini): ' + monthStart);
+  Logger.log('bannerCutoff (yang dipakai): ' + bannerCutoff);
+
+  Logger.log('=== ISI KOLOM TIMESTAMP MENTAH (5 BARIS PERTAMA & TERAKHIR) ===');
+  var lastRow = logSheet.getLastRow();
+  if (lastRow > 1) {
+    var tsValues = logSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    Logger.log('Tipe data cell pertama: ' + (typeof tsValues[0][0]) + ' | isi: ' + tsValues[0][0]);
+    Logger.log('5 timestamp PERTAMA di sheet: ' + JSON.stringify(tsValues.slice(0, 5)));
+    Logger.log('5 timestamp TERAKHIR di sheet: ' + JSON.stringify(tsValues.slice(-5)));
+  }
+
+  Logger.log('=== HASIL getRowsSince() UNTUK BANNER ===');
+  var raw = getRowsSince(logSheet, bannerCutoff, 6);
+  Logger.log('Jumlah baris yang kembali: ' + raw.length);
+  Logger.log('Contoh isi (maks 10 baris): ' + JSON.stringify(raw.slice(0, 10)));
+
+  Logger.log('=== HASIL getRowsSince() UNTUK HARI INI (pembanding) ===');
+  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  var rawToday = getRowsSince(logSheet, todayStart, 6);
+  Logger.log('Jumlah baris hari ini: ' + rawToday.length);
+}

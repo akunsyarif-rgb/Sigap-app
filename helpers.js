@@ -11,6 +11,18 @@
            );
        }
 
+       // Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
+       // Kelas, dst.) — jadi rawan beda spasi/huruf besar-kecil ("XI IPA 1" vs
+       // "xi ipa 1 "). Dipakai di mana pun perlu MENCOCOKKAN kelas (Rekap Kelas,
+       // ringkasan kelas perwalian di Dashboard); untuk TAMPILAN tetap pakai nilai
+       // aslinya, cuma perbandingannya yang ditoleransi.
+       function normalizeClass(c) {
+           return String(c || '').trim().toLowerCase().replace(/\s+/g, ' ');
+       }
+       function sameClass(a, b) {
+           return normalizeClass(a) === normalizeClass(b);
+       }
+
        function parseTimestamp(ts) {
            if (!ts) return new Date();
            if (typeof ts === 'string') {
