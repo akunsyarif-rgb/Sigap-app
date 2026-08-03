@@ -256,12 +256,20 @@
                        ))}
                    </div>
 
+                   {/* Periode aktif SELALU kelihatan di sini, termasuk tanggal spesifik dari
+                       drawer Filter — supaya tidak ada state filter yang "tersembunyi". */}
                    <div className="flex gap-1.5 overflow-x-auto pb-1">
                        {periods.map(p => (
                            <button key={p.key} onClick={() => { setPeriod(p.key); setCustomDate(''); }} className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-navy text-white' : 'bg-white text-slate-500 border border-slate-200'}`}>
                                {p.label}
                            </button>
                        ))}
+                       {period === 'custom' && customDate && (
+                           <span className="px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap bg-navy text-white flex items-center gap-1.5">
+                               {new Date(customDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                               <button onClick={() => { setPeriod('semua'); setCustomDate(''); }} className="text-white/70 hover:text-white">×</button>
+                           </span>
+                       )}
                    </div>
 
                    <div className="flex gap-2">
@@ -273,12 +281,6 @@
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
                            {(filterClass || filterSub) && <span>•</span>}
                        </button>
-                   </div>
-
-                   {/* Default tetap urut waktu terbaru — Kelas->Nama A-Z cuma opsi tambahan */}
-                   <div className="flex gap-1.5 bg-white border border-slate-200 rounded-xl p-1 w-fit">
-                       <button onClick={() => setSortMode('waktu')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
-                       <button onClick={() => setSortMode('nama')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>Kelas &amp; Nama A-Z</button>
                    </div>
 
                    {showFilters && (
@@ -301,8 +303,15 @@
                                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Tanggal Spesifik</label>
                                <input type="date" value={customDate} onChange={(e) => { setCustomDate(e.target.value); setPeriod('custom'); }} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                            </div>
-                           {(filterClass || filterSub || period !== 'semua') && (
-                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); }} className="text-[10px] text-crimson font-semibold">Reset semua filter</button>
+                           <div className="pt-1 border-t border-slate-100">
+                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Urutkan Hasil</label>
+                               <div className="flex gap-1.5 bg-slate-100 rounded-xl p-1 w-fit">
+                                   <button onClick={() => setSortMode('waktu')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'waktu' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Terbaru</button>
+                                   <button onClick={() => setSortMode('nama')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'nama' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Kelas &amp; Nama A-Z</button>
+                               </div>
+                           </div>
+                           {(filterClass || filterSub || period !== 'semua' || sortMode !== 'waktu') && (
+                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setSortMode('waktu'); }} className="text-[10px] text-crimson font-semibold">Reset semua</button>
                            )}
                        </div>
                    )}
