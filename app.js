@@ -122,6 +122,16 @@
                    .then(data => { if (data.status === 'success') setStudents(data.students); });
            };
 
+           // On-demand, 1 siswa per panggilan — dipakai peringatan "sudah Nx
+           // tercatat" di modal Catat Pelanggaran untuk guru yang tidak lihat
+           // daftar pelanggaran lengkap. Cuma kirim angka (lihat Code.gs).
+           const fetchPelanggaranCount = (nisn) => {
+               return fetch(`${API_URL}?action=getPelanggaranCountForStudent&nisn=${encodeURIComponent(nisn)}&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => data.status === 'success' ? data.count : 0)
+                   .catch(() => 0);
+           };
+
            const fetchAuditLog = () => {
                if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
                fetch(`${API_URL}?action=getAuditLog&token=${API_TOKEN}&sessionToken=${sessionToken}`)
@@ -420,7 +430,7 @@
                                    <AuditLogTab auditLog={auditLog} />
                                )}
                                {activeTab === 'pelanggaran' && effectiveMenus.includes('pelanggaran') && (
-                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} />
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} />
                                )}
                                {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />

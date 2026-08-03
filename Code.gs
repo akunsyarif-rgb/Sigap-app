@@ -587,12 +587,15 @@ function doGet(e) {
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas cuma lihat
-  // kelasnya sendiri, guru biasa (bukan wali kelas) tidak dapat lihat sama
-  // sekali. Data mentah (semua kelas) di-cache GLOBAL 60 detik seperti biasa
-  // — tapi hasil akhir yang dikirim ke browser difilter per-pengguna SETELAH
-  // diambil dari cache, supaya tidak ada versi "sudah difilter untuk orang
-  // lain" yang ke-cache lalu salah kirim ke pengguna berikutnya. ----
+  // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas lihat
+  // kelasnya sendiri, guru biasa (bukan wali kelas) lihat catatan yang DIA
+  // SENDIRI tulis (dicocokkan lewat nama pencatat) — bukan dikosongkan total.
+  // Tujuannya supaya guru tidak merasa "disembunyikan", tapi tetap tidak bisa
+  // menelusuri catatan siswa/kelas/guru lain. Data mentah (semua kelas)
+  // di-cache GLOBAL 60 detik seperti biasa — tapi hasil akhir yang dikirim ke
+  // browser difilter per-pengguna SETELAH diambil dari cache, supaya tidak
+  // ada versi "sudah difilter untuk orang lain" yang ke-cache lalu salah
+  // kirim ke pengguna berikutnya. ----
   if (action === 'getPelanggaran') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var pelanggaran;
@@ -613,9 +616,38 @@ function doGet(e) {
     }
     if (!isBkRole(sessionUser.role)) {
       var myKelas = sessionUser.waliKelas || '';
-      pelanggaran = myKelas ? pelanggaran.filter(function (p) { return p.class === myKelas; }) : [];
+      if (myKelas) {
+        pelanggaran = pelanggaran.filter(function (p) { return p.class === myKelas; });
+      } else {
+        pelanggaran = pelanggaran.filter(function (p) { return p.logged_by === sessionUser.name; });
+      }
     }
     return jsonOut({ status: 'success', pelanggaran: pelanggaran });
+  }
+
+  // ---- Hitung TOTAL pelanggaran seorang siswa (semua guru, bukan cuma yang
+  // login) — dipakai peringatan "sudah Nx tercatat" saat mencatat pelanggaran
+  // baru. Sengaja cuma kirim ANGKA, bukan daftar isinya (jenis/sanksi/siapa)
+  // — supaya guru biasa tetap dapat konteks penting tanpa bisa mengintip
+  // detail catatan siswa/guru lain lewat celah ini. Dipanggil on-demand per
+  // 1 siswa yang dipilih (pola sama seperti getStudentLateHistory), bukan
+  // agregat semua siswa sekaligus — kalau semua nisn dikirim jadi peta
+  // sekaligus, guru bisa susun ranking siswa paling bermasalah se-sekolah,
+  // justru itu yang mau dicegah. ----
+  if (action === 'getPelanggaranCountForStudent') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var sheet = ss.getSheetByName('Pelanggaran');
+    var count = 0;
+    if (sheet) {
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        var nisnValues = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+        for (var i = 0; i < nisnValues.length; i++) {
+          if (String(nisnValues[i][0]) === String(e.parameter.nisn)) count++;
+        }
+      }
+    }
+    return jsonOut({ status: 'success', count: count });
   }
 
   // ---- Bimbingan Khusus (admin + BK/Kesiswaan only) ----
