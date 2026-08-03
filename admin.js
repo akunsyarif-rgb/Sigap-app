@@ -11,7 +11,12 @@
            { value: 'admin', label: 'Admin' },
        ];
 
-       function KelolaTab({ teachers, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
+           // Dropdown, bukan ketik manual — supaya nama kelas yang dipilih SELALU
+           // persis sama dengan Master_Siswa, tidak ada typo yang bikin Rekap
+           // Kelas/laporan wali kelas gagal mencocokkan data (lihat diskusi bug
+           // "wali kelas baru tidak lihat laporan kelasnya").
+           const kelasOptions = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
            const [newId, setNewId] = useState('');
            const [newName, setNewName] = useState('');
            const [newPassword, setNewPassword] = useState('');
@@ -255,7 +260,10 @@
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Atur Wali Kelas</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{waliKelasTarget.name}</div>
                                </div>
-                               <input type="text" value={waliKelasInput} onChange={(e) => setWaliKelasInput(e.target.value)} placeholder="Contoh: XI B — kosongkan untuk lepas status wali kelas" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <select value={waliKelasInput} onChange={(e) => setWaliKelasInput(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                   <option value="">Tidak ada (lepas status wali kelas)</option>
+                                   {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                               </select>
                                <button onClick={submitWaliKelas} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Wali Kelas</button>
                                <button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
                            </div>
