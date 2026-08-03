@@ -13,11 +13,19 @@
 
        // Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
        // Kelas, dst.) — jadi rawan beda spasi/huruf besar-kecil ("XI IPA 1" vs
-       // "xi ipa 1 "). Dipakai di mana pun perlu MENCOCOKKAN kelas (Rekap Kelas,
-       // ringkasan kelas perwalian di Dashboard); untuk TAMPILAN tetap pakai nilai
-       // aslinya, cuma perbandingannya yang ditoleransi.
+       // "xi ipa 1 "), DAN rawan beda format sama sekali antara catatan lama vs
+       // Master_Siswa yang sudah diubah (mis. catatan lama "XI A" sementara
+       // Master_Siswa sekarang "XI.A (KESEHATAN I)" setelah nama kelas ditambah
+       // keterangan peminatan). Keterangan dalam kurung & tanda titik/strip
+       // dibuang dulu supaya keduanya cocok jadi "xi a". Dipakai di mana pun perlu
+       // MENCOCOKKAN kelas (Rekap Kelas, ringkasan kelas perwalian di Dashboard);
+       // untuk TAMPILAN tetap pakai nilai aslinya, cuma perbandingannya yang
+       // ditoleransi.
        function normalizeClass(c) {
-           return String(c || '').trim().toLowerCase().replace(/\s+/g, ' ');
+           return String(c || '')
+               .replace(/\([^)]*\)/g, '')
+               .replace(/[.\-]/g, ' ')
+               .trim().toLowerCase().replace(/\s+/g, ' ');
        }
        function sameClass(a, b) {
            return normalizeClass(a) === normalizeClass(b);
