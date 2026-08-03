@@ -65,6 +65,8 @@
            const [blockMsg, setBlockMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
            const fileInputRef = useRef(null);
+           // Default tetap kronologis — Nama A-Z cuma opsi tambahan (Blueprint SIGAP v2, section VIII)
+           const [suratSortMode, setSuratSortMode] = useState('waktu');
 
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -233,9 +235,15 @@
                                </div>
                            )}
 
-                           <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{suratList.length} catatan surat</h3>
+                           <div className="flex items-center justify-between">
+                               <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{suratList.length} catatan surat</h3>
+                               <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
+                                   <button onClick={() => setSuratSortMode('waktu')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${suratSortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
+                                   <button onClick={() => setSuratSortMode('nama')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${suratSortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>A-Z</button>
+                               </div>
+                           </div>
                            <div className="space-y-2.5">
-                               {suratList.slice(0, 30).map((s, idx) => {
+                               {[...suratList].sort((a, b) => suratSortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).slice(0, 30).map((s, idx) => {
                                    const dt = parseTimestamp(s.timestamp);
                                    return (
                                        <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1.5">

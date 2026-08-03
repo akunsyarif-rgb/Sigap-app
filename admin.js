@@ -2,16 +2,18 @@
 // Panel Kelola Guru (khusus Admin): tambah guru baru, reset password, ubah
 // jabatan tampilan. Juga berisi AuditLogTab (khusus Admin/BK-Kesiswaan).
 
-       function KelolaTab({ teachers, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, loading }) {
+       function KelolaTab({ teachers, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
            const [newId, setNewId] = useState('');
            const [newName, setNewName] = useState('');
            const [newPassword, setNewPassword] = useState('');
-           const [newRole, setNewRole] = useState('guru_piket');
+           const [newRole, setNewRole] = useState('guru');
            const [newJabatan, setNewJabatan] = useState('');
            const [resetTarget, setResetTarget] = useState(null);
            const [resetPassword, setResetPassword] = useState('');
            const [jabatanTarget, setJabatanTarget] = useState(null);
            const [jabatanInput, setJabatanInput] = useState('');
+           const [waliKelasTarget, setWaliKelasTarget] = useState(null);
+           const [waliKelasInput, setWaliKelasInput] = useState('');
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
 
@@ -26,7 +28,7 @@
                if (!newId.trim() || !newName.trim() || !newPassword.trim()) return;
                onAddTeacher({ newId: newId.trim(), newName: newName.trim(), newPassword: newPassword.trim(), newRole, newJabatan: newJabatan.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru_piket'); setNewJabatan(''); }
+                   if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru'); setNewJabatan(''); }
                });
            };
 
@@ -43,6 +45,48 @@
                onUpdateJabatan({ targetId: jabatanTarget.id, newJabatan: jabatanInput.trim() }, (ok, text) => {
                    showMsg(ok, text);
                    setJabatanTarget(null); setJabatanInput('');
+               });
+           };
+
+           const submitWaliKelas = () => {
+               if (!waliKelasTarget) return;
+               onUpdateWaliKelas({ targetId: waliKelasTarget.id, newKelasWali: waliKelasInput.trim() }, (ok, text) => {
+                   showMsg(ok, text);
+                   setWaliKelasTarget(null); setWaliKelasInput('');
+               });
+           };
+
+           // ===== Jadwal Piket mingguan (pola tetap, tanpa pengecualian per
+           // tanggal — Blueprint SIGAP v2 memilih ini supaya tetap sederhana) =====
+           const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+           const [jadwalDraft, setJadwalDraft] = useState(() => jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
+           const [jadwalDirty, setJadwalDirty] = useState(false);
+           const [pickHari, setPickHari] = useState('Senin');
+           const [pickGuru, setPickGuru] = useState('');
+
+           useEffect(() => {
+               if (!jadwalDirty) setJadwalDraft(jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
+           }, [jadwalPiket]);
+
+           const guruName = (id) => { const t = teachers.find(t => String(t.id) === String(id)); return t ? t.name : id; };
+
+           const addJadwalEntry = () => {
+               if (!pickGuru) return;
+               if (jadwalDraft.some(j => j.hari === pickHari && String(j.guruId) === String(pickGuru))) return;
+               setJadwalDraft(prev => [...prev, { hari: pickHari, guruId: pickGuru }]);
+               setJadwalDirty(true);
+               setPickGuru('');
+           };
+
+           const removeJadwalEntry = (hari, guruId) => {
+               setJadwalDraft(prev => prev.filter(j => !(j.hari === hari && String(j.guruId) === String(guruId))));
+               setJadwalDirty(true);
+           };
+
+           const submitJadwal = () => {
+               onSetJadwalPiket({ schedule: jadwalDraft }, (ok, text) => {
+                   showMsg(ok, text);
+                   if (ok) setJadwalDirty(false);
                });
            };
 
@@ -86,11 +130,12 @@
                                                {t.name}
                                                {t.status === 'nonaktif' && <span className="text-[9px] bg-crimson/10 text-crimson px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">NONAKTIF</span>}
                                            </div>
-                                           <div className="text-[10px] text-slate-400">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}</div>
+                                           <div className="text-[10px] text-slate-400">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}{t.kelasWali && ` • Wali ${t.kelasWali}`}</div>
                                        </div>
                                    </div>
                                    <div className="flex gap-1.5 flex-wrap">
                                        <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
+                                       <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Kelas Wali</button>
                                        <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
                                        <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                            {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
@@ -99,6 +144,45 @@
                                </div>
                            ))}
                        </div>
+                   </div>
+
+                   <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                       <h3 className="text-xs font-display font-bold text-slate-800">Jadwal Piket Mingguan</h3>
+                       <p className="text-[10px] text-slate-400 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
+
+                       {HARI_LIST.map(hari => {
+                           const entries = jadwalDraft.filter(j => j.hari === hari);
+                           return (
+                               <div key={hari} className="bg-slate-50 rounded-xl p-3 space-y-1.5">
+                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{hari}</div>
+                                   {entries.length > 0 ? (
+                                       <div className="flex flex-wrap gap-1.5">
+                                           {entries.map((j, i) => (
+                                               <span key={i} className="text-[10px] font-semibold bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                                                   {guruName(j.guruId)}
+                                                   <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} className="text-crimson font-bold">×</button>
+                                               </span>
+                                           ))}
+                                       </div>
+                                   ) : (
+                                       <div className="text-[10px] text-slate-400">Belum ada guru piket.</div>
+                                   )}
+                               </div>
+                           );
+                       })}
+
+                       <div className="flex gap-2 pt-1">
+                           <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                               {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
+                           </select>
+                           <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                               <option value="">Pilih guru...</option>
+                               {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                           </select>
+                           <button onClick={addJadwalEntry} disabled={!pickGuru} className="bg-slate-100 border border-slate-300 text-slate-600 px-3 rounded-xl text-xs font-bold disabled:opacity-40">Tambah</button>
+                       </div>
+
+                       <button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Jadwal Piket</button>
                    </div>
 
                    {resetTarget && (
@@ -126,6 +210,20 @@
                                <input type="text" value={jabatanInput} onChange={(e) => setJabatanInput(e.target.value)} placeholder="Kosongkan untuk label default" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                <button onClick={submitJabatan} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Jabatan</button>
                                <button onClick={() => { setJabatanTarget(null); setJabatanInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
+                   {waliKelasTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Atur Kelas Wali</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{waliKelasTarget.name}</div>
+                               </div>
+                               <input type="text" value={waliKelasInput} onChange={(e) => setWaliKelasInput(e.target.value)} placeholder="Contoh: XI B — kosongkan untuk lepas status wali kelas" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <button onClick={submitWaliKelas} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Kelas Wali</button>
+                               <button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
                            </div>
                        </div>
                    )}

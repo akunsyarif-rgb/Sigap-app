@@ -38,6 +38,8 @@
            const [bimbinganList, setBimbinganList] = useState([]);
            const [upacaraList, setUpacaraList] = useState([]);
            const [auditLog, setAuditLog] = useState([]);
+           const [jadwalPiket, setJadwalPiket] = useState([]);
+           const [waliKelasMap, setWaliKelasMap] = useState([]);
 
            // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
@@ -76,6 +78,20 @@
                    .then(data => { if (data.status === 'success') setAuditLog(data.auditLog); });
            };
 
+           // Jadwal Piket & peta Wali Kelas — referensi kecil, sama untuk semua
+           // role non-OSIS, dipakai Dashboard (konteks harian) & Rekap Kelas.
+           const fetchJadwalPiket = () => {
+               fetch(`${API_URL}?action=getJadwalPiket&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json())
+                   .then(data => { if (data.status === 'success') setJadwalPiket(data.jadwal); });
+           };
+
+           const fetchWaliKelasMap = () => {
+               fetch(`${API_URL}?action=getWaliKelasMap&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json())
+                   .then(data => { if (data.status === 'success') setWaliKelasMap(data.waliKelasMap); });
+           };
+
            useEffect(() => {
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
@@ -86,6 +102,8 @@
                        fetchUpacara();
                    } else {
                        fetchData();
+                       fetchJadwalPiket();
+                       fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
                    }
@@ -150,7 +168,7 @@
                    .then(data => {
                        setLoadingTeacherAction(false);
                        if (data.status === 'success') {
-                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole }]);
+                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole, jabatan: payload.newJabatan || '', status: 'aktif', kelasWali: '' }]);
                            callback(true, '✓ Guru berhasil ditambahkan.');
                        } else callback(false, data.message || 'Gagal menambah guru.');
                    })
@@ -187,6 +205,34 @@
                            setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, status: data.newStatus } : t));
                            callback(true, data.newStatus === 'nonaktif' ? '✓ Akun dinonaktifkan.' : '✓ Akun diaktifkan kembali.');
                        } else callback(false, data.message || 'Gagal mengubah status akun.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleUpdateWaliKelas = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateWaliKelas', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, kelasWali: payload.newKelasWali } : t));
+                           fetchWaliKelasMap();
+                           callback(true, '✓ Kelas wali berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah kelas wali.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           // payload.schedule = [{ hari, guruId }, ...] — kirim seluruh jadwal
+           // seminggu sekaligus (bukan per-baris), lalu tarik ulang biar nama
+           // guru & urutan selalu sinkron dengan yang tersimpan di server.
+           const handleSetJadwalPiket = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'setJadwalPiket', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchJadwalPiket();
+                           callback(true, '✓ Jadwal piket berhasil disimpan.');
+                       } else callback(false, data.message || 'Gagal menyimpan jadwal piket.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -292,12 +338,15 @@
                                    <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} onRefresh={fetchData} loading={loadingLogs} />
+                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} />
                                )}
                                {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
-                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} />}
+                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
+                               {activeTab === 'rekap' && roleConfig.menus.includes('rekap') && (
+                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} waliKelasMap={waliKelasMap} />
+                               )}
                                {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && roleConfig.menus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />

@@ -42,7 +42,16 @@
            );
        }
 
-       function DashboardTab({ allLogs, pelanggaranList, suratList, onRefresh, loading }) {
+       // Sapaan sesuai jam — bagian pertama Dashboard (Blueprint SIGAP v2, section III ①)
+       function sapaanWaktu() {
+           const h = new Date().getHours();
+           if (h < 11) return 'Selamat Pagi';
+           if (h < 15) return 'Selamat Siang';
+           if (h < 18) return 'Selamat Sore';
+           return 'Selamat Malam';
+       }
+
+       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading }) {
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -58,19 +67,67 @@
            // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu tindak lanjut BK
            const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
 
+           // ② Assignment Hari Ini — piket (dari Jadwal_Piket) & wali kelas (dari sesi login).
+           // Nama hari dihitung dari HARI_PIKET (config.js), bukan locale API, supaya
+           // tidak tergantung setting browser/OS pengguna.
+           const hariIni = getHariIni();
+           const piketHariIni = jadwalPiket.filter(j => j.hari === hariIni);
+           const isPiketToday = piketHariIni.some(j => String(j.guruId) === String(user.id));
+           const waliKelas = user.waliKelas || '';
+
+           // ⑥ Ringkasan kelas perwalian — dihitung dari data yang sudah di-fetch,
+           // difilter ke kelas perwalian guru ini saja, minggu berjalan.
+           const weekStart = startOfWeek(now);
+           let kelasPerwalian = null;
+           if (waliKelas) {
+               const lateWeek = allLogs.filter(l => l.class === waliKelas && parseTimestamp(l.timestamp) >= weekStart);
+               const pelanggaranWeek = pelanggaranList.filter(p => p.class === waliKelas && parseTimestamp(p.timestamp) >= weekStart);
+               const bermasalah = {};
+               lateWeek.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
+               pelanggaranWeek.forEach(p => { bermasalah[p.nisn] = bermasalah[p.nisn] || { nisn: p.nisn, name: p.name }; });
+               kelasPerwalian = {
+                   jumlahSiswaBermasalah: Object.keys(bermasalah).length,
+                   daftarSiswa: Object.values(bermasalah),
+               };
+           }
+
            return (
                <div className="space-y-5 animate-rise">
+                   {/* ① Sapaan */}
                    <div className="flex justify-between items-end">
-                       <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Ringkasan Hari Ini</h2>
+                       <div>
+                           <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{sapaanWaktu()}</h2>
+                           <div className="font-display text-lg font-extrabold text-slate-900">{user.name.split(' ')[0]}</div>
+                       </div>
                        <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md">Refresh</button>
                    </div>
 
+                   {/* ② Assignment Hari Ini */}
+                   {(piketHariIni.length > 0 || waliKelas) && (
+                       <div className={`rounded-2xl p-4 space-y-2 border ${isPiketToday ? 'bg-sky-dim/15 border-sky-dim/40' : 'bg-white border-slate-200'}`}>
+                           {piketHariIni.length > 0 && (
+                               <div>
+                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">👮 Guru Piket Hari Ini ({hariIni})</div>
+                                   <div className="text-xs text-slate-700 font-medium">{piketHariIni.map(j => j.guruName).join(', ')}</div>
+                                   {isPiketToday && <div className="text-[10px] text-sky-dim font-bold mt-1">Anda piket hari ini</div>}
+                               </div>
+                           )}
+                           {waliKelas && (
+                               <div className={piketHariIni.length > 0 ? 'pt-2 border-t border-slate-200/70' : ''}>
+                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">👨‍🏫 Wali Kelas {waliKelas}</div>
+                               </div>
+                           )}
+                       </div>
+                   )}
+
+                   {/* ③ Ringkasan Hari Ini */}
                    <div className="grid grid-cols-3 gap-2.5">
                        <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" />
                        <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
 
+                   {/* ④ Perlu Perhatian */}
                    {frequentLatecomers.length > 0 && (
                        <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-4 space-y-2">
                            <div className="flex items-center gap-2">
@@ -89,6 +146,7 @@
                        </div>
                    )}
 
+                   {/* ⑤ Aktivitas Hari Ini */}
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
                    {loading ? (
@@ -102,6 +160,24 @@
                    )}
 
                    <p className="text-[11px] text-slate-400 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+
+                   {/* ⑥ Ringkasan kelas perwalian */}
+                   {kelasPerwalian && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kelas Perwalian {waliKelas} — Minggu Ini</h3>
+                           {kelasPerwalian.jumlahSiswaBermasalah > 0 ? (
+                               <div className="space-y-1.5">
+                                   <div className="text-xs text-slate-600">{kelasPerwalian.jumlahSiswaBermasalah} siswa perlu perhatian minggu ini:</div>
+                                   {kelasPerwalian.daftarSiswa.slice(0, 5).map((s, idx) => (
+                                       <div key={idx} className="text-[11px] text-slate-700 font-medium">{s.name}</div>
+                                   ))}
+                                   {kelasPerwalian.daftarSiswa.length > 5 && <p className="text-[10px] text-slate-500">+{kelasPerwalian.daftarSiswa.length - 5} siswa lainnya</p>}
+                               </div>
+                           ) : (
+                               <div className="text-xs text-slate-400">Belum ada siswa bermasalah minggu ini. 🎉</div>
+                           )}
+                       </div>
+                   )}
                </div>
            );
        }
@@ -115,6 +191,9 @@
            const [search, setSearch] = useState('');
            const [expandedStudent, setExpandedStudent] = useState(null);
            const [showFilters, setShowFilters] = useState(false);
+           // Default tetap kronologis (waktu terbaru dulu) — urutan Kelas->Nama A-Z
+           // cuma opsi tambahan (Blueprint SIGAP v2 section VIII), bukan pengganti default.
+           const [sortMode, setSortMode] = useState('waktu');
 
            const periods = [
                { key: 'semua', label: 'Semua' },
@@ -158,7 +237,14 @@
                if (filterSub && l[activeCat.subField] !== filterSub) return false;
                if (search.trim() && !l.name.toLowerCase().includes(search.toLowerCase()) && !(l.nisn && l.nisn.toString().includes(search.trim()))) return false;
                return true;
-           }).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
+           }).sort((a, b) => {
+               if (sortMode === 'nama') {
+                   const kelasCompare = String(a.class).localeCompare(String(b.class));
+                   if (kelasCompare !== 0) return kelasCompare;
+                   return String(a.name).localeCompare(String(b.name));
+               }
+               return parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp);
+           });
 
            const activeFilterCount = [filterClass, filterSub, period !== 'semua' ? 'x' : ''].filter(Boolean).length;
 
@@ -187,6 +273,12 @@
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
                            {(filterClass || filterSub) && <span>•</span>}
                        </button>
+                   </div>
+
+                   {/* Default tetap urut waktu terbaru — Kelas->Nama A-Z cuma opsi tambahan */}
+                   <div className="flex gap-1.5 bg-white border border-slate-200 rounded-xl p-1 w-fit">
+                       <button onClick={() => setSortMode('waktu')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
+                       <button onClick={() => setSortMode('nama')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>Kelas &amp; Nama A-Z</button>
                    </div>
 
                    {showFilters && (

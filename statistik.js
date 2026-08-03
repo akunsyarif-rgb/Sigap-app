@@ -1,10 +1,14 @@
 // ===== statistik.js =====
 // Tab Statistik: tren per kategori & periode, top kelas/jenis, ekspor.
 
-       function StatsTab({ allLogs, pelanggaranList, suratList, canExport }) {
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
            const [freqWindow, setFreqWindow] = useState('1minggu');
+           // Mode Ranking (urut jumlah kasus terbanyak) khusus BK/Kesiswaan & Admin.
+           // Guru cuma dapat mode Per Kelas (urut A-Z) — lihat config.js canViewRanking
+           // untuk alasan pembatasannya. (Blueprint SIGAP v2, section VII & VIII)
+           const [kelasMode, setKelasMode] = useState(canViewRanking ? 'ranking' : 'perkelas');
 
            const categories = [
                { key: 'terlambat', label: 'Terlambat', data: allLogs, subField: 'type', subLabel: 'Alasan' },
@@ -79,9 +83,22 @@
                    </div>
 
                    <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Rekap per Kelas (Periode Ini)</h3>
+                       <div className="flex items-center justify-between mb-3">
+                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rekap per Kelas (Periode Ini)</h3>
+                           {canViewRanking && (
+                               <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+                                   <button onClick={() => setKelasMode('ranking')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'ranking' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Ranking</button>
+                                   <button onClick={() => setKelasMode('perkelas')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'perkelas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>A-Z</button>
+                               </div>
+                           )}
+                       </div>
                        {(() => {
-                           const perKelas = topN(periodData, l => l.class, 999); // semua kelas, bukan cuma top 5
+                           // Ranking: urut jumlah kasus terbanyak (topN sudah begitu).
+                           // Per Kelas: urut nama kelas A-Z — cara guru mencari data
+                           // ("kelas berapa dulu, baru siapa"), bukan bandingkan kelas.
+                           const perKelas = kelasMode === 'ranking'
+                               ? topN(periodData, l => l.class, 999)
+                               : topN(periodData, l => l.class, 999).sort((a, b) => String(a.label).localeCompare(String(b.label)));
                            return perKelas.length > 0 ? (
                                <div className="space-y-2">
                                    {perKelas.map((k, i) => (
