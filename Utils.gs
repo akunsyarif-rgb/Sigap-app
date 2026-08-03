@@ -26,10 +26,19 @@ function hashPassword(password) {
 }
 
 // Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
-// Kelas, dst.) — jadi dicocokkan toleran spasi berlebih/huruf besar-kecil,
-// sama seperti sameClass() di frontend helpers.js, supaya konsisten.
+// Kelas, dst.) — jadi dicocokkan toleran spasi berlebih/huruf besar-kecil, DAN
+// toleran beda format antara catatan lama vs Master_Siswa yang sudah diubah
+// (mis. catatan lama "XI A" sementara Master_Siswa sekarang "XI.A (KESEHATAN I)"
+// setelah nama kelas ditambah keterangan peminatan) — keterangan dalam kurung
+// & tanda titik/strip dibuang dulu, sama seperti normalizeClass() di frontend
+// helpers.js, supaya konsisten.
 function sameClass(a, b) {
-  var norm = function (c) { return String(c || '').trim().toLowerCase().replace(/\s+/g, ' '); };
+  var norm = function (c) {
+    return String(c || '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[.\-]/g, ' ')
+      .trim().toLowerCase().replace(/\s+/g, ' ');
+  };
   return norm(a) === norm(b);
 }
 
