@@ -108,11 +108,20 @@
            return map;
        }
 
-       // Kombinasi ambang batas untuk banner Beranda: 3x minggu ini ATAU 5x bulan ini.
+       // Kombinasi ambang batas untuk banner Beranda: 3x dalam 7 hari terakhir
+       // ATAU 5x dalam 30 hari terakhir. Sengaja jendela BERGULIR (rolling),
+       // bukan kalender Senin-Minggu/awal bulan — kalau dipatok ke kalender,
+       // setiap hari Senin jendela "minggu ini" baru mulai beberapa jam lalu,
+       // jadi siswa yang sering terlambat Selasa-Jumat minggu LALU tidak akan
+       // pernah muncul di sini walau sebenarnya masih sangat relevan (baru
+       // ketahuan lewat testing nyata — konsisten dengan pilihan "1 Minggu" di
+       // Statistik yang juga rolling).
        function getFrequentLatecomersBanner(allLogs, resolvedMap) {
            const now = new Date();
-           const weekData = groupLateByStudent(allLogs, startOfWeek(now), now, resolvedMap);
-           const monthData = groupLateByStudent(allLogs, startOfMonth(now), now, resolvedMap);
+           const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+           const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+           const weekData = groupLateByStudent(allLogs, sevenDaysAgo, now, resolvedMap);
+           const monthData = groupLateByStudent(allLogs, thirtyDaysAgo, now, resolvedMap);
            const weekMap = {}; weekData.forEach(s => { weekMap[s.nisn] = s.count; });
            const monthMap = {}; monthData.forEach(s => { monthMap[s.nisn] = s.count; });
            const info = {}; allLogs.forEach(l => { info[l.nisn] = { name: l.name, class: l.class }; });
