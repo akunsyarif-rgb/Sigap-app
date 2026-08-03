@@ -53,6 +53,24 @@
                pelanggaranKelas.forEach(p => { bermasalah[p.nisn] = bermasalah[p.nisn] || { nisn: p.nisn, name: p.name }; });
                const daftarSiswa = Object.values(bermasalah).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
+               // Dipisah per kategori (bukan digabung jadi 1 daftar polos) supaya
+               // jelas siswa itu masuk karena Terlambat atau Pelanggaran — dan
+               // `details` (alasan/jenis) ditampilkan biar tidak cuma nama tanpa
+               // keterangan sama sekali.
+               const groupByStudent = (list, detailField) => {
+                   const map = {};
+                   list.forEach(item => {
+                       if (!map[item.nisn]) map[item.nisn] = { nisn: item.nisn, name: item.name, count: 0, details: [] };
+                       map[item.nisn].count++;
+                       if (item[detailField] && !map[item.nisn].details.includes(item[detailField])) {
+                           map[item.nisn].details.push(item[detailField]);
+                       }
+                   });
+                   return Object.values(map).sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)));
+               };
+               const siswaTerlambat = groupByStudent(lateKelas, 'type');
+               const siswaPelanggaran = groupByStudent(pelanggaranKelas, 'jenis_pelanggaran');
+
                return {
                    kelas,
                    waliKelas: waliByClass[normalizeClass(kelas)] || '',
@@ -60,6 +78,8 @@
                    jumlahTerlambat: lateKelas.length,
                    jumlahPelanggaran: pelanggaranKelas.length,
                    daftarSiswa,
+                   siswaTerlambat,
+                   siswaPelanggaran,
                };
            });
 
@@ -100,13 +120,35 @@
                                    </div>
                                </div>
                                {expandedClass === c.kelas && (
-                                   <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
-                                       <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Siswa Bermasalah — {c.kelas}</div>
-                                       {c.daftarSiswa.length > 0 ? c.daftarSiswa.map((s, i) => (
-                                           <div key={i} className="text-[11px] text-slate-700 font-medium bg-slate-50 rounded-lg px-2.5 py-1.5">{s.name}</div>
-                                       )) : (
-                                           <div className="text-[11px] text-slate-400">Tidak ada siswa bermasalah di periode ini.</div>
-                                       )}
+                                   <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-3 animate-pop">
+                                       <div className="space-y-1.5">
+                                           <div className="text-[10px] text-crimson font-semibold uppercase tracking-wide">Terlambat — {c.kelas}</div>
+                                           {c.siswaTerlambat.length > 0 ? c.siswaTerlambat.map((s, i) => (
+                                               <div key={i} className="text-[11px] text-slate-700 bg-crimson/5 rounded-lg px-2.5 py-1.5">
+                                                   <div className="flex items-center justify-between font-medium">
+                                                       <span>{s.name}</span>
+                                                       <span className="text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
+                                                   </div>
+                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-400 mt-0.5">{s.details.join(', ')}</div>}
+                                               </div>
+                                           )) : (
+                                               <div className="text-[11px] text-slate-400">Tidak ada catatan terlambat di periode ini.</div>
+                                           )}
+                                       </div>
+                                       <div className="space-y-1.5">
+                                           <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Pelanggaran — {c.kelas}</div>
+                                           {c.siswaPelanggaran.length > 0 ? c.siswaPelanggaran.map((s, i) => (
+                                               <div key={i} className="text-[11px] text-slate-700 bg-amber-50 rounded-lg px-2.5 py-1.5">
+                                                   <div className="flex items-center justify-between font-medium">
+                                                       <span>{s.name}</span>
+                                                       <span className="text-amber-600 font-bold flex-shrink-0 ml-2">{s.count}x</span>
+                                                   </div>
+                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-400 mt-0.5">{s.details.join(', ')}</div>}
+                                               </div>
+                                           )) : (
+                                               <div className="text-[11px] text-slate-400">Tidak ada catatan pelanggaran di periode ini.</div>
+                                           )}
+                                       </div>
                                    </div>
                                )}
                            </div>
