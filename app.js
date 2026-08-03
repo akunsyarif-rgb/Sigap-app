@@ -467,7 +467,7 @@
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
