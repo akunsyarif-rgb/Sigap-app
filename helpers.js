@@ -108,33 +108,24 @@
            return map;
        }
 
-       // Kombinasi ambang batas untuk banner Beranda: 3x dalam 7 hari terakhir
-       // ATAU 5x dalam 30 hari terakhir. Sengaja jendela BERGULIR (rolling),
-       // bukan kalender Senin-Minggu/awal bulan — kalau dipatok ke kalender,
-       // setiap hari Senin jendela "minggu ini" baru mulai beberapa jam lalu,
-       // jadi siswa yang sering terlambat Selasa-Jumat minggu LALU tidak akan
-       // pernah muncul di sini walau sebenarnya masih sangat relevan (baru
-       // ketahuan lewat testing nyata — konsisten dengan pilihan "1 Minggu" di
-       // Statistik yang juga rolling).
+       // Ambang batas untuk banner Beranda: sudah 3x terlambat (dihitung sejak
+       // TERAKHIR ditindaklanjuti — atau sejak awal kalau belum pernah). SENGAJA
+       // TIDAK pakai jendela waktu (rolling ataupun kalender) — begitu seorang
+       // siswa mencapai 3x, dia harus TETAP muncul di banner ini sampai ada yang
+       // menindaklanjuti & disetujui admin, tidak boleh hilang sendiri cuma
+       // karena waktu berlalu (itu sebabnya fiturnya disebut "tindak lanjut",
+       // bukan "otomatis selesai"). Lihat buildResolvedMap untuk titik reset.
        function getFrequentLatecomersBanner(allLogs, resolvedMap) {
-           const now = new Date();
-           const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-           const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-           const weekData = groupLateByStudent(allLogs, sevenDaysAgo, now, resolvedMap);
-           const monthData = groupLateByStudent(allLogs, thirtyDaysAgo, now, resolvedMap);
-           const weekMap = {}; weekData.forEach(s => { weekMap[s.nisn] = s.count; });
-           const monthMap = {}; monthData.forEach(s => { monthMap[s.nisn] = s.count; });
-           const info = {}; allLogs.forEach(l => { info[l.nisn] = { name: l.name, class: l.class }; });
-           const allNisn = new Set([...Object.keys(weekMap), ...Object.keys(monthMap)]);
-           const result = [];
-           allNisn.forEach(nisn => {
-               const wc = weekMap[nisn] || 0;
-               const mc = monthMap[nisn] || 0;
-               if (wc >= 3 || mc >= 5) {
-                   result.push({ nisn, name: info[nisn].name, class: info[nisn].class, weekCount: wc, monthCount: mc });
-               }
+           const map = {};
+           allLogs.forEach(l => {
+               const cutoff = resolvedMap && resolvedMap[l.nisn];
+               const dt = parseTimestamp(l.timestamp);
+               if (cutoff && dt <= cutoff) return;
+               if (!map[l.nisn]) map[l.nisn] = { nisn: l.nisn, name: l.name, class: l.class, count: 0, first: dt };
+               map[l.nisn].count++;
+               if (dt < map[l.nisn].first) map[l.nisn].first = dt;
            });
-           return result.sort((a, b) => (b.weekCount + b.monthCount) - (a.weekCount + a.monthCount));
+           return Object.values(map).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
        }
 
        function buildPeriodSeries(period, logs) {

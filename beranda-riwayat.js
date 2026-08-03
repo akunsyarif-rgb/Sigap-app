@@ -176,7 +176,7 @@
                                        <div key={idx} className="space-y-1 pb-2 border-b border-crimson/10 last:border-0 last:pb-0">
                                            <div className="flex items-center justify-between gap-2 text-xs">
                                                <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
-                                               <span className="text-crimson font-bold flex-shrink-0">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
+                                               <span className="text-crimson font-bold flex-shrink-0">{s.count}x sejak {s.first.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                            </div>
                                            {pending ? (
                                                isAdmin ? (
