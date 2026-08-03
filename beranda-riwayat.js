@@ -53,8 +53,12 @@
            return 'Selamat Malam';
        }
 
-       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading }) {
+       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading, tindakLanjutList, canViewRanking, isAdmin, onAjukanTindakLanjut, onApproveTindakLanjut }) {
            const [showPiketList, setShowPiketList] = useState(false);
+           const [tindakLanjutTarget, setTindakLanjutTarget] = useState(null);
+           const [catatanInput, setCatatanInput] = useState('');
+           const [tlMsg, setTlMsg] = useState('');
+           const [showRiwayatTL, setShowRiwayatTL] = useState(false);
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -67,8 +71,26 @@
                ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
-           // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu tindak lanjut BK
-           const frequentLatecomers = getFrequentLatecomersBanner(allLogs);
+           // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu
+           // tindak lanjut wali kelas/BK. resolvedMap bikin hitungan mulai dari
+           // nol lagi sejak tindak lanjut disetujui admin (lihat helpers.js).
+           // Visibilitas: admin/BK lihat semua kelas, wali kelas cuma kelasnya
+           // sendiri, guru biasa non-wali-kelas tidak lihat sama sekali (privasi).
+           const resolvedMap = buildResolvedMap(tindakLanjutList);
+           const rawFrequentLatecomers = getFrequentLatecomersBanner(allLogs, resolvedMap);
+           const frequentLatecomers = canViewRanking
+               ? rawFrequentLatecomers
+               : (user.waliKelas ? rawFrequentLatecomers.filter(s => sameClass(s.class, user.waliKelas)) : []);
+
+           const showMsgTL = (text) => { setTlMsg(text); setTimeout(() => setTlMsg(''), 3000); };
+           const submitTindakLanjut = () => {
+               if (!tindakLanjutTarget || !catatanInput.trim()) return;
+               onAjukanTindakLanjut({ nisn: tindakLanjutTarget.nisn, name: tindakLanjutTarget.name, class_name: tindakLanjutTarget.class, catatan: catatanInput.trim() }, (ok, text) => showMsgTL(text));
+               setTindakLanjutTarget(null); setCatatanInput('');
+           };
+           const approveTL = (t) => {
+               onApproveTindakLanjut({ nisn: t.nisn, timestamp: t.timestamp }, (ok, text) => showMsgTL(text));
+           };
 
            // ② Assignment Hari Ini — piket (dari Jadwal_Piket) & wali kelas (dari sesi login).
            // Nama hari dihitung dari HARI_PIKET (config.js), bukan locale API, supaya
@@ -146,13 +168,71 @@
                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3.5 w-3.5" />
                                Siswa Sering Terlambat
                            </div>
-                           <div className="space-y-1.5">
-                               {frequentLatecomers.map((s, idx) => (
-                                   <div key={idx} className="flex items-center justify-between gap-2 text-xs">
-                                       <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
-                                       <span className="text-crimson font-bold flex-shrink-0">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
-                                   </div>
-                               ))}
+                           {tlMsg && <div className="text-[10px] text-sky-dim font-semibold bg-white/60 rounded-lg px-2 py-1.5">{tlMsg}</div>}
+                           <div className="space-y-2">
+                               {frequentLatecomers.map((s, idx) => {
+                                   const pending = tindakLanjutList.find(t => t.nisn === s.nisn && t.status === 'menunggu');
+                                   return (
+                                       <div key={idx} className="space-y-1 pb-2 border-b border-crimson/10 last:border-0 last:pb-0">
+                                           <div className="flex items-center justify-between gap-2 text-xs">
+                                               <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                               <span className="text-crimson font-bold flex-shrink-0">{s.weekCount}x/minggu • {s.monthCount}x/bulan</span>
+                                           </div>
+                                           {pending ? (
+                                               isAdmin ? (
+                                                   <div className="bg-white/70 rounded-lg p-2 space-y-1">
+                                                       <div className="text-[10px] text-slate-500">Diajukan oleh <span className="font-semibold">{pending.diajukanOleh}</span>: "{pending.catatan}"</div>
+                                                       <button onClick={() => approveTL(pending)} className="text-[10px] font-bold text-white bg-crimson px-2.5 py-1 rounded-lg">Setujui & Hapus dari Peringatan</button>
+                                                   </div>
+                                               ) : (
+                                                   <div className="text-[10px] text-amber-600 font-semibold">⏳ Menunggu persetujuan admin</div>
+                                               )
+                                           ) : (
+                                               <button onClick={() => { setTindakLanjutTarget(s); setCatatanInput(''); }} className="text-[10px] font-bold text-crimson bg-white px-2.5 py-1 rounded-lg border border-crimson/30">Tandai Sudah Ditindaklanjuti</button>
+                                           )}
+                                       </div>
+                                   );
+                               })}
+                           </div>
+                       </div>
+                   )}
+
+                   {/* Riwayat Tindak Lanjut — status 'selesai' TETAP tersimpan & terlihat,
+                       cuma tidak lagi memicu banner di atas (lihat resolvedMap). */}
+                   {tindakLanjutList.length > 0 && (
+                       <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                           <button onClick={() => setShowRiwayatTL(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+                               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Riwayat Tindak Lanjut ({tindakLanjutList.length})</h3>
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showRiwayatTL ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                           </button>
+                           {showRiwayatTL && (
+                               <div className="mt-2.5 space-y-2 animate-pop">
+                                   {tindakLanjutList.map((t, idx) => (
+                                       <div key={idx} className="bg-slate-50 rounded-lg p-2.5 space-y-0.5">
+                                           <div className="flex items-center justify-between gap-2">
+                                               <span className="text-xs font-semibold text-slate-800 truncate">{t.name} <span className="text-slate-400 font-normal">({t.class})</span></span>
+                                               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.status === 'selesai' ? 'bg-sky-dim/15 text-sky-dim' : 'bg-amber-100 text-amber-700'}`}>{t.status === 'selesai' ? 'Selesai' : 'Menunggu'}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-500">"{t.catatan}" — diajukan {t.diajukanOleh}</div>
+                                           {t.status === 'selesai' && <div className="text-[10px] text-slate-400">Disetujui {t.disetujuiOleh} • {parseTimestamp(t.tanggalDisetujui).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>}
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                       </div>
+                   )}
+
+                   {tindakLanjutTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Tandai Sudah Ditindaklanjuti</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{tindakLanjutTarget.name}</div>
+                                   <div className="text-[10px] text-slate-400 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
+                               </div>
+                               <textarea value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder="Catatan tindak lanjut (mis. sudah dipanggil orang tua, diberi peringatan, dsb.)" rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-2.5 rounded-xl text-xs font-bold transition">Ajukan ke Admin</button>
+                               <button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
                            </div>
                        </div>
                    )}
