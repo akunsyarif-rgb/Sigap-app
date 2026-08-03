@@ -53,6 +53,7 @@
            const [auditLog, setAuditLog] = useState([]);
            const [jadwalPiket, setJadwalPiket] = useState([]);
            const [waliKelasMap, setWaliKelasMap] = useState([]);
+           const [tindakLanjutList, setTindakLanjutList] = useState([]);
            const [slowConnection, setSlowConnection] = useState(false);
 
            // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
@@ -153,6 +154,15 @@
                    .then(data => { if (data.status === 'success') setWaliKelasMap(data.waliKelasMap); });
            };
 
+           // Tindak Lanjut siswa sering terlambat — cuma ditarik untuk admin/BK
+           // atau guru yang jadi wali kelas (server juga membatasi hal yang sama,
+           // ini cuma menghindari fetch percuma untuk guru biasa non-wali-kelas).
+           const fetchTindakLanjut = () => {
+               fetch(`${API_URL}?action=getTindakLanjut&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => { if (data.status === 'success') setTindakLanjutList(data.tindakLanjut); });
+           };
+
            useEffect(() => {
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
@@ -167,6 +177,7 @@
                        fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
+                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan' || user.waliKelas) fetchTindakLanjut();
                    }
                }
            }, [user]);
@@ -315,6 +326,30 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           const handleAjukanTindakLanjut = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ajukanTindakLanjut', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchTindakLanjut();
+                           callback(true, '✓ Diajukan, menunggu persetujuan admin.');
+                       } else callback(false, data.message || 'Gagal mengajukan tindak lanjut.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleApproveTindakLanjut = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'approveTindakLanjut', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchTindakLanjut();
+                           callback(true, '✓ Disetujui, dihapus dari peringatan.');
+                       } else callback(false, data.message || 'Gagal menyetujui tindak lanjut.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleAddSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
@@ -453,7 +488,7 @@
                                    <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} />
+                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} />
                                )}
                                {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab

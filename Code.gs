@@ -204,6 +204,48 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
+    // ---- Ajukan "sudah ditindaklanjuti" untuk siswa yang sering terlambat
+    // (banner Perlu Perhatian di Dashboard) — admin/BK, atau wali kelas untuk
+    // kelasnya sendiri. Status awal 'menunggu': BELUM langsung hilang dari
+    // banner, harus disetujui admin dulu (lihat action approveTindakLanjut)
+    // supaya tidak bisa ditutup sepihak tanpa sepengetahuan admin. ----
+    if (action === 'ajukanTindakLanjut') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      if (!isBkRole(sessionUser.role) && !(sessionUser.waliKelas && sameClass(data.class_name, sessionUser.waliKelas))) {
+        return jsonOut({ status: 'error', message: 'Hanya admin/BK atau wali kelas terkait yang bisa mengajukan tindak lanjut.' });
+      }
+      var sheet = getOrCreateSheet(ss, 'Tindak_Lanjut', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Diajukan_Oleh', 'Status', 'Disetujui_Oleh', 'Tanggal_Disetujui']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.catatan || '', sessionUser.name, 'menunggu', '', '']);
+      CacheService.getScriptCache().remove('tindak_lanjut_list_raw');
+      logAudit(sessionUser, 'Ajukan Tindak Lanjut', data.name + ' (' + data.nisn + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Setujui tindak lanjut (admin only) — begitu disetujui, siswa itu
+    // hilang dari banner "Perlu Perhatian" karena hitungan 3x/minggu & 5x/bulan
+    // dihitung ulang dari Tanggal_Disetujui (lihat buildResolvedMap di
+    // helpers.js), BUKAN dihapus permanen — kalau kejadian baru muncul lagi
+    // setelah tanggal ini, banner akan tampil lagi secara wajar. ----
+    if (action === 'approveTindakLanjut') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menyetujui tindak lanjut.' });
+      }
+      var sheet = ss.getSheetByName('Tindak_Lanjut');
+      var found = findRowByNisnTimestamp(sheet, data.nisn, data.timestamp);
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'Data tindak lanjut tidak ditemukan.' });
+      }
+      var approvedAt = new Date();
+      sheet.getRange(found.rowIndex, 7).setValue('selesai');
+      sheet.getRange(found.rowIndex, 8).setValue(sessionUser.name);
+      sheet.getRange(found.rowIndex, 9).setValue(approvedAt);
+      CacheService.getScriptCache().remove('tindak_lanjut_list_raw');
+      logAudit(sessionUser, 'Setujui Tindak Lanjut', data.nisn);
+      return jsonOut({ status: 'success' });
+    }
+
     // ---- Nonaktifkan / aktifkan akun guru (admin only) ----
     if (action === 'toggleTeacherStatus') {
       if (!isAdminRole(sessionUser.role)) {
@@ -663,6 +705,39 @@ function doGet(e) {
       bimbingan.reverse();
     }
     return jsonOut({ status: 'success', bimbingan: bimbingan });
+  }
+
+  // ---- Tindak Lanjut siswa sering terlambat (banner Perlu Perhatian di
+  // Dashboard) — admin/BK lihat semua kelas, wali kelas cuma kelasnya sendiri,
+  // guru biasa non-wali-kelas tidak dapat apa-apa (sama seperti getPelanggaran). ----
+  if (action === 'getTindakLanjut') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var cache = CacheService.getScriptCache();
+    var tindakLanjut;
+    var cachedRaw = cache.get('tindak_lanjut_list_raw');
+    if (cachedRaw) {
+      tindakLanjut = JSON.parse(cachedRaw);
+    } else {
+      var sheet = ss.getSheetByName('Tindak_Lanjut');
+      tindakLanjut = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          tindakLanjut.push({
+            timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3],
+            catatan: rows[i][4], diajukanOleh: rows[i][5], status: rows[i][6],
+            disetujuiOleh: rows[i][7], tanggalDisetujui: rows[i][8],
+          });
+        }
+        tindakLanjut.reverse();
+      }
+      cache.put('tindak_lanjut_list_raw', JSON.stringify(tindakLanjut), 60);
+    }
+    if (!isBkRole(sessionUser.role)) {
+      var myKelas = sessionUser.waliKelas || '';
+      tindakLanjut = myKelas ? tindakLanjut.filter(function (t) { return sameClass(t.class, myKelas); }) : [];
+    }
+    return jsonOut({ status: 'success', tindakLanjut: tindakLanjut });
   }
 
   // ---- Pelanggaran Upacara — OSIS cuma lihat punya sendiri, BK/Admin lihat semua ----

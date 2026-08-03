@@ -77,11 +77,17 @@
        // Kelompokkan catatan terlambat per siswa dalam rentang waktu tertentu —
        // dipakai bareng oleh banner "Siswa Sering Terlambat" di Beranda dan
        // daftar sejenis di Statistik, supaya logikanya tidak ditulis dua kali.
-       function groupLateByStudent(allLogs, startDate, endDate) {
+       // resolvedMap (opsional): { nisn: tanggalTerakhirDisetujui } — dari fitur
+       // Tindak Lanjut. Kejadian SEBELUM tanggal itu tidak lagi dihitung (siswa
+       // dianggap "mulai dari nol" sejak tindak lanjutnya disetujui admin),
+       // tapi kejadian BARU setelahnya tetap terhitung wajar.
+       function groupLateByStudent(allLogs, startDate, endDate, resolvedMap) {
            const map = {};
            allLogs.forEach(l => {
                const dt = parseTimestamp(l.timestamp);
-               if (dt >= startDate && dt <= endDate) {
+               const cutoff = resolvedMap && resolvedMap[l.nisn];
+               const effectiveStart = cutoff && cutoff > startDate ? cutoff : startDate;
+               if (dt >= effectiveStart && dt <= endDate) {
                    if (!map[l.nisn]) map[l.nisn] = { nisn: l.nisn, name: l.name, class: l.class, count: 0 };
                    map[l.nisn].count++;
                }
@@ -89,11 +95,24 @@
            return Object.values(map).sort((a, b) => b.count - a.count);
        }
 
+       // Bangun peta nisn -> tanggal disetujui TERBARU dari daftar Tindak Lanjut
+       // yang statusnya 'selesai' — dipakai groupLateByStudent/
+       // getFrequentLatecomersBanner sebagai titik reset hitungan.
+       function buildResolvedMap(tindakLanjutList) {
+           const map = {};
+           (tindakLanjutList || []).forEach(t => {
+               if (t.status !== 'selesai' || !t.tanggalDisetujui) return;
+               const d = parseTimestamp(t.tanggalDisetujui);
+               if (!map[t.nisn] || d > map[t.nisn]) map[t.nisn] = d;
+           });
+           return map;
+       }
+
        // Kombinasi ambang batas untuk banner Beranda: 3x minggu ini ATAU 5x bulan ini.
-       function getFrequentLatecomersBanner(allLogs) {
+       function getFrequentLatecomersBanner(allLogs, resolvedMap) {
            const now = new Date();
-           const weekData = groupLateByStudent(allLogs, startOfWeek(now), now);
-           const monthData = groupLateByStudent(allLogs, startOfMonth(now), now);
+           const weekData = groupLateByStudent(allLogs, startOfWeek(now), now, resolvedMap);
+           const monthData = groupLateByStudent(allLogs, startOfMonth(now), now, resolvedMap);
            const weekMap = {}; weekData.forEach(s => { weekMap[s.nisn] = s.count; });
            const monthMap = {}; monthData.forEach(s => { monthMap[s.nisn] = s.count; });
            const info = {}; allLogs.forEach(l => { info[l.nisn] = { name: l.name, class: l.class }; });
