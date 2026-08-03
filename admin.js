@@ -2,7 +2,16 @@
 // Panel Kelola Guru (khusus Admin): tambah guru baru, reset password, ubah
 // jabatan tampilan. Juga berisi AuditLogTab (khusus Admin/BK-Kesiswaan).
 
-       function KelolaTab({ teachers, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
+       // Dipakai bareng oleh dropdown "Tambah Guru Baru" dan modal "Ubah Role" —
+       // satu sumber, supaya value-nya tidak pernah drift dari key ROLES di config.js.
+       const ROLE_OPTIONS = [
+           { value: 'guru', label: 'Guru' },
+           { value: 'bk_kesiswaan', label: 'BK / Kesiswaan' },
+           { value: 'osis', label: 'OSIS' },
+           { value: 'admin', label: 'Admin' },
+       ];
+
+       function KelolaTab({ teachers, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
            const [newId, setNewId] = useState('');
            const [newName, setNewName] = useState('');
            const [newPassword, setNewPassword] = useState('');
@@ -12,6 +21,8 @@
            const [resetPassword, setResetPassword] = useState('');
            const [jabatanTarget, setJabatanTarget] = useState(null);
            const [jabatanInput, setJabatanInput] = useState('');
+           const [roleTarget, setRoleTarget] = useState(null);
+           const [roleInput, setRoleInput] = useState('guru');
            const [waliKelasTarget, setWaliKelasTarget] = useState(null);
            const [waliKelasInput, setWaliKelasInput] = useState('');
            const [msg, setMsg] = useState('');
@@ -45,6 +56,14 @@
                onUpdateJabatan({ targetId: jabatanTarget.id, newJabatan: jabatanInput.trim() }, (ok, text) => {
                    showMsg(ok, text);
                    setJabatanTarget(null); setJabatanInput('');
+               });
+           };
+
+           const submitRole = () => {
+               if (!roleTarget) return;
+               onUpdateRole({ targetId: roleTarget.id, newRole: roleInput }, (ok, text) => {
+                   showMsg(ok, text);
+                   setRoleTarget(null);
                });
            };
 
@@ -106,10 +125,7 @@
                        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama Lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
                        <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password Awal" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
                        <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                           <option value="guru_piket">Guru</option>
-                           <option value="bk_kesiswaan">BK / Kesiswaan</option>
-                           <option value="osis">OSIS</option>
-                           <option value="admin">Admin</option>
+                           {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                        </select>
                        <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                        <p className="text-[10px] text-slate-400 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
@@ -134,8 +150,9 @@
                                        </div>
                                    </div>
                                    <div className="flex gap-1.5 flex-wrap">
+                                       <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
                                        <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
-                                       <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Kelas Wali</button>
+                                       <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
                                        <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
                                        <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                            {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
@@ -199,6 +216,23 @@
                        </div>
                    )}
 
+                   {roleTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Ubah Role</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{roleTarget.name}</div>
+                                   <div className="text-[10px] text-slate-400 mt-1">Berguna kalau guru ini juga merangkap BK/Kesiswaan, dsb.</div>
+                               </div>
+                               <select value={roleInput} onChange={(e) => setRoleInput(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                   {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                               </select>
+                               <button onClick={submitRole} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Role</button>
+                               <button onClick={() => setRoleTarget(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                           </div>
+                       </div>
+                   )}
+
                    {jabatanTarget && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
@@ -218,11 +252,11 @@
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
                                <div className="text-center">
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Atur Kelas Wali</h3>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Atur Wali Kelas</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{waliKelasTarget.name}</div>
                                </div>
                                <input type="text" value={waliKelasInput} onChange={(e) => setWaliKelasInput(e.target.value)} placeholder="Contoh: XI B — kosongkan untuk lepas status wali kelas" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitWaliKelas} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Kelas Wali</button>
+                               <button onClick={submitWaliKelas} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Wali Kelas</button>
                                <button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
                            </div>
                        </div>

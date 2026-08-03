@@ -146,6 +146,36 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
+    // ---- Ubah role seorang guru (admin only) — kolom D di Master_Guru.
+    // Ini yang dipakai kalau guru biasa juga merangkap BK/Kesiswaan, atau
+    // sebaliknya. Tidak menyentuh Jabatan/Kelas Wali, itu field terpisah. ----
+    if (action === 'updateRole') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah role' });
+      }
+      var validRoles = ['guru', 'bk_kesiswaan', 'osis', 'admin'];
+      if (validRoles.indexOf(data.newRole) === -1) {
+        return jsonOut({ status: 'error', message: 'Role tidak dikenali: ' + data.newRole });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          sheet.getRange(i + 1, 4).setValue(data.newRole);
+          targetName = rows[i][1];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      logAudit(sessionUser, 'Ubah Role', targetName + ' (' + data.targetId + ') -> ' + data.newRole);
+      return jsonOut({ status: 'success' });
+    }
+
     // ---- Ubah/atur Kelas Wali seorang guru (admin only) — kolom G di
     // Master_Guru. Kirim newKelasWali kosong ('') untuk melepas status wali
     // kelas guru itu. Dipakai untuk Dashboard kontekstual & Rekap Kelas
