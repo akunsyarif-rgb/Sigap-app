@@ -65,7 +65,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 2;
+           var BUILD_VERSION = 3;
            var files = [
                'config.js',
                'helpers.js',
@@ -90,7 +90,13 @@
                    return res.text();
                }));
                var combined = texts.join('\n');
-               var transformed = Babel.transform(combined, { presets: ['react'] }).code;
+               // runtime: 'classic' dipaksa eksplisit — Babel standalone terbaru dari
+               // CDN (versi tidak dipin) defaultnya berubah ke JSX runtime 'automatic',
+               // yang menyisipkan `import ... from "react/jsx-runtime"` di awal kode.
+               // Statement import itu bikin appendChild(script) gagal total (SyntaxError:
+               // Cannot use import statement outside a module) karena skrip ini bukan
+               // ES module — hasilnya layar putih kosong tanpa pesan error yang jelas.
+               var transformed = Babel.transform(combined, { presets: [['react', { runtime: 'classic' }]] }).code;
                var script = document.createElement('script');
                script.textContent = transformed;
                document.body.appendChild(script);
