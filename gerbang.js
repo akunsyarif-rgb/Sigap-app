@@ -67,12 +67,24 @@
            const fileInputRef = useRef(null);
            // Default tetap kronologis — Nama A-Z cuma opsi tambahan (Blueprint SIGAP v2, section VIII)
            const [suratSortMode, setSuratSortMode] = useState('waktu');
+           // Filter kelas + "Hari Ini saja" (default aktif) — supaya guru yang mau
+           // masuk kelas tertentu bisa cepat cek siapa yang izin/sakit hari itu.
+           // Akses tetap semua guru, lintas kelas (bukan cuma wali kelas) — beda
+           // dengan Pelanggaran, karena guru mata pelajaran bisa masuk kelas mana saja.
+           const [filterKelasSurat, setFilterKelasSurat] = useState('');
+           const [onlyTodaySurat, setOnlyTodaySurat] = useState(true);
+           const kelasOptions = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
 
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
                (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
            );
+
+           const filteredSurat = [...suratList]
+               .filter(s => !filterKelasSurat || s.class === filterKelasSurat)
+               .filter(s => !onlyTodaySurat || isSameDay(parseTimestamp(s.timestamp), new Date()))
+               .sort((a, b) => suratSortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
 
            // Live Activity Log — gabungan Terlambat + Surat hari ini, terbaru dulu,
            // supaya guru piket lain langsung tahu siapa yang sudah dicatat (hindari input ganda).
@@ -242,8 +254,19 @@
                                    <button onClick={() => setSuratSortMode('nama')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${suratSortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>A-Z</button>
                                </div>
                            </div>
+
+                           {/* Cek cepat: "siapa di kelas X izin/sakit hari ini" — dipakai guru
+                               yang mau masuk kelas tertentu, bukan cuma wali kelas. */}
+                           <div className="flex gap-2">
+                               <select value={filterKelasSurat} onChange={(e) => setFilterKelasSurat(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                   <option value="">Semua Kelas</option>
+                                   {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                               </select>
+                               <button onClick={() => setOnlyTodaySurat(v => !v)} className={`px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${onlyTodaySurat ? 'bg-sky text-white' : 'bg-white border border-slate-300 text-slate-500'}`}>Hari Ini</button>
+                           </div>
+
                            <div className="space-y-2.5">
-                               {[...suratList].sort((a, b) => suratSortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).slice(0, 30).map((s, idx) => {
+                               {filteredSurat.slice(0, 30).map((s, idx) => {
                                    const dt = parseTimestamp(s.timestamp);
                                    return (
                                        <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1.5">
@@ -255,11 +278,17 @@
                                                <span>{s.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                                <span className="truncate">{s.keterangan}</span>
                                            </div>
-                                           {s.foto_url && <a href={s.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline">Lihat foto surat</a>}
+                                           {s.foto_url ? (
+                                               <a href={s.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline">Lihat foto surat</a>
+                                           ) : (
+                                               <span className="text-[10px] text-amber-600 font-semibold">⚠ Belum ada bukti foto</span>
+                                           )}
                                        </div>
                                    );
                                })}
-                               {suratList.length === 0 && <EmptyState emoji="✉️" text="Belum ada catatan surat masuk." />}
+                               {filteredSurat.length === 0 && (
+                                   <EmptyState emoji="✉️" text={suratList.length === 0 ? 'Belum ada catatan surat masuk.' : 'Tidak ada catatan surat yang cocok dengan filter.'} />
+                               )}
                            </div>
                        </React.Fragment>
                    )}
