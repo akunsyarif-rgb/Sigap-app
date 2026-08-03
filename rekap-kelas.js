@@ -1,12 +1,17 @@
 // ===== rekap-kelas.js =====
 // Tab Rekap Kelas: per kelas menampilkan wali kelas, jumlah siswa, jumlah
-// Terlambat/Pelanggaran/Surat, dan daftar siswa bermasalah. Dihitung dari
-// data yang sudah di-fetch (allLogs/pelanggaranList/suratList/students) —
-// tidak ada endpoint agregasi baru di server (Blueprint SIGAP v2, section VI).
+// Terlambat & Pelanggaran, dan daftar siswa bermasalah. Dihitung dari data
+// yang sudah di-fetch (allLogs/pelanggaranList/students) — tidak ada endpoint
+// agregasi baru di server (Blueprint SIGAP v2, section VI).
+//
+// Akses: admin/BK/Kesiswaan (isPrivileged) lihat SEMUA kelas. Guru yang jadi
+// wali kelas (myWaliKelas) cuma lihat kelasnya sendiri, detail. Guru biasa
+// non-wali-kelas tidak pernah sampai ke komponen ini (digating di app.js).
+// Surat sengaja TIDAK dimasukkan di sini — beda kebutuhan, lihat diskusi Surat.
 
-       function RekapKelasTab({ students, allLogs, pelanggaranList, suratList, waliKelasMap }) {
+       function RekapKelasTab({ students, allLogs, pelanggaranList, waliKelasMap, isPrivileged, myWaliKelas }) {
            const [period, setPeriod] = useState('minggu-ini');
-           const [expandedClass, setExpandedClass] = useState(null);
+           const [expandedClass, setExpandedClass] = useState(isPrivileged ? null : myWaliKelas);
 
            const periods = [
                { key: 'hari-ini', label: 'Hari Ini' },
@@ -25,19 +30,20 @@
 
            const lateInPeriod = allLogs.filter(l => passesPeriod(parseTimestamp(l.timestamp)));
            const pelanggaranInPeriod = pelanggaranList.filter(p => passesPeriod(parseTimestamp(p.timestamp)));
-           const suratInPeriod = suratList.filter(s => passesPeriod(parseTimestamp(s.timestamp)));
 
            const waliByClass = {};
            waliKelasMap.forEach(w => { waliByClass[w.class] = w.waliKelasName; });
 
-           // Urut A-Z (Blueprint section VIII: Statistik Operasional -> Kelas A-Z)
-           const classes = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
+           // Privileged (admin/BK/Kesiswaan): semua kelas, urut A-Z (Blueprint
+           // section VIII). Wali kelas: cuma kelasnya sendiri.
+           const classes = isPrivileged
+               ? [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)))
+               : (myWaliKelas ? [myWaliKelas] : []);
 
            const classData = classes.map(kelas => {
                const jumlahSiswa = students.filter(s => s.class === kelas).length;
                const lateKelas = lateInPeriod.filter(l => l.class === kelas);
                const pelanggaranKelas = pelanggaranInPeriod.filter(p => p.class === kelas);
-               const suratKelas = suratInPeriod.filter(s => s.class === kelas);
 
                const bermasalah = {};
                lateKelas.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
@@ -50,14 +56,13 @@
                    jumlahSiswa,
                    jumlahTerlambat: lateKelas.length,
                    jumlahPelanggaran: pelanggaranKelas.length,
-                   jumlahSurat: suratKelas.length,
                    daftarSiswa,
                };
            });
 
            return (
                <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Rekap Kelas</h2>
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{isPrivileged ? 'Rekap Kelas' : `Rekap Kelas ${myWaliKelas}`}</h2>
 
                    <div className="flex gap-1.5 overflow-x-auto pb-1">
                        {periods.map(p => (
@@ -80,7 +85,7 @@
                                            <span className="text-[9px] bg-crimson/10 text-crimson px-2 py-0.5 rounded-full font-bold flex-shrink-0">{c.daftarSiswa.length} perlu perhatian</span>
                                        )}
                                    </div>
-                                   <div className="grid grid-cols-3 gap-2">
+                                   <div className="grid grid-cols-2 gap-2">
                                        <div className="text-center bg-crimson/10 rounded-xl py-1.5">
                                            <div className="text-sm font-extrabold text-crimson">{c.jumlahTerlambat}</div>
                                            <div className="text-[8px] text-crimson font-bold uppercase">Terlambat</div>
@@ -88,10 +93,6 @@
                                        <div className="text-center bg-amber-50 rounded-xl py-1.5">
                                            <div className="text-sm font-extrabold text-amber-600">{c.jumlahPelanggaran}</div>
                                            <div className="text-[8px] text-amber-600 font-bold uppercase">Pelanggaran</div>
-                                       </div>
-                                       <div className="text-center bg-sky-dim/10 rounded-xl py-1.5">
-                                           <div className="text-sm font-extrabold text-sky-dim">{c.jumlahSurat}</div>
-                                           <div className="text-[8px] text-sky-dim font-bold uppercase">Surat</div>
                                        </div>
                                    </div>
                                </div>

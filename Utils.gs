@@ -91,7 +91,7 @@ function findRowByNisnTimestamp(sheet, nisn, timestamp) {
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).
 // Juga hapus cache 'today_data' agar Beranda ikut ke-refresh.
 function clearCacheForCategory(category) {
-  var cacheKeys = { terlambat: 'today_logs', pelanggaran: 'pelanggaran_list', surat: 'surat_list' };
+  var cacheKeys = { terlambat: 'today_logs', pelanggaran: 'pelanggaran_list_raw', surat: 'surat_list' };
   var key = cacheKeys[category];
   if (key) CacheService.getScriptCache().remove(key);
   // Tambahan: bersihkan cache Beranda (today_data)

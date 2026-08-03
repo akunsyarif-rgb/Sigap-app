@@ -303,7 +303,7 @@ function doPost(e) {
       }
       var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
-      CacheService.getScriptCache().remove('pelanggaran_list');
+      CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
       return jsonOut({ status: 'success' });
     }
@@ -551,24 +551,35 @@ function doGet(e) {
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas cuma lihat
+  // kelasnya sendiri, guru biasa (bukan wali kelas) tidak dapat lihat sama
+  // sekali. Data mentah (semua kelas) di-cache GLOBAL 60 detik seperti biasa
+  // — tapi hasil akhir yang dikirim ke browser difilter per-pengguna SETELAH
+  // diambil dari cache, supaya tidak ada versi "sudah difilter untuk orang
+  // lain" yang ke-cache lalu salah kirim ke pengguna berikutnya. ----
   if (action === 'getPelanggaran') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('pelanggaran_list');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
-    }
-    var sheet = ss.getSheetByName('Pelanggaran');
-    var pelanggaran = [];
-    if (sheet) {
-      var rows = sheet.getDataRange().getValues();
-      for (var i = 1; i < rows.length; i++) {
-        pelanggaran.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], sanksi: rows[i][5], catatan: rows[i][6], logged_by: rows[i][7] });
+    var pelanggaran;
+    var cachedRaw = cache.get('pelanggaran_list_raw');
+    if (cachedRaw) {
+      pelanggaran = JSON.parse(cachedRaw);
+    } else {
+      var sheet = ss.getSheetByName('Pelanggaran');
+      pelanggaran = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          pelanggaran.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], sanksi: rows[i][5], catatan: rows[i][6], logged_by: rows[i][7] });
+        }
+        pelanggaran.reverse();
       }
-      pelanggaran.reverse();
+      cache.put('pelanggaran_list_raw', JSON.stringify(pelanggaran), 60);
     }
-    var result = JSON.stringify({ status: 'success', pelanggaran: pelanggaran });
-    cache.put('pelanggaran_list', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    if (!isBkRole(sessionUser.role)) {
+      var myKelas = sessionUser.waliKelas || '';
+      pelanggaran = myKelas ? pelanggaran.filter(function (p) { return p.class === myKelas; }) : [];
+    }
+    return jsonOut({ status: 'success', pelanggaran: pelanggaran });
   }
 
   // ---- Bimbingan Khusus (admin + BK/Kesiswaan only) ----

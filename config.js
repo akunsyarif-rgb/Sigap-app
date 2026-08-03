@@ -24,7 +24,10 @@
        const ROLES = {
            admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true, canViewRanking: true },
            bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog'],          primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: true },
-           guru:          { label: 'Guru',          menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran'],                                    primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: false },
+           // 'rekap' TIDAK dimasukkan di sini — akses ke Rekap Kelas untuk guru
+           // ditentukan per-orang (cuma yang jadi wali kelas), ditambahkan secara
+           // runtime di app.js (effectiveMenus), bukan berlaku untuk semua guru.
+           guru:          { label: 'Guru',          menus: ['scan', 'dashboard', 'log', 'stats', 'pelanggaran'],                                    primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: false },
            osis:          { label: 'OSIS',          menus: ['upacara'],                                                                             primaryMenus: ['upacara'], canExport: false, canViewRanking: false },
        };
 

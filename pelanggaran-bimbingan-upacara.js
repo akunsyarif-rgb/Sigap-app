@@ -2,7 +2,7 @@
 // Tab Pelanggaran (catat + tandai Bimbingan Khusus), tab Bimbingan
 // Khusus (khusus Admin/BK), dan tab Upacara (OSIS + BK/Admin).
 
-       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan }) {
+       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan, canSeeClassDetail }) {
            const [searchQuery, setSearchQuery] = useState('');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [jenis, setJenis] = useState('');
@@ -70,31 +70,38 @@
                        </div>
                    )}
 
-                   <div className="pt-1">
-                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Pelanggaran Hari Ini ({todayList.length})</h3>
-                       {todayList.length > 0 ? (
-                           <div className="space-y-2.5">
-                               {todayList.map((p, idx) => {
-                                   const dt = parseTimestamp(p.timestamp);
-                                   return (
-                                       <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
-                                           <div className="flex items-center justify-between gap-2">
-                                               <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
-                                               <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
+                   {canSeeClassDetail ? (
+                       <div className="pt-1">
+                           <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3">Pelanggaran Hari Ini ({todayList.length})</h3>
+                           {todayList.length > 0 ? (
+                               <div className="space-y-2.5">
+                                   {todayList.map((p, idx) => {
+                                       const dt = parseTimestamp(p.timestamp);
+                                       return (
+                                           <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
+                                               <div className="flex items-center justify-between gap-2">
+                                                   <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
+                                                   <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
+                                               </div>
+                                               <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                                   <span>{p.class} • Sanksi: {p.sanksi}</span>
+                                                   <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                               </div>
                                            </div>
-                                           <div className="text-[10px] text-slate-400 flex justify-between gap-2">
-                                               <span>{p.class} • Sanksi: {p.sanksi}</span>
-                                               <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
-                                           </div>
-                                       </div>
-                                   );
-                               })}
-                           </div>
-                       ) : (
-                           <EmptyState emoji="✅" text="Belum ada pelanggaran tercatat hari ini." />
-                       )}
-                       <p className="text-[11px] text-slate-400 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
-                   </div>
+                                       );
+                                   })}
+                               </div>
+                           ) : (
+                               <EmptyState emoji="✅" text="Belum ada pelanggaran tercatat hari ini." />
+                           )}
+                           <p className="text-[11px] text-slate-400 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+                       </div>
+                   ) : (
+                       <div className="bg-white/50 border border-dashed border-slate-200 rounded-2xl p-8 text-center">
+                           <div className="text-3xl mb-2">🔒</div>
+                           <div className="text-xs text-slate-500 px-4 leading-relaxed">Daftar &amp; riwayat pelanggaran hanya bisa dilihat wali kelas (kelasnya sendiri), BK/Kesiswaan, dan Admin. Anda tetap bisa mencatat pelanggaran baru lewat pencarian di atas.</div>
+                       </div>
+                   )}
 
                    {selectedStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
@@ -158,31 +165,35 @@
                        </div>
                    )}
 
-                   <div className="flex items-center justify-between">
-                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{pelanggaranList.length} catatan pelanggaran</h3>
-                       <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
-                           <button onClick={() => setSortMode('waktu')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${sortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
-                           <button onClick={() => setSortMode('nama')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${sortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>A-Z</button>
-                       </div>
-                   </div>
-                   <div className="space-y-2.5">
-                       {[...pelanggaranList].sort((a, b) => sortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).slice(0, 30).map((p, idx) => {
-                           const dt = parseTimestamp(p.timestamp);
-                           return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
-                                   <div className="flex items-center justify-between">
-                                       <div className="font-semibold text-sm text-slate-900">{p.name}</div>
-                                       <span className="text-[9px] bg-crimson/15 text-crimson px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
-                                   </div>
-                                   <div className="text-[10px] text-slate-400 flex justify-between gap-2">
-                                       <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                                       <span className="truncate">{p.sanksi}</span>
-                                   </div>
+                   {canSeeClassDetail && (
+                       <React.Fragment>
+                           <div className="flex items-center justify-between">
+                               <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{pelanggaranList.length} catatan pelanggaran</h3>
+                               <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
+                                   <button onClick={() => setSortMode('waktu')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${sortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
+                                   <button onClick={() => setSortMode('nama')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${sortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>A-Z</button>
                                </div>
-                           );
-                       })}
-                       {pelanggaranList.length === 0 && <EmptyState emoji="📋" text="Belum ada catatan pelanggaran." />}
-                   </div>
+                           </div>
+                           <div className="space-y-2.5">
+                               {[...pelanggaranList].sort((a, b) => sortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).slice(0, 30).map((p, idx) => {
+                                   const dt = parseTimestamp(p.timestamp);
+                                   return (
+                                       <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
+                                           <div className="flex items-center justify-between">
+                                               <div className="font-semibold text-sm text-slate-900">{p.name}</div>
+                                               <span className="text-[9px] bg-crimson/15 text-crimson px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
+                                           </div>
+                                           <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                               <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                               <span className="truncate">{p.sanksi}</span>
+                                           </div>
+                                       </div>
+                                   );
+                               })}
+                               {pelanggaranList.length === 0 && <EmptyState emoji="📋" text="Belum ada catatan pelanggaran." />}
+                           </div>
+                       </React.Fragment>
+                   )}
                </div>
            );
        }

@@ -52,6 +52,7 @@
        }
 
        function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading }) {
+           const [showPiketList, setShowPiketList] = useState(false);
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -71,7 +72,7 @@
            // Nama hari dihitung dari HARI_PIKET (config.js), bukan locale API, supaya
            // tidak tergantung setting browser/OS pengguna.
            const hariIni = getHariIni();
-           const piketHariIni = jadwalPiket.filter(j => j.hari === hariIni);
+           const piketHariIni = [...jadwalPiket.filter(j => j.hari === hariIni)].sort((a, b) => String(a.guruName).localeCompare(String(b.guruName)));
            const isPiketToday = piketHariIni.some(j => String(j.guruId) === String(user.id));
            const waliKelas = user.waliKelas || '';
 
@@ -107,9 +108,18 @@
                        <div className={`rounded-2xl p-4 space-y-2 border ${isPiketToday ? 'bg-sky-dim/15 border-sky-dim/40' : 'bg-white border-slate-200'}`}>
                            {piketHariIni.length > 0 && (
                                <div>
-                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">👮 Guru Piket Hari Ini ({hariIni})</div>
-                                   <div className="text-xs text-slate-700 font-medium">{piketHariIni.map(j => j.guruName).join(', ')}</div>
-                                   {isPiketToday && <div className="text-[10px] text-sky-dim font-bold mt-1">Anda piket hari ini</div>}
+                                   <button onClick={() => setShowPiketList(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+                                       <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">👮 Guru Piket Hari Ini ({hariIni}) — {piketHariIni.length} orang</div>
+                                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showPiketList ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                   </button>
+                                   {showPiketList && (
+                                       <div className="mt-2 flex flex-wrap gap-1.5 animate-pop">
+                                           {piketHariIni.map((j, i) => (
+                                               <span key={i} className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg ${String(j.guruId) === String(user.id) ? 'bg-sky text-white' : 'bg-slate-100 text-slate-600'}`}>{j.guruName}</span>
+                                           ))}
+                                       </div>
+                                   )}
+                                   {isPiketToday && <div className="text-[10px] text-sky-dim font-bold mt-1.5">✓ Anda piket hari ini</div>}
                                </div>
                            )}
                            {waliKelas && (
@@ -334,6 +344,7 @@
                                                <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                                <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
+                                           {item.logged_by && <div className="text-[10px] text-slate-400">Dicatat oleh: {item.logged_by}</div>}
                                            {category === 'pelanggaran' && item.sanksi && (
                                                <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
                                            )}

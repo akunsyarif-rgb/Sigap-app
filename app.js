@@ -59,6 +59,20 @@
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
            const roleConfig = ROLES[roleKey];
 
+           // Siapa boleh lihat detail per-kelas (Rekap Kelas & daftar pelanggaran):
+           // admin/BK/Kesiswaan (semua kelas) ATAU guru yang jadi wali kelas
+           // (kelasnya sendiri saja). Guru biasa non-wali-kelas: tidak dapat.
+           // Beda dengan canViewRanking (Statistik) yang TIDAK punya pengecualian
+           // wali kelas — itu sengaja, lihat statistik.js.
+           const canSeeClassDetail = roleConfig.canViewRanking || !!(user && user.waliKelas);
+
+           // Menu 'rekap' cuma statis untuk admin/bk_kesiswaan di config.js —
+           // untuk guru yang kebetulan wali kelas, ditambahkan di sini secara
+           // runtime (bukan per-role, tapi per-orang, tergantung user.waliKelas).
+           const effectiveMenus = roleKey === 'guru' && user && user.waliKelas && !roleConfig.menus.includes('rekap')
+               ? [...roleConfig.menus, 'rekap']
+               : roleConfig.menus;
+
            // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
            // — bedanya cuma pesan yang ditampilkan di layar login.
            const clearSession = (errorMessage) => {
@@ -376,30 +390,30 @@
                            )}
 
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
-                               {activeTab === 'scan' && roleConfig.menus.includes('scan') && (
+                               {activeTab === 'scan' && effectiveMenus.includes('scan') && (
                                    <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
                                )}
                                {activeTab === 'dashboard' && (
                                    <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} />
                                )}
-                               {activeTab === 'log' && roleConfig.menus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
-                               {activeTab === 'stats' && roleConfig.menus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
-                               {activeTab === 'rekap' && roleConfig.menus.includes('rekap') && (
-                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} waliKelasMap={waliKelasMap} />
+                               {activeTab === 'log' && effectiveMenus.includes('log') && <LogTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory} />}
+                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
+                               {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
+                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
-                               {activeTab === 'kelola' && roleConfig.menus.includes('kelola') && (
+                               {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
                                    <KelolaTab teachers={teachers} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
                                )}
-                               {activeTab === 'auditlog' && roleConfig.menus.includes('auditlog') && (
+                               {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
                                )}
-                               {activeTab === 'pelanggaran' && roleConfig.menus.includes('pelanggaran') && (
-                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} />
+                               {activeTab === 'pelanggaran' && effectiveMenus.includes('pelanggaran') && (
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} />
                                )}
-                               {activeTab === 'bimbingan' && roleConfig.menus.includes('bimbingan') && (
+                               {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />
                                )}
-                               {activeTab === 'upacara' && roleConfig.menus.includes('upacara') && (
+                               {activeTab === 'upacara' && effectiveMenus.includes('upacara') && (
                                    <UpacaraTab students={students} upacaraList={upacaraList} onAddUpacara={handleAddUpacara} isOsis={roleKey === 'osis'} />
                                )}
                            </div>
@@ -408,7 +422,7 @@
                                <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} />
                            )}
 
-                           <BottomNav menus={roleConfig.menus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
+                           <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
                        </div>
                    )}
                </div>
