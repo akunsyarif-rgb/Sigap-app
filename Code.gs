@@ -433,7 +433,13 @@ function doGet(e) {
     return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
   }
 
-  // ---- Daftar siswa — semua role termasuk OSIS boleh (perlu untuk cari nama) ----
+  // ---- Daftar siswa — semua role termasuk OSIS boleh (perlu untuk cari nama).
+  // Cache 5 menit (bukan 6 jam seperti sebelumnya) — Master_Siswa sering diedit
+  // LANGSUNG di Sheet (tambah/pindah siswa) tanpa lewat aplikasi, jadi tidak ada
+  // aksi yang bisa membersihkan cache saat itu terjadi. 5 menit cukup pendek
+  // supaya perubahan manual di Sheet muncul sendiri tanpa admin perlu tindakan
+  // apa pun, tapi cukup panjang untuk tetap meringankan beban saat banyak guru
+  // login bersamaan (misal pagi hari). ----
   if (action === 'getStudents') {
     var cached = cache.get('students_list');
     if (cached) {
@@ -446,7 +452,7 @@ function doGet(e) {
       students.push({ nisn: rows[i][0], name: rows[i][1], class: rows[i][2] });
     }
     var result = JSON.stringify({ status: 'success', students: students });
-    cache.put('students_list', result, 21600);
+    cache.put('students_list', result, 300);
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 
