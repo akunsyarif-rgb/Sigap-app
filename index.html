@@ -55,10 +55,17 @@
 
    <!-- Kode dipecah jadi beberapa file .js supaya gampang dirawat, tapi supaya
         urutan pemuatannya PASTI benar (tidak bergantung ke Babel menebak urutan
-        sendiri), index.html ini yang ambil semua file secara berurutan,
-        gabungkan jadi satu, baru diproses sekali jalan. -->
+        sendiri), index.html ini yang ambil semua file (paralel, lihat komentar
+        di bawah), gabungkan jadi satu SESUAI URUTAN ARRAY, baru diproses
+        sekali jalan. -->
    <script>
        (async function loadSigapApp() {
+           // Naikkan angka ini SETIAP KALI isi salah satu file .js di bawah berubah
+           // (setiap deploy) — supaya browser ambil versi baru, bukan cache lama.
+           // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
+           // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
+           // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
+           var BUILD_VERSION = 2;
            var files = [
                'config.js',
                'helpers.js',
@@ -72,12 +79,17 @@
                'app.js'
            ];
            try {
-               var combined = '';
-               for (var i = 0; i < files.length; i++) {
-                   var res = await fetch(files[i] + '?v=' + Date.now());
+               // Ambil semua file SEKALIGUS (paralel), bukan satu-satu berurutan —
+               // sebelumnya ini 10 round-trip jaringan berturutan sebelum app mulai
+               // jalan. Promise.all tetap menjaga urutan hasil sesuai array `files`
+               // walau responsnya datang tidak berurutan, jadi urutan gabungan kode
+               // tetap PASTI benar seperti sebelumnya.
+               var responses = await Promise.all(files.map(function (f) { return fetch(f + '?v=' + BUILD_VERSION); }));
+               var texts = await Promise.all(responses.map(function (res, i) {
                    if (!res.ok) throw new Error('Gagal memuat ' + files[i] + ' (status ' + res.status + ')');
-                   combined += await res.text() + '\n';
-               }
+                   return res.text();
+               }));
+               var combined = texts.join('\n');
                var transformed = Babel.transform(combined, { presets: ['react'] }).code;
                var script = document.createElement('script');
                script.textContent = transformed;
