@@ -401,13 +401,16 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
-    // ---- Edit 1 catatan (Terlambat/Pelanggaran/Surat) — admin & BK/Kesiswaan.
-    // BK/Kesiswaan hanya bisa dalam 5 menit sejak catatan dibuat (asumsi salah
-    // input). Lewat 5 menit, hanya admin yang bisa ubah. Baris dicari lewat
-    // kombinasi NISN+Timestamp persis (bukan nomor baris), supaya tidak salah
-    // kalau baris lain sudah ke-geser. ----
+    // ---- Edit 1 catatan (Terlambat/Pelanggaran/Surat) — SEMUA role non-OSIS
+    // boleh, tapi dibatasi 5 menit sejak catatan dibuat (asumsi salah input),
+    // kecuali admin (tidak dibatasi waktu). Guru/BK non-admin cuma boleh ubah
+    // catatan yang DIA SENDIRI tulis — dicek lewat kolom Dicatat_Oleh (selalu
+    // kolom terakhir di ketiga sheet kategori), supaya tidak ada yang bisa
+    // utak-atik catatan guru lain. Baris dicari lewat kombinasi NISN+Timestamp
+    // persis (bukan nomor baris), supaya tidak salah kalau baris lain sudah
+    // ke-geser. ----
     if (action === 'editEntry') {
-      if (!isBkRole(sessionUser.role)) {
+      if (isOsisRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getSheetForCategory(ss, data.category);
@@ -421,7 +424,12 @@ function doPost(e) {
       if (!isAdminRole(sessionUser.role)) {
         var elapsedMs = new Date().getTime() - new Date(found.timestamp).getTime();
         if (elapsedMs > 5 * 60 * 1000) {
-          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — hanya admin yang bisa mengubah data ini.' });
+          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — tidak bisa diubah lagi.' });
+        }
+        // BK/Kesiswaan tetap boleh catatan siapa pun (perilaku lama, cuma
+        // dibatasi waktu) — yang baru dibatasi ke "punya sendiri" cuma guru biasa.
+        if (!isBkRole(sessionUser.role) && getRowLoggedBy(sheet, found.rowIndex) !== sessionUser.name) {
+          return jsonOut({ status: 'error', message: 'Cuma bisa mengubah catatan yang Anda tulis sendiri.' });
         }
       }
       var rowIndex = found.rowIndex;
@@ -450,9 +458,11 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
-    // ---- Hapus 1 catatan — aturan waktu sama seperti edit ----
+    // ---- Hapus 1 catatan — aturan sama seperti edit (semua role non-OSIS,
+    // 5 menit; BK/Kesiswaan tetap boleh catatan siapa pun seperti perilaku
+    // lama, guru biasa cuma boleh catatan sendiri) ----
     if (action === 'deleteEntry') {
-      if (!isBkRole(sessionUser.role)) {
+      if (isOsisRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getSheetForCategory(ss, data.category);
@@ -466,7 +476,10 @@ function doPost(e) {
       if (!isAdminRole(sessionUser.role)) {
         var elapsedMs = new Date().getTime() - new Date(found.timestamp).getTime();
         if (elapsedMs > 5 * 60 * 1000) {
-          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — hanya admin yang bisa menghapus data ini.' });
+          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — tidak bisa dihapus lagi.' });
+        }
+        if (!isBkRole(sessionUser.role) && getRowLoggedBy(sheet, found.rowIndex) !== sessionUser.name) {
+          return jsonOut({ status: 'error', message: 'Cuma bisa menghapus catatan yang Anda tulis sendiri.' });
         }
       }
       sheet.deleteRow(found.rowIndex);

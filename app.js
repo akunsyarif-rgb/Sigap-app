@@ -485,7 +485,7 @@
 
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
                                {activeTab === 'scan' && effectiveMenus.includes('scan') && (
-                                   <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} />
+                                   <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
                                )}
                                {activeTab === 'dashboard' && (
                                    <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} />
@@ -493,7 +493,7 @@
                                {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab
                                        allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory}
-                                       canManage={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} isAdmin={roleKey === 'admin'}
+                                       canManage={roleKey !== 'osis'} isAdmin={roleKey === 'admin'} isBk={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} currentUserName={user.name}
                                        onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
                                    />
                                )}
