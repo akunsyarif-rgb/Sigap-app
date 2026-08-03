@@ -617,7 +617,7 @@ function doGet(e) {
     if (!isBkRole(sessionUser.role)) {
       var myKelas = sessionUser.waliKelas || '';
       if (myKelas) {
-        pelanggaran = pelanggaran.filter(function (p) { return p.class === myKelas; });
+        pelanggaran = pelanggaran.filter(function (p) { return sameClass(p.class, myKelas); });
       } else {
         pelanggaran = pelanggaran.filter(function (p) { return p.logged_by === sessionUser.name; });
       }

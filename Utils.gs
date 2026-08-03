@@ -25,6 +25,14 @@ function hashPassword(password) {
   }).join('');
 }
 
+// Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
+// Kelas, dst.) — jadi dicocokkan toleran spasi berlebih/huruf besar-kecil,
+// sama seperti sameClass() di frontend helpers.js, supaya konsisten.
+function sameClass(a, b) {
+  var norm = function (c) { return String(c || '').trim().toLowerCase().replace(/\s+/g, ' '); };
+  return norm(a) === norm(b);
+}
+
 function isSameDayServer(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }

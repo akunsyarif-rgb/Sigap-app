@@ -31,8 +31,11 @@
            const lateInPeriod = allLogs.filter(l => passesPeriod(parseTimestamp(l.timestamp)));
            const pelanggaranInPeriod = pelanggaranList.filter(p => passesPeriod(parseTimestamp(p.timestamp)));
 
+           // normalizeClass/sameClass (helpers.js): nama kelas diketik manual di
+           // beberapa tempat, jadi dicocokkan toleran spasi/huruf besar-kecil,
+           // bukan string persis sama — tampilan tetap pakai nilai asli `kelas`.
            const waliByClass = {};
-           waliKelasMap.forEach(w => { waliByClass[w.class] = w.waliKelasName; });
+           waliKelasMap.forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
            // Privileged (admin/BK/Kesiswaan): semua kelas, urut A-Z (Blueprint
            // section VIII). Wali kelas: cuma kelasnya sendiri.
@@ -41,9 +44,9 @@
                : (myWaliKelas ? [myWaliKelas] : []);
 
            const classData = classes.map(kelas => {
-               const jumlahSiswa = students.filter(s => s.class === kelas).length;
-               const lateKelas = lateInPeriod.filter(l => l.class === kelas);
-               const pelanggaranKelas = pelanggaranInPeriod.filter(p => p.class === kelas);
+               const jumlahSiswa = students.filter(s => sameClass(s.class, kelas)).length;
+               const lateKelas = lateInPeriod.filter(l => sameClass(l.class, kelas));
+               const pelanggaranKelas = pelanggaranInPeriod.filter(p => sameClass(p.class, kelas));
 
                const bermasalah = {};
                lateKelas.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
@@ -52,7 +55,7 @@
 
                return {
                    kelas,
-                   waliKelas: waliByClass[kelas] || '',
+                   waliKelas: waliByClass[normalizeClass(kelas)] || '',
                    jumlahSiswa,
                    jumlahTerlambat: lateKelas.length,
                    jumlahPelanggaran: pelanggaranKelas.length,

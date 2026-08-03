@@ -81,8 +81,8 @@
            const weekStart = startOfWeek(now);
            let kelasPerwalian = null;
            if (waliKelas) {
-               const lateWeek = allLogs.filter(l => l.class === waliKelas && parseTimestamp(l.timestamp) >= weekStart);
-               const pelanggaranWeek = pelanggaranList.filter(p => p.class === waliKelas && parseTimestamp(p.timestamp) >= weekStart);
+               const lateWeek = allLogs.filter(l => sameClass(l.class, waliKelas) && parseTimestamp(l.timestamp) >= weekStart);
+               const pelanggaranWeek = pelanggaranList.filter(p => sameClass(p.class, waliKelas) && parseTimestamp(p.timestamp) >= weekStart);
                const bermasalah = {};
                lateWeek.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
                pelanggaranWeek.forEach(p => { bermasalah[p.nisn] = bermasalah[p.nisn] || { nisn: p.nisn, name: p.name }; });
