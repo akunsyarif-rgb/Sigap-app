@@ -2,9 +2,23 @@
 // Komponen utama App(): login, sesi, fetch data, semua handler simpan,
 // dan render seluruh tampilan. Dimuat PALING TERAKHIR.
 
+       // Sesi login disimpan di localStorage supaya tidak logout tiap refresh —
+       // sesi di server (CacheService) hidup 6 jam sejak login (lihat
+       // createSession di Auth.gs); localStorage cuma "mengingat" token itu,
+       // validitas sebenarnya tetap ditentukan server di setiap panggilan API.
+       function loadStoredSession() {
+           try {
+               const token = localStorage.getItem('sigap_session_token');
+               const rawUser = localStorage.getItem('sigap_user');
+               if (token && rawUser) return { token, user: JSON.parse(rawUser) };
+           } catch (e) {}
+           return { token: null, user: null };
+       }
+
        function App() {
-           const [user, setUser] = useState(null);
-           const [sessionToken, setSessionToken] = useState(null);
+           const storedSession = loadStoredSession();
+           const [user, setUser] = useState(storedSession.user);
+           const [sessionToken, setSessionToken] = useState(storedSession.token);
            const [passwordInput, setPasswordInput] = useState('');
            const [loadingLogin, setLoadingLogin] = useState(false);
            const [loginError, setLoginError] = useState('');
@@ -45,36 +59,59 @@
            const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
            const roleConfig = ROLES[roleKey];
 
+           // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
+           // — bedanya cuma pesan yang ditampilkan di layar login.
+           const clearSession = (errorMessage) => {
+               try {
+                   localStorage.removeItem('sigap_session_token');
+                   localStorage.removeItem('sigap_user');
+               } catch (e) {}
+               setUser(null);
+               setSessionToken(null);
+               setLoginError(errorMessage || '');
+           };
+
+           // Dipasang di setiap respons API (lewat .then(checkSession) setelah
+           // res.json()) — kalau server bilang sesi sudah tidak valid, langsung
+           // kembalikan ke layar login dengan pesan yang jelas, alih-alih
+           // diam-diam gagal (list kosong tanpa penjelasan).
+           const checkSession = (data) => {
+               if (data && data.status === 'error' && /sesi berakhir/i.test(data.message || '')) {
+                   clearSession(data.message || 'Sesi berakhir, silakan login ulang.');
+               }
+               return data;
+           };
+
            const fetchTeachers = () => {
                if (roleKey !== 'admin') return;
                fetch(`${API_URL}?action=getTeachers&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setTeachers(data.teachers); });
            };
 
            const fetchBimbingan = () => {
                if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
                fetch(`${API_URL}?action=getBimbingan&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setBimbinganList(data.bimbingan); });
            };
 
            const fetchUpacara = () => {
                fetch(`${API_URL}?action=getPelanggaranUpacara&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setUpacaraList(data.upacara); });
            };
 
            const fetchStudentsOnly = () => {
                fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setStudents(data.students); });
            };
 
            const fetchAuditLog = () => {
                if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
                fetch(`${API_URL}?action=getAuditLog&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setAuditLog(data.auditLog); });
            };
 
@@ -82,13 +119,13 @@
            // role non-OSIS, dipakai Dashboard (konteks harian) & Rekap Kelas.
            const fetchJadwalPiket = () => {
                fetch(`${API_URL}?action=getJadwalPiket&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setJadwalPiket(data.jadwal); });
            };
 
            const fetchWaliKelasMap = () => {
                fetch(`${API_URL}?action=getWaliKelasMap&token=${API_TOKEN}&sessionToken=${sessionToken}`)
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setWaliKelasMap(data.waliKelasMap); });
            };
 
@@ -114,15 +151,15 @@
                setLoadingLogs(true);
                setSlowConnection(false);
                const slowTimer = setTimeout(() => setSlowConnection(true), 3000);
-               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setStudents(data.students); });
-               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => {
+               fetch(`${API_URL}?action=getStudents&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setStudents(data.students); });
+               fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => {
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
                    clearTimeout(slowTimer);
                    setSlowConnection(false);
                }).catch(() => { setLoadingLogs(false); clearTimeout(slowTimer); setSlowConnection(false); });
-               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setSuratList(data.surat); });
-               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
+               fetch(`${API_URL}?action=getSurat&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setSuratList(data.surat); });
+               fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => { if (data.status === 'success') setPelanggaranList(data.pelanggaran); });
            };
 
            const handleLogin = (e) => {
@@ -130,19 +167,24 @@
                setLoadingLogin(true);
                setLoginError('');
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingLogin(false);
-                       if (data.status === 'success') { setUser(data.user); setSessionToken(data.sessionToken); }
-                       else setLoginError(data.message || 'Password salah!');
+                       if (data.status === 'success') {
+                           setUser(data.user);
+                           setSessionToken(data.sessionToken);
+                           try {
+                               localStorage.setItem('sigap_session_token', data.sessionToken);
+                               localStorage.setItem('sigap_user', JSON.stringify(data.user));
+                           } catch (e) {}
+                       } else setLoginError(data.message || 'Password salah!');
                    })
                    .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
            };
 
            const handleLogout = () => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', sessionToken: sessionToken, token: API_TOKEN }) }).catch(() => {});
-               setUser(null);
-               setSessionToken(null);
+               clearSession();
            };
 
            const handleRecord = (type) => {
@@ -150,7 +192,7 @@
                const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') setAllLogs(prev => [newEntry, ...prev]);
                        else setToast('Gagal menyimpan, coba lagi.');
@@ -164,7 +206,7 @@
            const handleAddTeacher = (payload, callback) => {
                setLoadingTeacherAction(true);
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacher', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingTeacherAction(false);
                        if (data.status === 'success') {
@@ -177,7 +219,7 @@
 
            const handleUpdatePassword = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') callback(true, '✓ Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
@@ -187,7 +229,7 @@
 
            const handleUpdateJabatan = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateJabatan', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, jabatan: payload.newJabatan } : t));
@@ -199,7 +241,7 @@
 
            const handleToggleStatus = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'toggleTeacherStatus', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, status: data.newStatus } : t));
@@ -211,7 +253,7 @@
 
            const handleUpdateWaliKelas = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateWaliKelas', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, kelasWali: payload.newKelasWali } : t));
@@ -227,7 +269,7 @@
            // guru & urutan selalu sinkron dengan yang tersimpan di server.
            const handleSetJadwalPiket = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'setJadwalPiket', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            fetchJadwalPiket();
@@ -239,7 +281,7 @@
 
            const handleAddSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
@@ -252,7 +294,7 @@
 
            const handleDeleteSurat = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSurat', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const month = parseInt(payload.month, 10);
@@ -269,7 +311,7 @@
 
            const handleAddPelanggaran = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
@@ -282,7 +324,7 @@
 
            const handleAddBimbingan = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') {
@@ -297,7 +339,7 @@
 
            const handleAddUpacara = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranUpacara', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
-                   .then(res => res.json())
+                   .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, catatan: payload.catatan || '', logged_by: user.name };
