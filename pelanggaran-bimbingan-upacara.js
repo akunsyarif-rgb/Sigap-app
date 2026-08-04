@@ -2,7 +2,7 @@
 // Tab Pelanggaran (catat + tandai Bimbingan Khusus), tab Bimbingan
 // Khusus (khusus Admin/BK), dan tab Upacara (OSIS + BK/Admin).
 
-       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan, canSeeClassDetail, onGetPelanggaranCount }) {
+       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan, canSeeClassDetail, onGetPelanggaranCount, waliKelasMap }) {
            const [searchQuery, setSearchQuery] = useState('');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [jenis, setJenis] = useState('');
@@ -21,6 +21,12 @@
 
            const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
            const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
+
+           // Wali kelas di hasil pencarian — konsisten dengan Gerbang (Roadmap
+           // Lanjutan SIGAP Fase 3), berguna kalau perlu menghubungi wali kelas
+           // terkait sebelum/sesudah mencatat pelanggaran.
+           const waliByClass = {};
+           (waliKelasMap || []).forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -77,6 +83,7 @@
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim">{s.class}</div>
+                                           <div className="text-[10px] text-slate-400 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
                                        </div>
                                    </div>
                                )) : <div className="p-4 text-center text-xs text-slate-400">Tidak ditemukan</div>}
@@ -96,7 +103,7 @@
                                {todayList.map((p, idx) => {
                                    const dt = parseTimestamp(p.timestamp);
                                    return (
-                                       <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
+                                       <RowCard key={idx} className="space-y-1 shadow-sm">
                                            <div className="flex items-center justify-between gap-2">
                                                <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
                                                <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
@@ -105,7 +112,7 @@
                                                <span>{p.class} • Sanksi: {p.sanksi}</span>
                                                <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
-                                       </div>
+                                       </RowCard>
                                    );
                                })}
                            </div>
@@ -122,6 +129,7 @@
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Catat Pelanggaran</h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{selectedStudent.name}</div>
                                    <div className="text-xs text-slate-500">{selectedStudent.class}</div>
+                                   <div className="text-[11px] text-slate-400 mt-1">👩‍🏫 {waliByClass[normalizeClass(selectedStudent.class)] || 'Belum ada wali kelas'}</div>
                                </div>
 
                                {canSeeClassDetail ? (
@@ -166,9 +174,9 @@
 
                                <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
-                               <button onClick={submitPelanggaran} disabled={!jenis || !sanksi} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-3 rounded-2xl font-bold text-sm">Simpan</button>
-                               <button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} className="w-full bg-slate-100 border border-slate-300 text-slate-600 py-2.5 rounded-2xl font-bold text-xs">Tandai Perlu Bimbingan Khusus</button>
-                               <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitPelanggaran} disabled={!jenis || !sanksi} className="w-full">Simpan</Button>
+                               <Button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} variant="ghost" className="w-full">Tandai Perlu Bimbingan Khusus</Button>
+                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -181,8 +189,8 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{bimbinganTarget.name}</div>
                                </div>
                                <textarea value={bimbinganCatatan} onChange={(e) => setBimbinganCatatan(e.target.value)} placeholder="Catatan untuk Admin..." rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitBimbingan} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold">Simpan (hanya Admin bisa lihat)</button>
-                               <button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitBimbingan} className="w-full">Simpan (hanya Admin bisa lihat)</Button>
+                               <Button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -198,7 +206,7 @@
                        {[...pelanggaranList].sort((a, b) => sortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).slice(0, 30).map((p, idx) => {
                            const dt = parseTimestamp(p.timestamp);
                            return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
+                               <RowCard key={idx} className="space-y-1">
                                    <div className="flex items-center justify-between">
                                        <div className="font-semibold text-sm text-slate-900">{p.name}</div>
                                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
@@ -207,7 +215,7 @@
                                        <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span className="truncate">{p.sanksi}</span>
                                    </div>
-                               </div>
+                               </RowCard>
                            );
                        })}
                        {pelanggaranList.length === 0 && (
@@ -227,7 +235,7 @@
                        {bimbinganList.map((b, idx) => {
                            const dt = parseTimestamp(b.timestamp);
                            return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1.5">
+                               <RowCard key={idx} className="space-y-1.5">
                                    <div className="flex items-center justify-between">
                                        <div className="font-semibold text-sm text-slate-900">{b.name}</div>
                                        <span className="text-[10px] text-slate-400">{b.class}</span>
@@ -237,7 +245,7 @@
                                        <span>{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                        <span>oleh {b.logged_by}</span>
                                    </div>
-                               </div>
+                               </RowCard>
                            );
                        })}
                        {bimbinganList.length === 0 && <EmptyState emoji="🤝" text="Belum ada catatan bimbingan khusus." />}
@@ -312,8 +320,8 @@
                                    <input type="text" value={jenisCustom} onChange={(e) => { setJenisCustom(e.target.value); setJenis('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                </div>
                                <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitUpacara} disabled={!jenis} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-3 rounded-2xl font-bold text-sm">Simpan</button>
-                               <button onClick={() => setSelectedStudent(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitUpacara} disabled={!jenis} className="w-full">Simpan</Button>
+                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -323,7 +331,7 @@
                        {upacaraList.slice(0, 50).map((u, idx) => {
                            const dt = parseTimestamp(u.timestamp);
                            return (
-                               <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
+                               <RowCard key={idx} className="space-y-1">
                                    <div className="flex items-center justify-between">
                                        <div className="font-semibold text-sm text-slate-900">{u.name}</div>
                                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">{u.jenis_pelanggaran}</span>
@@ -333,7 +341,7 @@
                                        <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                    </div>
                                    {!isOsis && <div className="text-[10px] text-slate-400">Dicatat oleh: {u.logged_by}</div>}
-                               </div>
+                               </RowCard>
                            );
                        })}
                        {upacaraList.length === 0 && <EmptyState emoji="🚩" text="Belum ada catatan pelanggaran upacara." />}

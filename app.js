@@ -507,7 +507,7 @@
                                    <AuditLogTab auditLog={auditLog} />
                                )}
                                {activeTab === 'pelanggaran' && effectiveMenus.includes('pelanggaran') && (
-                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} />
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} waliKelasMap={waliKelasMap} />
                                )}
                                {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />
