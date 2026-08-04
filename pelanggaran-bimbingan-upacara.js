@@ -201,7 +201,7 @@
                                <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1">
                                    <div className="flex items-center justify-between">
                                        <div className="font-semibold text-sm text-slate-900">{p.name}</div>
-                                       <span className="text-[9px] bg-crimson/15 text-crimson px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
+                                       <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
                                    </div>
                                    <div className="text-[10px] text-slate-400 flex justify-between gap-2">
                                        <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
