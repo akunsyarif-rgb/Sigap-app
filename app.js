@@ -233,9 +233,9 @@
                        else setToast('Gagal menyimpan, coba lagi.');
                    })
                    .catch(() => setToast('Koneksi gagal, coba lagi.'));
-               setToast(`Berhasil mencatat: ${selectedStudent.name}`);
+               setToast(`✓ ${selectedStudent.name} berhasil dicatat`);
                setSelectedStudent(null); setCustomReasonInput('');
-               setTimeout(() => setToast(null), 3000);
+               setTimeout(() => setToast(null), 2000);
            };
 
            const handleAddTeacher = (payload, callback) => {
@@ -467,10 +467,9 @@
                            <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />
 
                            {toast && (
-                               <div className="fixed bottom-24 inset-x-0 z-50 px-4">
-                                   <div className="max-w-2xl mx-auto bg-sky text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-pop border border-sky-light">
-                                       <span>{toast}</span>
-                                       <span className="font-bold bg-sky-dim px-2 py-1 rounded-lg">OK</span>
+                               <div className="fixed bottom-24 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">
+                                   <div className="bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl animate-pop">
+                                       {toast}
                                    </div>
                                </div>
                            )}
@@ -485,7 +484,7 @@
 
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
                                {activeTab === 'scan' && effectiveMenus.includes('scan') && (
-                                   <GerbangTab students={students} allLogs={allLogs} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
+                                   <GerbangTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
                                )}
                                {activeTab === 'dashboard' && (
                                    <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} />
