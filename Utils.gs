@@ -103,6 +103,15 @@ function findRowByNisnTimestamp(sheet, nisn, timestamp) {
   return null;
 }
 
+// Nama pencatat (Logged_By/Dicatat_Oleh) selalu kolom TERAKHIR di ketiga
+// sheet kategori (Log_Gerbang/Pelanggaran/Surat_Masuk) — dipakai editEntry/
+// deleteEntry untuk cek kepemilikan saat guru/BK non-admin mau ubah/hapus
+// catatan (cuma boleh punya sendiri, lihat Code.gs).
+function getRowLoggedBy(sheet, rowIndex) {
+  var lastCol = sheet.getLastColumn();
+  return sheet.getRange(rowIndex, lastCol).getValue();
+}
+
 // ===== PERUBAHAN UTAMA =====
 // Hapus cache list terkait kategori supaya perubahan langsung kelihatan
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).

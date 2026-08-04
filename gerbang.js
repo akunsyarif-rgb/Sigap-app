@@ -50,7 +50,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser }) {
+       function GerbangTab({ students, allLogs, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser, waliKelasMap }) {
            const [mode, setMode] = useState('terlambat');
            const [searchQuery, setSearchQuery] = useState('');
            const [suratStudent, setSuratStudent] = useState(null);
@@ -74,6 +74,12 @@
            const [filterKelasSurat, setFilterKelasSurat] = useState('');
            const [onlyTodaySurat, setOnlyTodaySurat] = useState(true);
            const kelasOptions = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
+
+           // Nama wali kelas wajib tampil di hasil pencarian — guru piket di
+           // gerbang sering perlu tahu ini juga (mis. untuk menghubungi wali
+           // kelas terkait), bukan cuma di Rekap Kelas.
+           const waliByClass = {};
+           waliKelasMap.forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
            const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -184,11 +190,12 @@
                            <div className="max-h-60 overflow-y-auto">
                                {filtered.length > 0 ? filtered.map(s => (
                                    <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
-                                       <div>
+                                       <div className="min-w-0">
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-400 font-normal">| NISN: {s.nisn}</span></div>
+                                           <div className="text-[10px] text-slate-400 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
                                        </div>
-                                       <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm">Pilih</span>
+                                       <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm flex-shrink-0 ml-2">Pilih</span>
                                    </div>
                                )) : <div className="p-6 text-center text-xs text-slate-400 font-medium">Siswa tidak ditemukan</div>}
                            </div>

@@ -124,12 +124,18 @@
            );
        }
 
+       // Header dibuat seringkas mungkin — Aa-/Aa+/Keluar dipindah ke menu kecil
+       // (bukan tombol permanen) karena jarang dipakai, supaya tidak memakan
+       // ruang layar yang berharga bagi guru piket yang kerja satu tangan.
+       // Prinsip "satu tangan, satu pandangan, satu keputusan": zona atas cuma
+       // untuk identitas & pengaturan yang jarang disentuh.
        function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange }) {
+           const [showMenu, setShowMenu] = useState(false);
            return (
                <div className="fixed top-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
-                   <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+                   <div className="max-w-2xl mx-auto px-4 pt-4 pb-2.5 flex items-center justify-between">
                        <div className="flex items-center space-x-3 min-w-0">
-                           <img src="IMG_1966.jpeg" alt="Logo" className="w-10 h-10 object-contain rounded-xl bg-white p-1 border border-slate-300 flex-shrink-0" />
+                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-slate-300 flex-shrink-0" />
                            <div className="min-w-0">
                                <h1 className="font-display font-bold text-xs uppercase tracking-wider text-sky-dim truncate">SMAN 2 Tarakan</h1>
                                <div className="flex items-center gap-1.5 mt-0.5">
@@ -138,14 +144,23 @@
                                </div>
                            </div>
                        </div>
-                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                           <div className="flex items-center bg-slate-100 rounded-lg border border-slate-300 overflow-hidden">
-                               <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="px-2 py-1.5 text-slate-600 hover:bg-slate-200 text-xs font-bold">Aa−</button>
-                               <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="px-2 py-1.5 text-slate-600 hover:bg-slate-200 text-sm font-bold border-l border-slate-300">Aa+</button>
-                           </div>
-                           <button onClick={onLogout} className="text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-300 transition shadow-sm">
-                               Keluar
+                       <div className="relative flex-shrink-0">
+                           <button onClick={() => setShowMenu(v => !v)} aria-label="Menu" className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 transition">
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />} className="h-4 w-4" />
                            </button>
+                           {showMenu && (
+                               <React.Fragment>
+                                   <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                                   <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 w-48 z-20 animate-pop">
+                                       <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wide px-2 pt-1 pb-2">Ukuran Tulisan</div>
+                                       <div className="flex items-center gap-1.5 px-2 pb-2">
+                                           <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-600 transition">Aa−</button>
+                                           <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-sm font-bold text-slate-600 transition">Aa+</button>
+                                       </div>
+                                       <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2 rounded-lg transition">Keluar</button>
+                                   </div>
+                               </React.Fragment>
+                           )}
                        </div>
                    </div>
                </div>
