@@ -201,7 +201,10 @@
                            </div>
                        </div>
                        <div className="relative flex-shrink-0">
-                           <button onClick={() => setShowMenu(v => !v)} aria-label="Menu" className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 transition">
+                           {/* p-3.5 (bukan p-2) — 16px ikon + padding pas menembus ambang
+                               tap-target ≥44px (Roadmap Lanjutan SIGAP Fase 1, checklist
+                               "audit ukuran tombol"), walau menu ini jarang dipakai. */}
+                           <button onClick={() => setShowMenu(v => !v)} aria-label="Menu" className="p-3.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 transition">
                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />} className="h-4 w-4" />
                            </button>
                            {showMenu && (

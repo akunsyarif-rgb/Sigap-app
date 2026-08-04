@@ -44,7 +44,7 @@
                                <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
                            </div>
                        </div>
-                       <button onClick={onClose} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 hover:text-slate-900 hover:border-slate-400 py-3 rounded-2xl font-bold text-xs transition">Batal</button>
+                       <Button onClick={onClose} variant="secondary" className="w-full">Batal</Button>
                    </div>
                </div>
            );
@@ -353,7 +353,7 @@
                                        )}
                                    </div>
 
-                                   <button onClick={() => setPickerStudent(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Tutup</button>
+                                   <Button onClick={() => setPickerStudent(null)} variant="secondary" className="w-full">Tutup</Button>
                                </div>
                            </div>
                        );
@@ -391,10 +391,10 @@
                                    )}
                                </div>
 
-                               <button onClick={submitSurat} disabled={savingSurat} className="w-full bg-sky hover:bg-sky-light disabled:opacity-50 text-white py-3 rounded-2xl font-bold text-sm">
+                               <Button onClick={submitSurat} disabled={savingSurat} className="w-full">
                                    {savingSurat ? 'Menyimpan...' : 'Simpan'}
-                               </button>
-                               <button onClick={() => { setSuratStudent(null); setFotoPreview(null); setFotoBase64(null); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               </Button>
+                               <Button onClick={() => { setSuratStudent(null); setFotoPreview(null); setFotoBase64(null); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
