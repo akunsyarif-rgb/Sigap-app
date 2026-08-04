@@ -65,10 +65,10 @@
 
        function StatCard({ value, label, accent = false }) {
            return (
-               <div className={`p-4 rounded-2xl text-center border ${accent ? 'bg-sky-dim/15 border-sky-dim/40' : 'bg-white border-slate-200'}`}>
+               <Card tone={accent ? 'sky' : 'white'} className="text-center">
                    <div className={`font-display text-3xl font-extrabold ${accent ? 'text-sky-dim' : 'text-slate-800'}`}>{value}</div>
                    <div className="text-[10px] text-slate-500 mt-1 font-semibold uppercase tracking-wide">{label}</div>
-               </div>
+               </Card>
            );
        }
 

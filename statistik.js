@@ -88,7 +88,7 @@
                        Wali kelas yang mau lihat detail kelasnya sendiri, arahnya ke
                        menu Rekap Kelas, bukan di sini. */}
                    {canViewRanking && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                       <Card>
                            <div className="flex items-center justify-between mb-3">
                                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rekap per Kelas (Periode Ini)</h3>
                                <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
@@ -116,13 +116,13 @@
                                    <div className="text-xs text-slate-400 py-2 text-center">Belum ada data di periode ini.</div>
                                );
                            })()}
-                       </div>
+                       </Card>
                    )}
 
                    <TopList title={`${activeCat.subLabel} Terbanyak (Periode Ini)`} items={topN(periodData, l => l[activeCat.subField], 5)} unit="kali" />
 
                    {canViewRanking && category === 'terlambat' && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                       <Card className="space-y-3">
                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Siswa Sering Terlambat (≥3x)</h3>
                            <div className="flex gap-1.5 overflow-x-auto pb-1">
                                {freqWindows.map(w => (
@@ -143,11 +143,11 @@
                            ) : (
                                <div className="text-xs text-slate-400 py-1 text-center">Tidak ada siswa dengan ≥3x terlambat di periode ini.</div>
                            )}
-                       </div>
+                       </Card>
                    )}
 
                    {canExport && (
-                       <div className="bg-sky-dim/10 border border-sky-dim/40 p-4 rounded-2xl space-y-3">
+                       <Card tone="sky" className="space-y-3">
                            <h3 className="text-xs font-display font-bold text-sky-dim flex items-center gap-2">
                                <Icon path={<path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />} filled className="h-4 w-4" />
                                Data Lengkap (Admin)
@@ -156,7 +156,7 @@
                            <a href="https://docs.google.com/spreadsheets" target="_blank" className="block w-full text-center bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-[11px] font-bold transition">
                                Buka Google Spreadsheet
                            </a>
-                       </div>
+                       </Card>
                    )}
                </div>
            );
