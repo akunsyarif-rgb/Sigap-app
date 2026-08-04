@@ -134,12 +134,12 @@
                        </select>
                        <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                        <p className="text-[10px] text-slate-400 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
-                       <button type="submit" disabled={loading} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-50">
+                       <Button type="submit" disabled={loading} className="w-full">
                            {loading ? 'Menyimpan...' : 'Tambah Guru'}
-                       </button>
+                       </Button>
                    </form>
 
-                   <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                   <Card>
                        <h3 className="text-xs font-display font-bold text-slate-800 mb-3">Daftar Guru ({teachers.length})</h3>
                        {teachers.length === 0 && <div className="text-xs text-slate-400 py-2">Memuat daftar guru...</div>}
                        <div className="space-y-2">
@@ -166,9 +166,9 @@
                                </div>
                            ))}
                        </div>
-                   </div>
+                   </Card>
 
-                   <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                   <Card className="space-y-3">
                        <h3 className="text-xs font-display font-bold text-slate-800">Jadwal Piket Mingguan</h3>
                        <p className="text-[10px] text-slate-400 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
 
@@ -201,11 +201,11 @@
                                <option value="">Pilih guru...</option>
                                {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                            </select>
-                           <button onClick={addJadwalEntry} disabled={!pickGuru} className="bg-slate-100 border border-slate-300 text-slate-600 px-3 rounded-xl text-xs font-bold disabled:opacity-40">Tambah</button>
+                           <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
                        </div>
 
-                       <button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Jadwal Piket</button>
-                   </div>
+                       <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
+                   </Card>
 
                    {resetTarget && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -215,8 +215,8 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{resetTarget.name}</div>
                                </div>
                                <input type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitReset} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Password Baru</button>
-                               <button onClick={() => { setResetTarget(null); setResetPassword(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitReset} className="w-full">Simpan Password Baru</Button>
+                               <Button onClick={() => { setResetTarget(null); setResetPassword(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -232,8 +232,8 @@
                                <select value={roleInput} onChange={(e) => setRoleInput(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                    {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                </select>
-                               <button onClick={submitRole} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Role</button>
-                               <button onClick={() => setRoleTarget(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitRole} className="w-full">Simpan Role</Button>
+                               <Button onClick={() => setRoleTarget(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -247,8 +247,8 @@
                                    <div className="text-[10px] text-slate-400 mt-1">Hak akses tetap sesuai role: {ROLES[String(jabatanTarget.role).toLowerCase().trim()] ? ROLES[String(jabatanTarget.role).toLowerCase().trim()].label : 'Guru'}</div>
                                </div>
                                <input type="text" value={jabatanInput} onChange={(e) => setJabatanInput(e.target.value)} placeholder="Kosongkan untuk label default" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitJabatan} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Jabatan</button>
-                               <button onClick={() => { setJabatanTarget(null); setJabatanInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitJabatan} className="w-full">Simpan Jabatan</Button>
+                               <Button onClick={() => { setJabatanTarget(null); setJabatanInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -264,8 +264,8 @@
                                    <option value="">Tidak ada (lepas status wali kelas)</option>
                                    {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
                                </select>
-                               <button onClick={submitWaliKelas} className="w-full bg-sky hover:bg-sky-light text-white py-2.5 rounded-xl text-xs font-bold transition">Simpan Wali Kelas</button>
-                               <button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitWaliKelas} className="w-full">Simpan Wali Kelas</Button>
+                               <Button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -302,14 +302,14 @@
                            {filtered.map((a, idx) => {
                                const dt = parseTimestamp(a.timestamp);
                                return (
-                                   <div key={idx} className="bg-white border border-slate-200 p-3 rounded-xl space-y-1">
+                                   <RowCard key={idx} className="space-y-1">
                                        <div className="flex items-center justify-between gap-2">
                                            <span className="text-xs font-bold text-slate-900">{a.name}</span>
                                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${actionTone(a.action)}`}>{a.action}</span>
                                        </div>
                                        {a.detail && <div className="text-[11px] text-slate-500">{a.detail}</div>}
                                        <div className="text-[10px] text-slate-400">{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                                   </div>
+                                   </RowCard>
                                );
                            })}
                        </div>

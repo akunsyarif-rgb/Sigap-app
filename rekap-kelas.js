@@ -98,7 +98,7 @@
                    <div className="space-y-2.5">
                        {classData.map((c) => (
                            <div key={c.kelas}>
-                               <div onClick={() => setExpandedClass(expandedClass === c.kelas ? null : c.kelas)} className="bg-white border border-slate-200 p-4 rounded-2xl space-y-2 cursor-pointer active:bg-slate-100 transition">
+                               <RowCard onClick={() => setExpandedClass(expandedClass === c.kelas ? null : c.kelas)} className="space-y-2">
                                    <div className="flex items-center justify-between">
                                        <div>
                                            <div className="font-display font-bold text-sm text-slate-900">{c.kelas}</div>
@@ -118,7 +118,7 @@
                                            <div className="text-[8px] text-amber-600 font-bold uppercase">Pelanggaran</div>
                                        </div>
                                    </div>
-                               </div>
+                               </RowCard>
                                {expandedClass === c.kelas && (
                                    <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-3 animate-pop">
                                        <div className="space-y-1.5">
