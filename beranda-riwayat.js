@@ -284,9 +284,12 @@
            const [search, setSearch] = useState('');
            const [expandedStudent, setExpandedStudent] = useState(null);
            const [showFilters, setShowFilters] = useState(false);
-           // Default tetap kronologis (waktu terbaru dulu) — urutan Kelas->Nama A-Z
-           // cuma opsi tambahan (Blueprint SIGAP v2 section VIII), bukan pengganti default.
-           const [sortMode, setSortMode] = useState('waktu');
+           // Default sekarang Kelas -> Nama A-Z (Roadmap Lanjutan SIGAP Fase 3:
+           // "urut berdasarkan kelas, di dalam kelas urut alfabet") — guru piket
+           // paling sering cari "kelas X siapa saja", bukan "apa yang baru saja
+           // terjadi". Urutan waktu tetap ada sebagai opsi kalau mau lihat
+           // aktivitas terbaru.
+           const [sortMode, setSortMode] = useState('nama');
 
            // ---- State untuk Edit/Hapus 1 catatan ----
            const [manageTarget, setManageTarget] = useState(null);
@@ -508,20 +511,25 @@
                    </div>
 
                    {showFilters && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 animate-pop">
-                           <div>
-                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Kelas</label>
-                               <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                   <option value="">Semua Kelas</option>
-                                   {classes.map(c => <option key={c} value={c}>{c}</option>)}
-                               </select>
-                           </div>
-                           <div>
-                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">{activeCat.subLabel}</label>
-                               <select value={filterSub} onChange={(e) => setFilterSub(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                   <option value="">Semua {activeCat.subLabel}</option>
-                                   {subOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                               </select>
+                       <Card className="space-y-3 animate-pop">
+                           {/* Kelas & Jenis berdampingan (bukan ditumpuk) — drawer lebih
+                               pendek, lebih cepat dipindai (Roadmap Lanjutan SIGAP Fase 3:
+                               "filter lebih sederhana"). */}
+                           <div className="grid grid-cols-2 gap-2">
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Kelas</label>
+                                   <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Semua Kelas</option>
+                                       {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                                   </select>
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">{activeCat.subLabel}</label>
+                                   <select value={filterSub} onChange={(e) => setFilterSub(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Semua {activeCat.subLabel}</option>
+                                       {subOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                                   </select>
+                               </div>
                            </div>
                            <div>
                                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Tanggal Spesifik</label>
@@ -530,14 +538,14 @@
                            <div className="pt-1 border-t border-slate-100">
                                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Urutkan Hasil</label>
                                <div className="flex gap-1.5 bg-slate-100 rounded-xl p-1 w-fit">
-                                   <button onClick={() => setSortMode('waktu')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'waktu' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Terbaru</button>
                                    <button onClick={() => setSortMode('nama')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'nama' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Kelas &amp; Nama A-Z</button>
+                                   <button onClick={() => setSortMode('waktu')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${sortMode === 'waktu' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Terbaru</button>
                                </div>
                            </div>
-                           {(filterClass || filterSub || period !== 'semua' || sortMode !== 'waktu') && (
-                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setSortMode('waktu'); }} className="text-[10px] text-crimson font-semibold">Reset semua</button>
+                           {(filterClass || filterSub || period !== 'semua' || sortMode !== 'nama') && (
+                               <button onClick={() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setSortMode('nama'); }} className="text-[10px] text-crimson font-semibold">Reset semua</button>
                            )}
-                       </div>
+                       </Card>
                    )}
 
                    {restrictedMsg && <div className="text-[11px] text-amber-700 font-medium text-center bg-amber-50 border border-amber-200 py-2 px-3 rounded-lg">{restrictedMsg}</div>}
@@ -552,7 +560,7 @@
                                const editable = canManage && canEditNow(item);
                                return (
                                    <div key={idx}>
-                                       <div onClick={() => setExpandedStudent(expandedStudent === item.nisn ? null : item.nisn)} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 cursor-pointer active:bg-slate-100 transition">
+                                       <RowCard onClick={() => setExpandedStudent(expandedStudent === item.nisn ? null : item.nisn)} className="space-y-1">
                                            <div className="flex items-center justify-between">
                                                <div className="font-semibold text-sm text-slate-900">{item.name}</div>
                                                <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{subValue}</span>
@@ -588,7 +596,7 @@
                                            {category === 'surat' && item.foto_url && (
                                                <a href={item.foto_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-sky-dim underline inline-block">Lihat foto surat</a>
                                            )}
-                                       </div>
+                                       </RowCard>
                                        {expandedStudent === item.nisn && (
                                            <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
                                                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Riwayat {activeCat.label} {item.name}</div>
@@ -676,10 +684,10 @@
 
                                {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
 
-                               <button onClick={submitEdit} disabled={manageLoading} className="w-full bg-sky hover:bg-sky-light disabled:opacity-50 text-white py-3 rounded-2xl font-bold text-sm">
+                               <Button onClick={submitEdit} disabled={manageLoading} className="w-full">
                                    {manageLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
-                               </button>
-                               <button onClick={closeManage} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               </Button>
+                               <Button onClick={closeManage} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -694,10 +702,10 @@
                                    <p className="text-[11px] text-slate-400 mt-2">Tindakan ini tidak bisa dibatalkan.</p>
                                </div>
                                {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
-                               <button onClick={submitDelete} disabled={manageLoading} className="w-full bg-crimson hover:bg-crimson-dim disabled:opacity-50 text-white py-3 rounded-2xl font-bold text-sm">
+                               <Button onClick={submitDelete} disabled={manageLoading} variant="danger" className="w-full">
                                    {manageLoading ? 'Menghapus...' : 'Ya, Hapus'}
-                               </button>
-                               <button onClick={() => { setConfirmDeleteTarget(null); setManageMsg(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               </Button>
+                               <Button onClick={() => { setConfirmDeleteTarget(null); setManageMsg(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
