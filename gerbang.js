@@ -50,9 +50,10 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser, waliKelasMap }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser, waliKelasMap }) {
            const [mode, setMode] = useState('terlambat');
            const [searchQuery, setSearchQuery] = useState('');
+           const [pickerStudent, setPickerStudent] = useState(null);
            const [suratStudent, setSuratStudent] = useState(null);
            const [jenis, setJenis] = useState('Sakit');
            const [keterangan, setKeterangan] = useState('');
@@ -62,7 +63,6 @@
            const [delMonth, setDelMonth] = useState(String(new Date().getMonth() + 1));
            const [delYear, setDelYear] = useState(String(new Date().getFullYear()));
            const [msg, setMsg] = useState('');
-           const [blockMsg, setBlockMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
            const fileInputRef = useRef(null);
            // Default tetap kronologis — Nama A-Z cuma opsi tambahan (Blueprint SIGAP v2, section VIII)
@@ -101,25 +101,20 @@
 
            const [msgTone, setMsgTone] = useState('sky');
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
-           const alreadyToday = (list, nisn) => list.some(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
+           const alreadyToday = (list, nisn) => list.find(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
+           const monthCount = (list, nisn) => {
+               const now = new Date();
+               return list.filter(item => item.nisn === nisn && parseTimestamp(item.timestamp).getMonth() === now.getMonth() && parseTimestamp(item.timestamp).getFullYear() === now.getFullYear()).length;
+           };
 
+           // Pilih siswa -> buka satu bottom sheet ringkasan (bukan langsung
+           // masuk mode tertentu) — di situ guru baru memilih mau "Catat
+           // Terlambat" atau "Catat Surat", dan kalau salah satunya sudah
+           // tercatat hari ini, langsung kelihatan di situ (bukan pesan blok
+           // terpisah). Prinsip "satu tangan, satu pandangan, satu keputusan".
            const handleSelect = (s) => {
                setSearchQuery('');
-               if (mode === 'terlambat') {
-                   if (alreadyToday(allLogs, s.nisn)) {
-                       setBlockMsg(`${s.name} sudah tercatat terlambat hari ini — tidak bisa dicatat dua kali. Kalau ini keterlambatan setelah kegiatan di luar, catat lewat menu Pelanggaran.`);
-                       setTimeout(() => setBlockMsg(''), 6000);
-                       return;
-                   }
-                   onSelectLate(s);
-               } else {
-                   if (alreadyToday(suratList, s.nisn)) {
-                       setBlockMsg(`${s.name} sudah punya catatan surat hari ini — tidak bisa dicatat dua kali.`);
-                       setTimeout(() => setBlockMsg(''), 6000);
-                       return;
-                   }
-                   setSuratStudent(s);
-               }
+               setPickerStudent(s);
            };
 
            // Kompres foto di sisi browser (maks lebar 800px, kualitas 60%) sebelum
@@ -163,13 +158,12 @@
 
            return (
                <div className="space-y-5 animate-rise">
-                   <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       <button onClick={() => setMode('terlambat')} className={`py-2.5 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
-                       <button onClick={() => setMode('surat')} className={`py-2.5 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
+                   <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 mt-6">
+                       <button onClick={() => setMode('terlambat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
+                       <button onClick={() => setMode('surat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
                    </div>
 
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
-                   {blockMsg && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2.5 px-3 rounded-lg leading-relaxed">{blockMsg}</div>}
                    <div>
                        <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
                        <div className="relative">
@@ -185,7 +179,7 @@
                    {searchQuery.trim() !== '' && (
                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl animate-rise">
                            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                               Hasil ({filtered.length}) — mode: {mode === 'terlambat' ? 'Catat Terlambat' : 'Catat Surat'}
+                               Hasil ({filtered.length})
                            </div>
                            <div className="max-h-60 overflow-y-auto">
                                {filtered.length > 0 ? filtered.map(s => (
@@ -219,6 +213,7 @@
                                            <div className="w-px h-8 bg-slate-200 flex-shrink-0"></div>
                                            <div className="flex-1 min-w-0">
                                                <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-400 font-normal">({item.class})</span></div>
+                                               <div className="text-[9px] text-slate-400 truncate">👩‍🏫 {waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</div>
                                                <div className="text-[10px] mt-0.5 flex items-center justify-between gap-2">
                                                    <span className={item._kind === 'terlambat' ? 'text-crimson font-semibold' : 'text-sky-dim font-semibold'}>
                                                        {item._kind === 'terlambat' ? '⏰ Terlambat' : '📄 Surat'} — {item._kind === 'terlambat' ? item.type : item.jenis}
@@ -299,6 +294,70 @@
                            </div>
                        </React.Fragment>
                    )}
+
+                   {/* Bottom sheet setelah pilih siswa — satu tempat, tanpa pindah
+                       halaman: ringkasan singkat + pilih mau catat apa. Kalau salah
+                       satu kategori sudah tercatat hari ini, langsung kelihatan di
+                       sini (bukan pesan blok terpisah sebelum sempat lihat siswanya). */}
+                   {pickerStudent && (() => {
+                       const lateToday = alreadyToday(allLogs, pickerStudent.nisn);
+                       const suratToday = alreadyToday(suratList, pickerStudent.nisn);
+                       return (
+                           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                               <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                                   <div className="text-center">
+                                       <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
+                                       <div className="font-display text-xl font-extrabold text-slate-900">{pickerStudent.name}</div>
+                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-400 font-normal">| NISN: {pickerStudent.nisn}</span></div>
+                                       <div className="text-[11px] text-slate-400 mt-1">👩‍🏫 {waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</div>
+                                   </div>
+
+                                   <div className="grid grid-cols-3 gap-2 text-center">
+                                       <div className="bg-crimson/10 rounded-xl py-2">
+                                           <div className="text-sm font-extrabold text-crimson">{monthCount(allLogs, pickerStudent.nisn)}</div>
+                                           <div className="text-[8px] text-crimson font-bold uppercase">Terlambat/bln</div>
+                                       </div>
+                                       <div className="bg-amber-50 rounded-xl py-2">
+                                           <div className="text-sm font-extrabold text-amber-600">{monthCount(pelanggaranList, pickerStudent.nisn)}</div>
+                                           <div className="text-[8px] text-amber-600 font-bold uppercase">Pelanggaran/bln</div>
+                                       </div>
+                                       <div className="bg-sky-dim/10 rounded-xl py-2">
+                                           <div className="text-sm font-extrabold text-sky-dim">{monthCount(suratList, pickerStudent.nisn)}</div>
+                                           <div className="text-[8px] text-sky-dim font-bold uppercase">Surat/bln</div>
+                                       </div>
+                                   </div>
+
+                                   <div className="space-y-2 pt-1 border-t border-slate-100">
+                                       {lateToday ? (
+                                           <div className="bg-slate-100 rounded-xl px-4 py-3">
+                                               <div className="text-xs font-bold text-slate-600">✓ Sudah dicatat terlambat</div>
+                                               <div className="text-[10px] text-slate-400 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
+                                           </div>
+                                       ) : (
+                                           <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition">
+                                               ⏰ Catat Terlambat
+                                           </button>
+                                       )}
+                                       {suratToday ? (
+                                           <div className="bg-slate-100 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
+                                               <div className="min-w-0">
+                                                   <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
+                                                   <div className="text-[10px] text-slate-400 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
+                                               </div>
+                                               {suratToday.foto_url && <a href={suratToday.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline flex-shrink-0">Lihat</a>}
+                                           </div>
+                                       ) : (
+                                           <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition">
+                                               📄 Catat Surat
+                                           </button>
+                                       )}
+                                   </div>
+
+                                   <button onClick={() => setPickerStudent(null)} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Tutup</button>
+                               </div>
+                           </div>
+                       );
+                   })()}
 
                    {suratStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
