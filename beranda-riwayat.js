@@ -367,6 +367,18 @@
 
            const activeFilterCount = [filterClass, filterSub, period !== 'semua' ? 'x' : ''].filter(Boolean).length;
 
+           // Ringkasan Bulan Ini — satu baris singkat di atas Riwayat, jadi
+           // guru bisa lihat total bulan berjalan tanpa harus buka filter
+           // "Bulan Ini" dulu (Roadmap Perubahan Halaman Gerbang, poin 16:
+           // "Ringkasan Riwayat, tidak panjang, hanya Bulan ini X terlambat Y
+           // surat"). Sumbernya sama-sama allLogs/pelanggaranList/suratList
+           // yang sudah dibatasi sesuai role dari server, jadi tidak ada
+           // kebocoran privasi tambahan.
+           const monthStart = startOfMonth(new Date());
+           const monthLateCount = allLogs.filter(l => parseTimestamp(l.timestamp) >= monthStart).length;
+           const monthPelanggaranCount = pelanggaranList.filter(p => parseTimestamp(p.timestamp) >= monthStart).length;
+           const monthSuratCount = suratList.filter(s => parseTimestamp(s.timestamp) >= monthStart).length;
+
            // Penanda visual saja — aturan SEBENARNYA ditegakkan di server. Admin:
            // bebas. BK/Kesiswaan: siapa pun boleh, asal masih dalam 5 menit.
            // Guru biasa: sama-sama 5 menit, TAPI cuma boleh catatan yang dia
@@ -473,6 +485,8 @@
 
            return (
                <div className="space-y-4 animate-rise">
+                   <p className="text-[11px] text-slate-400 text-center">Bulan ini: <span className="font-semibold text-slate-600">{monthLateCount} terlambat</span> • <span className="font-semibold text-slate-600">{monthPelanggaranCount} pelanggaran</span> • <span className="font-semibold text-slate-600">{monthSuratCount} surat</span></p>
+
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
                        {categories.map(c => (
                            <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold transition ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
