@@ -7,6 +7,62 @@
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
        }
 
+       // ===== Design System primitives (Roadmap Lanjutan SIGAP, Fase 2) =====
+       // Pola card/tombol yang sudah berulang di banyak file (radius, padding,
+       // shadow, warna) ditarik jadi satu sumber di sini supaya konsisten dan
+       // tidak drift lagi tiap ada tab baru. Migrasi file lain dilakukan
+       // bertahap satu file per kali, bukan sekaligus.
+
+       // Card: wadah section (mis. panel Rekap per Kelas, form pengaturan) —
+       // radius lebih besar karena elemen yang lebih besar/jarang berulang.
+       // tone dipakai HANYA untuk info penting (Terlambat=crimson,
+       // Pelanggaran=amber, Surat=sky) — default tetap putih netral.
+       function Card({ children, className = '', tone = 'white' }) {
+           const tones = {
+               white: 'bg-white border-slate-200',
+               crimson: 'bg-crimson/10 border-crimson/30',
+               amber: 'bg-amber-50 border-amber-200',
+               sky: 'bg-sky-dim/10 border-sky-dim/30',
+           };
+           return <div className={`border rounded-2xl p-4 ${tones[tone]} ${className}`}>{children}</div>;
+       }
+
+       // RowCard: satu baris dalam daftar berulang (log Riwayat, hasil
+       // pencarian, dst.) — radius lebih kecil & padding lebih rapat daripada
+       // Card, sesuai hierarki visual yang sudah ada (section besar vs baris
+       // list kecil).
+       function RowCard({ children, className = '', onClick }) {
+           return (
+               <div onClick={onClick} className={`bg-white border border-slate-200 rounded-xl p-3.5 ${onClick ? 'cursor-pointer active:bg-slate-100 transition' : ''} ${className}`}>
+                   {children}
+               </div>
+           );
+       }
+
+       // Button: 4 varian warna x 2 ukuran. size="normal" WAJIB untuk aksi
+       // utama (Simpan, Catat X, dst.) — py-3.5 memastikan tinggi tap-area
+       // ≥44px (standar kenyamanan sentuh di HP, lihat checklist Freeze
+       // Gerbang). size="compact" untuk elemen kecil berulang (toggle pill,
+       // tombol ikon) yang secara desain memang tidak perlu 44px.
+       function Button({ children, onClick, variant = 'primary', size = 'normal', disabled = false, type = 'button', className = '' }) {
+           const base = 'font-bold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 inline-flex items-center justify-center gap-1.5';
+           const variants = {
+               primary: 'bg-sky hover:bg-sky-light text-white shadow-sm',
+               danger: 'bg-crimson hover:bg-crimson-dim text-white shadow-sm',
+               secondary: 'bg-transparent border-2 border-slate-300 text-slate-500 hover:text-slate-900 hover:border-slate-400',
+               ghost: 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300',
+           };
+           const sizes = {
+               normal: 'py-3.5 rounded-2xl text-sm',
+               compact: 'py-2 px-3 rounded-xl text-xs',
+           };
+           return (
+               <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+                   {children}
+               </button>
+           );
+       }
+
        function StatCard({ value, label, accent = false }) {
            return (
                <div className={`p-4 rounded-2xl text-center border ${accent ? 'bg-sky-dim/15 border-sky-dim/40' : 'bg-white border-slate-200'}`}>
@@ -19,7 +75,7 @@
        function BarChart({ data, title }) {
            const max = Math.max(...data.map(d => d.count), 1);
            return (
-               <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-lg">
+               <Card className="shadow-lg">
                    {title && <h3 className="text-xs font-display font-bold text-slate-800 mb-4 text-center">{title}</h3>}
                    <div className="flex items-end justify-between h-36 gap-1.5">
                        {data.map((d, i) => (
@@ -33,13 +89,13 @@
                            </div>
                        ))}
                    </div>
-               </div>
+               </Card>
            );
        }
 
        function TopList({ title, items, unit }) {
            return (
-               <div className="bg-white border border-slate-200 rounded-2xl p-4">
+               <Card>
                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">{title}</h3>
                    {items.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data.</div>}
                    <div className="space-y-2.5">
@@ -51,7 +107,7 @@
                            </div>
                        ))}
                    </div>
-               </div>
+               </Card>
            );
        }
 
@@ -115,9 +171,9 @@
                                />
                            </div>
                            {error && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2 rounded-lg">{error}</div>}
-                           <button type="submit" disabled={loading} className="w-full bg-sky hover:bg-sky-light text-white py-3.5 rounded-2xl font-bold text-sm shadow-[0_4px_14px_0_rgba(46,134,216,0.4)] transition active:scale-95 disabled:opacity-50">
+                           <Button type="submit" disabled={loading} className="w-full shadow-[0_4px_14px_0_rgba(46,134,216,0.4)]">
                                {loading ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
-                           </button>
+                           </Button>
                        </form>
                    </div>
                </div>
