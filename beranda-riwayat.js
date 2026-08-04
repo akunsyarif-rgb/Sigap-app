@@ -5,16 +5,12 @@
 // sejak catatan dibuat — aturan sebenarnya ditegakkan di server).
 
        function SummaryCard({ value, label, tone }) {
-           const toneClasses = {
-               crimson: 'bg-crimson/10 border-crimson/30 text-crimson',
-               amber: 'bg-amber-50 border-amber-200 text-amber-600',
-               sky: 'bg-sky-dim/10 border-sky-dim/30 text-sky-dim',
-           };
+           const textClasses = { crimson: 'text-crimson', amber: 'text-amber-600', sky: 'text-sky-dim' };
            return (
-               <div className={`p-4 rounded-2xl text-center border ${toneClasses[tone]}`}>
+               <Card tone={tone} className={`text-center ${textClasses[tone]}`}>
                    <div className="font-display text-3xl font-extrabold">{value}</div>
                    <div className="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-80">{label}</div>
-               </div>
+               </Card>
            );
        }
 
@@ -31,7 +27,7 @@
                surat: item.jenis,
            };
            return (
-               <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1 shadow-sm">
+               <RowCard className="space-y-1 shadow-sm">
                    <div className="flex items-center justify-between gap-2">
                        <div className="font-bold text-sm text-slate-900 truncate">{item.name}</div>
                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border flex-shrink-0 ${toneClasses[item._kind]}`}>{labelMap[item._kind]}</span>
@@ -40,7 +36,7 @@
                        <span className="truncate">{item.class} • {detailMap[item._kind]}</span>
                        <span className="flex-shrink-0 text-slate-400">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                    </div>
-               </div>
+               </RowCard>
            );
        }
 
@@ -200,7 +196,7 @@
                    {/* Riwayat Tindak Lanjut — status 'selesai' TETAP tersimpan & terlihat,
                        cuma tidak lagi memicu banner di atas (lihat resolvedMap). */}
                    {tindakLanjutList.length > 0 && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                       <Card>
                            <button onClick={() => setShowRiwayatTL(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
                                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Riwayat Tindak Lanjut ({tindakLanjutList.length})</h3>
                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showRiwayatTL ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
@@ -219,7 +215,7 @@
                                    ))}
                                </div>
                            )}
-                       </div>
+                       </Card>
                    )}
 
                    {tindakLanjutTarget && (
@@ -231,8 +227,8 @@
                                    <div className="text-[10px] text-slate-400 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
                                </div>
                                <textarea value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder="Catatan tindak lanjut (mis. sudah dipanggil orang tua, diberi peringatan, dsb.)" rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full bg-sky hover:bg-sky-light disabled:opacity-40 text-white py-2.5 rounded-xl text-xs font-bold transition">Ajukan ke Admin</button>
-                               <button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} className="w-full bg-transparent border-2 border-slate-300 text-slate-500 py-2.5 rounded-2xl font-bold text-xs">Batal</button>
+                               <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full">Ajukan ke Admin</Button>
+                               <Button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -254,7 +250,7 @@
 
                    {/* ⑥ Ringkasan kelas perwalian */}
                    {kelasPerwalian && (
-                       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+                       <Card className="space-y-2">
                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kelas Perwalian {waliKelas} — Minggu Ini</h3>
                            {kelasPerwalian.jumlahSiswaBermasalah > 0 ? (
                                <div className="space-y-1.5">
@@ -267,7 +263,7 @@
                            ) : (
                                <div className="text-xs text-slate-400">Belum ada siswa bermasalah minggu ini. 🎉</div>
                            )}
-                       </div>
+                       </Card>
                    )}
                </div>
            );
