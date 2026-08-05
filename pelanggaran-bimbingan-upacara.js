@@ -68,7 +68,7 @@
                <div className="space-y-5 animate-rise">
                    <div className="flex justify-between items-end">
                        <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran</h2>
-                       <span className="text-[10px] text-slate-400 font-semibold">{todayCount} hari ini</span>
+                       <span className="text-[10px] text-slate-500 font-semibold">{todayCount} hari ini</span>
                    </div>
 
                    {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
@@ -83,10 +83,10 @@
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim">{s.class}</div>
-                                           <div className="text-[10px] text-slate-400 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
+                                           <div className="text-[10px] text-slate-500 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
                                        </div>
                                    </div>
-                               )) : <div className="p-4 text-center text-xs text-slate-400">Tidak ditemukan</div>}
+                               )) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
                            </div>
                        </div>
                    )}
@@ -108,7 +108,7 @@
                                                <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
                                                <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
                                            </div>
-                                           <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                           <div className="text-[10px] text-slate-500 flex justify-between gap-2">
                                                <span>{p.class} • Sanksi: {p.sanksi}</span>
                                                <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
@@ -119,7 +119,7 @@
                        ) : (
                            <EmptyState emoji="✅" text={canSeeClassDetail ? 'Belum ada pelanggaran tercatat hari ini.' : 'Anda belum mencatat pelanggaran hari ini.'} />
                        )}
-                       <p className="text-[11px] text-slate-400 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+                       <p className="text-[11px] text-slate-500 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
                    </div>
 
                    {selectedStudent && (
@@ -129,7 +129,7 @@
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Catat Pelanggaran</h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{selectedStudent.name}</div>
                                    <div className="text-xs text-slate-500">{selectedStudent.class}</div>
-                                   <div className="text-[11px] text-slate-400 mt-1">👩‍🏫 {waliByClass[normalizeClass(selectedStudent.class)] || 'Belum ada wali kelas'}</div>
+                                   <div className="text-[11px] text-slate-500 mt-1">👩‍🏫 {waliByClass[normalizeClass(selectedStudent.class)] || 'Belum ada wali kelas'}</div>
                                </div>
 
                                {canSeeClassDetail ? (
@@ -211,7 +211,7 @@
                                        <div className="font-semibold text-sm text-slate-900">{p.name}</div>
                                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">{p.jenis_pelanggaran}</span>
                                    </div>
-                                   <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                   <div className="text-[10px] text-slate-500 flex justify-between gap-2">
                                        <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span className="truncate">{p.sanksi}</span>
                                    </div>
@@ -230,7 +230,7 @@
            return (
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Perlu Bimbingan Khusus (Admin)</h2>
-                   <p className="text-[11px] text-slate-400">Daftar ini hanya terlihat oleh Admin.</p>
+                   <p className="text-[11px] text-slate-500">Daftar ini hanya terlihat oleh Admin.</p>
                    <div className="space-y-2.5">
                        {bimbinganList.map((b, idx) => {
                            const dt = parseTimestamp(b.timestamp);
@@ -238,10 +238,10 @@
                                <RowCard key={idx} className="space-y-1.5">
                                    <div className="flex items-center justify-between">
                                        <div className="font-semibold text-sm text-slate-900">{b.name}</div>
-                                       <span className="text-[10px] text-slate-400">{b.class}</span>
+                                       <span className="text-[10px] text-slate-500">{b.class}</span>
                                    </div>
                                    <div className="text-[11px] text-slate-600">{b.catatan}</div>
-                                   <div className="text-[10px] text-slate-400 flex justify-between">
+                                   <div className="text-[10px] text-slate-500 flex justify-between">
                                        <span>{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                        <span>oleh {b.logged_by}</span>
                                    </div>
@@ -297,7 +297,7 @@
                                            <div className="text-xs text-sky-dim">{s.class}</div>
                                        </div>
                                    </div>
-                               )) : <div className="p-4 text-center text-xs text-slate-400">Tidak ditemukan</div>}
+                               )) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
                            </div>
                        </div>
                    )}
@@ -336,11 +336,11 @@
                                        <div className="font-semibold text-sm text-slate-900">{u.name}</div>
                                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">{u.jenis_pelanggaran}</span>
                                    </div>
-                                   <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                   <div className="text-[10px] text-slate-500 flex justify-between gap-2">
                                        <span>{u.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                    </div>
-                                   {!isOsis && <div className="text-[10px] text-slate-400">Dicatat oleh: {u.logged_by}</div>}
+                                   {!isOsis && <div className="text-[10px] text-slate-500">Dicatat oleh: {u.logged_by}</div>}
                                </RowCard>
                            );
                        })}

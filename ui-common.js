@@ -85,7 +85,7 @@
                                    <div className="w-full bg-gradient-to-t from-navy-light to-sky rounded-t-lg transition-all duration-700 ease-out" style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? '8%' : '0%' }}></div>
                                </div>
                                <span className="text-[9px] text-slate-600 mt-2 font-bold">{d.label}</span>
-                               {d.dateStr && <span className="text-[8px] text-slate-400">{d.dateStr}</span>}
+                               {d.dateStr && <span className="text-[8px] text-slate-500">{d.dateStr}</span>}
                            </div>
                        ))}
                    </div>
@@ -97,7 +97,7 @@
            return (
                <Card>
                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">{title}</h3>
-                   {items.length === 0 && <div className="text-xs text-slate-400 py-2">Belum ada data.</div>}
+                   {items.length === 0 && <div className="text-xs text-slate-500 py-2">Belum ada data.</div>}
                    <div className="space-y-2.5">
                        {items.map((it, i) => (
                            <div key={i} className="flex items-center gap-3">
@@ -108,6 +108,23 @@
                        ))}
                    </div>
                </Card>
+           );
+       }
+
+       // ScrollFadeRow: baris pilihan yang bisa digeser horizontal (filter
+       // periode, jendela waktu, dst.) — sebelumnya terpotong tanpa isyarat
+       // apa pun kalau ada pilihan lain di luar layar (ditemukan saat uji
+       // coba: "Bulan Ini"/"Tahun" di Riwayat kepotong tepat di tepi HP).
+       // Gradient tipis di tepi kanan cukup untuk isyarat "geser lagi",
+       // tanpa perlu javascript pelacak posisi scroll. fadeFrom disesuaikan
+       // dengan warna latar di baliknya (slate-100 = latar halaman, white =
+       // di dalam Card).
+       function ScrollFadeRow({ children, fadeFrom = 'slate-100' }) {
+           return (
+               <div className="relative">
+                   <div className="flex gap-1.5 overflow-x-auto pb-1">{children}</div>
+                   <div className={`pointer-events-none absolute top-0 right-0 bottom-1 w-8 bg-gradient-to-l from-${fadeFrom} to-transparent`}></div>
+               </div>
            );
        }
 
@@ -155,7 +172,7 @@
                            <p className="text-[11px] text-slate-500 mt-2 font-semibold max-w-[280px] mx-auto leading-snug uppercase tracking-wide">
                                Sistem Informasi Gerbang &amp; Absensi Pelanggaran
                            </p>
-                           <p className="text-[10px] text-slate-400 mt-1">SMAN 2 Tarakan</p>
+                           <p className="text-[10px] text-slate-500 mt-1">SMAN 2 Tarakan</p>
                        </div>
 
                        <form onSubmit={onLogin} className="space-y-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -211,7 +228,7 @@
                                <React.Fragment>
                                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
                                    <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 w-48 z-20 animate-pop">
-                                       <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wide px-2 pt-1 pb-2">Ukuran Tulisan</div>
+                                       <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wide px-2 pt-1 pb-2">Ukuran Tulisan</div>
                                        <div className="flex items-center gap-1.5 px-2 pb-2">
                                            <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-600 transition">Aa−</button>
                                            <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-sm font-bold text-slate-600 transition">Aa+</button>
@@ -255,14 +272,14 @@
                                const item = NAV_ITEMS[key];
                                const active = activeTab === key;
                                return (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-dim scale-110' : 'text-slate-400 hover:text-slate-600'}`}>
+                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                        <Icon path={item.icon()} filled={active} className="h-6 w-6" />
                                        <span className="text-[10px] font-bold">{item.label}</span>
                                    </button>
                                );
                            })}
                            {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-400 hover:text-slate-600'}`}>
+                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                    <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
                                    <span className="text-[10px] font-bold">Lainnya</span>
                                </button>

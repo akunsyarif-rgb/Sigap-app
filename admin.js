@@ -32,6 +32,15 @@
            const [waliKelasInput, setWaliKelasInput] = useState('');
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
+           // Daftar Guru: satu-satunya list di SIGAP yang sebelumnya tidak punya
+           // kotak cari, padahal pola ini sudah dipakai konsisten di 4 halaman
+           // lain (Gerbang, Riwayat, Pelanggaran, Upacara) — jadi sekolah dengan
+           // banyak guru tidak perlu scroll manual satu-satu.
+           const [searchGuru, setSearchGuru] = useState('');
+           const filteredTeachers = searchGuru.trim() === '' ? teachers : teachers.filter(t =>
+               t.name.toLowerCase().includes(searchGuru.toLowerCase()) ||
+               String(t.id).toLowerCase().includes(searchGuru.toLowerCase())
+           );
 
            const showMsg = (ok, text) => {
                setMsgTone(ok ? 'sky' : 'crimson');
@@ -133,7 +142,7 @@
                            {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                        </select>
                        <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                       <p className="text-[10px] text-slate-400 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
+                       <p className="text-[10px] text-slate-500 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
                        <Button type="submit" disabled={loading} className="w-full">
                            {loading ? 'Menyimpan...' : 'Tambah Guru'}
                        </Button>
@@ -141,9 +150,15 @@
 
                    <Card>
                        <h3 className="text-xs font-display font-bold text-slate-800 mb-3">Daftar Guru ({teachers.length})</h3>
-                       {teachers.length === 0 && <div className="text-xs text-slate-400 py-2">Memuat daftar guru...</div>}
+                       {teachers.length === 0 && <div className="text-xs text-slate-500 py-2">Memuat daftar guru...</div>}
+                       {teachers.length > 0 && (
+                           <input type="text" value={searchGuru} onChange={(e) => setSearchGuru(e.target.value)} placeholder="Cari nama atau ID guru..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky mb-3" />
+                       )}
                        <div className="space-y-2">
-                           {teachers.map(t => (
+                           {filteredTeachers.length === 0 && teachers.length > 0 && (
+                               <div className="text-xs text-slate-500 py-2 text-center">Tidak ada guru yang cocok dengan pencarian.</div>
+                           )}
+                           {filteredTeachers.map(t => (
                                <div key={t.id} className="bg-white/60 rounded-xl px-3 py-2.5 space-y-2">
                                    <div className="flex items-center justify-between gap-2">
                                        <div className="min-w-0">
@@ -151,7 +166,7 @@
                                                {t.name}
                                                {t.status === 'nonaktif' && <span className="text-[9px] bg-crimson/10 text-crimson px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">NONAKTIF</span>}
                                            </div>
-                                           <div className="text-[10px] text-slate-400">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}{t.kelasWali && ` • Wali ${t.kelasWali}`}</div>
+                                           <div className="text-[10px] text-slate-500">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}{t.kelasWali && ` • Wali ${t.kelasWali}`}</div>
                                        </div>
                                    </div>
                                    <div className="flex gap-1.5 flex-wrap">
@@ -170,7 +185,7 @@
 
                    <Card className="space-y-3">
                        <h3 className="text-xs font-display font-bold text-slate-800">Jadwal Piket Mingguan</h3>
-                       <p className="text-[10px] text-slate-400 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
+                       <p className="text-[10px] text-slate-500 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
 
                        {HARI_LIST.map(hari => {
                            const entries = jadwalDraft.filter(j => j.hari === hari);
@@ -187,7 +202,7 @@
                                            ))}
                                        </div>
                                    ) : (
-                                       <div className="text-[10px] text-slate-400">Belum ada guru piket.</div>
+                                       <div className="text-[10px] text-slate-500">Belum ada guru piket.</div>
                                    )}
                                </div>
                            );
@@ -227,7 +242,7 @@
                                <div className="text-center">
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Ubah Role</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{roleTarget.name}</div>
-                                   <div className="text-[10px] text-slate-400 mt-1">Berguna kalau guru ini juga merangkap BK/Kesiswaan, dsb.</div>
+                                   <div className="text-[10px] text-slate-500 mt-1">Berguna kalau guru ini juga merangkap BK/Kesiswaan, dsb.</div>
                                </div>
                                <select value={roleInput} onChange={(e) => setRoleInput(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                    {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -244,7 +259,7 @@
                                <div className="text-center">
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Ubah Jabatan Tampilan</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{jabatanTarget.name}</div>
-                                   <div className="text-[10px] text-slate-400 mt-1">Hak akses tetap sesuai role: {ROLES[String(jabatanTarget.role).toLowerCase().trim()] ? ROLES[String(jabatanTarget.role).toLowerCase().trim()].label : 'Guru'}</div>
+                                   <div className="text-[10px] text-slate-500 mt-1">Hak akses tetap sesuai role: {ROLES[String(jabatanTarget.role).toLowerCase().trim()] ? ROLES[String(jabatanTarget.role).toLowerCase().trim()].label : 'Guru'}</div>
                                </div>
                                <input type="text" value={jabatanInput} onChange={(e) => setJabatanInput(e.target.value)} placeholder="Kosongkan untuk label default" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                <Button onClick={submitJabatan} className="w-full">Simpan Jabatan</Button>
@@ -291,7 +306,7 @@
            return (
                <div className="space-y-4 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Audit Log</h2>
-                   <p className="text-[11px] text-slate-400">Jejak keamanan permanen — siapa melakukan apa. Hanya Admin dan BK/Kesiswaan yang bisa lihat ini. Menampilkan 300 aktivitas terakhir.</p>
+                   <p className="text-[11px] text-slate-500">Jejak keamanan permanen — siapa melakukan apa. Hanya Admin dan BK/Kesiswaan yang bisa lihat ini. Menampilkan 300 aktivitas terakhir.</p>
 
                    <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau jenis aksi..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-sky" />
 
@@ -308,7 +323,7 @@
                                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${actionTone(a.action)}`}>{a.action}</span>
                                        </div>
                                        {a.detail && <div className="text-[11px] text-slate-500">{a.detail}</div>}
-                                       <div className="text-[10px] text-slate-400">{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                                       <div className="text-[10px] text-slate-500">{dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                                    </RowCard>
                                );
                            })}

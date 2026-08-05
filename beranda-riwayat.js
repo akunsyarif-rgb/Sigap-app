@@ -34,7 +34,7 @@
                    </div>
                    <div className="text-[11px] text-slate-500 flex justify-between items-center gap-2">
                        <span className="truncate">{item.class} • {detailMap[item._kind]}</span>
-                       <span className="flex-shrink-0 text-slate-400">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                       <span className="flex-shrink-0 text-slate-500">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                    </div>
                </RowCard>
            );
@@ -55,6 +55,7 @@
            const [catatanInput, setCatatanInput] = useState('');
            const [tlMsg, setTlMsg] = useState('');
            const [showRiwayatTL, setShowRiwayatTL] = useState(false);
+           const [locallyApproved, setLocallyApproved] = useState({});
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -73,7 +74,12 @@
            // Visibilitas: admin/BK lihat semua kelas, wali kelas cuma kelasnya
            // sendiri, guru biasa non-wali-kelas tidak lihat sama sekali (privasi).
            const resolvedMap = buildResolvedMap(tindakLanjutList);
-           const rawFrequentLatecomers = getFrequentLatecomersBanner(allLogs, resolvedMap);
+           const rawFrequentLatecomers = getFrequentLatecomersBanner(allLogs, resolvedMap)
+               // Disetujui secara optimis (lihat approveTL) — disembunyikan
+               // langsung dari daftar tanpa menunggu refetch tindakLanjutList
+               // selesai, supaya tidak ada jeda "kelihatan masih menunggu"
+               // sesudah tombol Setujui ditekan.
+               .filter(s => !locallyApproved[s.nisn]);
            const frequentLatecomers = canViewRanking
                ? rawFrequentLatecomers
                : (user.waliKelas ? rawFrequentLatecomers.filter(s => sameClass(s.class, user.waliKelas)) : []);
@@ -85,7 +91,14 @@
                setTindakLanjutTarget(null); setCatatanInput('');
            };
            const approveTL = (t) => {
-               onApproveTindakLanjut({ nisn: t.nisn, timestamp: t.timestamp }, (ok, text) => showMsgTL(text));
+               setLocallyApproved(prev => ({ ...prev, [t.nisn]: true }));
+               onApproveTindakLanjut({ nisn: t.nisn, timestamp: t.timestamp }, (ok, text) => {
+                   showMsgTL(text);
+                   // Gagal di server → batalkan penyembunyian optimis, siswa
+                   // muncul lagi di daftar (bukan hilang diam-diam padahal
+                   // belum benar-benar disetujui).
+                   if (!ok) setLocallyApproved(prev => { const next = { ...prev }; delete next[t.nisn]; return next; });
+               });
            };
 
            // ② Assignment Hari Ini — piket (dari Jadwal_Piket) & wali kelas (dari sesi login).
@@ -130,7 +143,7 @@
                                <div>
                                    <button onClick={() => setShowPiketList(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
                                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">👮 Guru Piket Hari Ini ({hariIni}) — {piketHariIni.length} orang</div>
-                                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showPiketList ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showPiketList ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                                    </button>
                                    {showPiketList && (
                                        <div className="mt-2 flex flex-wrap gap-1.5 animate-pop">
@@ -171,7 +184,7 @@
                                    return (
                                        <div key={idx} className="space-y-1 pb-2 border-b border-crimson/10 last:border-0 last:pb-0">
                                            <div className="flex items-center justify-between gap-2 text-xs">
-                                               <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                               <span className="text-slate-800 font-medium truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></span>
                                                <span className="text-crimson font-bold flex-shrink-0">{s.count}x sejak {s.first.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                            </div>
                                            {pending ? (
@@ -198,19 +211,19 @@
                    {tindakLanjutList.length > 0 && (
                        <Card>
                            <button onClick={() => setShowRiwayatTL(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
-                               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Riwayat Tindak Lanjut ({tindakLanjutList.length})</h3>
-                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showRiwayatTL ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                               <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Riwayat Tindak Lanjut ({tindakLanjutList.length})</h3>
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showRiwayatTL ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                            </button>
                            {showRiwayatTL && (
                                <div className="mt-2.5 space-y-2 animate-pop">
                                    {tindakLanjutList.map((t, idx) => (
                                        <div key={idx} className="bg-slate-50 rounded-lg p-2.5 space-y-0.5">
                                            <div className="flex items-center justify-between gap-2">
-                                               <span className="text-xs font-semibold text-slate-800 truncate">{t.name} <span className="text-slate-400 font-normal">({t.class})</span></span>
+                                               <span className="text-xs font-semibold text-slate-800 truncate">{t.name} <span className="text-slate-500 font-normal">({t.class})</span></span>
                                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.status === 'selesai' ? 'bg-sky-dim/15 text-sky-dim' : 'bg-amber-100 text-amber-700'}`}>{t.status === 'selesai' ? 'Selesai' : 'Menunggu'}</span>
                                            </div>
                                            <div className="text-[10px] text-slate-500">"{t.catatan}" — diajukan {t.diajukanOleh}</div>
-                                           {t.status === 'selesai' && <div className="text-[10px] text-slate-400">Disetujui {t.disetujuiOleh} • {parseTimestamp(t.tanggalDisetujui).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>}
+                                           {t.status === 'selesai' && <div className="text-[10px] text-slate-500">Disetujui {t.disetujuiOleh} • {parseTimestamp(t.tanggalDisetujui).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>}
                                        </div>
                                    ))}
                                </div>
@@ -224,7 +237,7 @@
                                <div className="text-center">
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Tandai Sudah Ditindaklanjuti</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{tindakLanjutTarget.name}</div>
-                                   <div className="text-[10px] text-slate-400 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
+                                   <div className="text-[10px] text-slate-500 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
                                </div>
                                <textarea value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder="Catatan tindak lanjut (mis. sudah dipanggil orang tua, diberi peringatan, dsb.)" rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full">Ajukan ke Admin</Button>
@@ -237,7 +250,7 @@
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
                    {loading ? (
-                       <div className="text-center py-10 text-xs text-slate-400">Memuat data...</div>
+                       <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
                    ) : combinedFeed.length > 0 ? (
                        <div className="space-y-2.5">
                            {combinedFeed.map((item, idx) => <FeedItem key={idx} item={item} />)}
@@ -246,12 +259,12 @@
                        <EmptyState emoji="🏆" text="Belum ada aktivitas tercatat hari ini." />
                    )}
 
-                   <p className="text-[11px] text-slate-400 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
+                   <p className="text-[11px] text-slate-500 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
 
                    {/* ⑥ Ringkasan kelas perwalian */}
                    {kelasPerwalian && (
                        <Card className="space-y-2">
-                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kelas Perwalian {waliKelas} — Minggu Ini</h3>
+                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Kelas Perwalian {waliKelas} — Minggu Ini</h3>
                            {kelasPerwalian.jumlahSiswaBermasalah > 0 ? (
                                <div className="space-y-1.5">
                                    <div className="text-xs text-slate-600">{kelasPerwalian.jumlahSiswaBermasalah} siswa perlu perhatian minggu ini:</div>
@@ -261,7 +274,7 @@
                                    {kelasPerwalian.daftarSiswa.length > 5 && <p className="text-[10px] text-slate-500">+{kelasPerwalian.daftarSiswa.length - 5} siswa lainnya</p>}
                                </div>
                            ) : (
-                               <div className="text-xs text-slate-400">Belum ada siswa bermasalah minggu ini. 🎉</div>
+                               <div className="text-xs text-slate-500">Belum ada siswa bermasalah minggu ini. 🎉</div>
                            )}
                        </Card>
                    )}
@@ -485,7 +498,7 @@
 
            return (
                <div className="space-y-4 animate-rise">
-                   <p className="text-[11px] text-slate-400 text-center">Bulan ini: <span className="font-semibold text-slate-600">{monthLateCount} terlambat</span> • <span className="font-semibold text-slate-600">{monthPelanggaranCount} pelanggaran</span> • <span className="font-semibold text-slate-600">{monthSuratCount} surat</span></p>
+                   <p className="text-[11px] text-slate-500 text-center">Bulan ini: <span className="font-semibold text-slate-600">{monthLateCount} terlambat</span> • <span className="font-semibold text-slate-600">{monthPelanggaranCount} pelanggaran</span> • <span className="font-semibold text-slate-600">{monthSuratCount} surat</span></p>
 
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
                        {categories.map(c => (
@@ -495,7 +508,7 @@
 
                    {/* Periode aktif SELALU kelihatan di sini, termasuk tanggal spesifik dari
                        drawer Filter — supaya tidak ada state filter yang "tersembunyi". */}
-                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                   <ScrollFadeRow>
                        {periods.map(p => (
                            <button key={p.key} onClick={() => { setPeriod(p.key); setCustomDate(''); }} className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-navy text-white' : 'bg-white text-slate-500 border border-slate-200'}`}>
                                {p.label}
@@ -507,12 +520,12 @@
                                <button onClick={() => { setPeriod('semua'); setCustomDate(''); }} className="text-white/70 hover:text-white">×</button>
                            </span>
                        )}
-                   </div>
+                   </ScrollFadeRow>
 
                    <div className="flex gap-2">
                        <div className="relative flex-1">
                            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama atau NISN siswa..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-sky" />
-                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-400" />
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-4 w-4 absolute right-4 top-3 text-slate-500" />
                        </div>
                        <button onClick={() => setShowFilters(v => !v)} className={`px-3.5 rounded-2xl border flex items-center gap-1 text-xs font-semibold transition ${(filterClass || filterSub) ? 'bg-sky-dim/25 border-sky-dim text-sky-dim' : 'bg-white border-slate-200 text-slate-500'}`}>
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h12M6 4.5a1.5 1.5 0 00-1.5 1.5v.879a1.5 1.5 0 00.44 1.06l4.12 4.122a1.5 1.5 0 01.44 1.06v4.502a1.5 1.5 0 00.732 1.286l2.25 1.353a.75.75 0 001.128-.647V13.12a1.5 1.5 0 01.44-1.06l4.12-4.122a1.5 1.5 0 00.44-1.06V6A1.5 1.5 0 0018 4.5" />} className="h-4 w-4" />
@@ -575,7 +588,7 @@
                                                <div className="font-semibold text-sm text-slate-900">{item.name}</div>
                                                <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{subValue}</span>
                                            </div>
-                                           <div className="text-[10px] text-slate-400 flex justify-between items-center">
+                                           <div className="text-[10px] text-slate-500 flex justify-between items-center">
                                                <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                                <span className="flex items-center gap-2">
                                                    <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -599,7 +612,7 @@
                                                    )}
                                                </span>
                                            </div>
-                                           {item.logged_by && <div className="text-[10px] text-slate-400">Dicatat oleh: {item.logged_by}</div>}
+                                           {item.logged_by && <div className="text-[10px] text-slate-500">Dicatat oleh: {item.logged_by}</div>}
                                            {category === 'pelanggaran' && item.sanksi && (
                                                <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
                                            )}
@@ -609,7 +622,7 @@
                                        </RowCard>
                                        {expandedStudent === item.nisn && (
                                            <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
-                                               <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Riwayat {activeCat.label} {item.name}</div>
+                                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Riwayat {activeCat.label} {item.name}</div>
                                                {sourceData.filter(l => l.nisn === item.nisn).map((h, i) => {
                                                    const hDt = parseTimestamp(h.timestamp);
                                                    return (
@@ -709,7 +722,7 @@
                                    <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Catatan {activeCat.label}?</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteTarget.name}</div>
                                    <div className="text-xs text-slate-500">{confirmDeleteTarget.class}</div>
-                                   <p className="text-[11px] text-slate-400 mt-2">Tindakan ini tidak bisa dibatalkan.</p>
+                                   <p className="text-[11px] text-slate-500 mt-2">Tindakan ini tidak bisa dibatalkan.</p>
                                </div>
                                {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
                                <Button onClick={submitDelete} disabled={manageLoading} variant="danger" className="w-full">
