@@ -528,4 +528,39 @@
            );
        }
 
-       ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+       // Satu-satunya class component di seluruh SIGAP — React mengharuskan
+       // Error Boundary berbentuk class (belum ada padanan hook resminya).
+       // Tanpa ini, satu error render di mana pun (field API berubah nama,
+       // prop yang seharusnya array tapi undefined, dsb.) membuat React
+       // melepas SELURUH pohon komponen — layar putih kosong total, tanpa
+       // pesan, tanpa jalan pulih selain refresh manual. Ditemukan langsung
+       // saat uji coba: satu `jadwalPiket.filter(...)` tanpa jaga-jaga
+       // melumpuhkan Gerbang, navigasi, semuanya — bukan cuma Beranda yang
+       // sedang error.
+       class ErrorBoundary extends React.Component {
+           constructor(props) {
+               super(props);
+               this.state = { hasError: false };
+           }
+           static getDerivedStateFromError() {
+               return { hasError: true };
+           }
+           componentDidCatch(error, info) {
+               console.error('SIGAP gagal render:', error, info.componentStack);
+           }
+           render() {
+               if (this.state.hasError) {
+                   return (
+                       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 text-center">
+                           <div className="text-4xl mb-3">⚠️</div>
+                           <h1 className="font-display text-lg font-extrabold text-slate-900 mb-1">Ada yang salah</h1>
+                           <p className="text-sm text-slate-500 mb-5 max-w-xs">Halaman ini gagal dimuat. Coba muat ulang — kalau terus terjadi, hubungi admin.</p>
+                           <Button onClick={() => window.location.reload()} className="px-8">Muat Ulang</Button>
+                       </div>
+                   );
+               }
+               return this.props.children;
+           }
+       }
+
+       ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App /></ErrorBoundary>);

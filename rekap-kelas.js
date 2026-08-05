@@ -87,13 +87,13 @@
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{isPrivileged ? 'Rekap Kelas' : `Rekap Kelas ${myWaliKelas}`}</h2>
 
-                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                   <ScrollFadeRow>
                        {periods.map(p => (
                            <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-navy text-white' : 'bg-white text-slate-500 border border-slate-200'}`}>
                                {p.label}
                            </button>
                        ))}
-                   </div>
+                   </ScrollFadeRow>
 
                    <div className="space-y-2.5">
                        {classData.map((c) => (
@@ -102,7 +102,7 @@
                                    <div className="flex items-center justify-between">
                                        <div>
                                            <div className="font-display font-bold text-sm text-slate-900">{c.kelas}</div>
-                                           <div className="text-[10px] text-slate-400">{c.waliKelas ? `Wali Kelas: ${c.waliKelas}` : 'Belum ada wali kelas'} • {c.jumlahSiswa} siswa</div>
+                                           <div className="text-[10px] text-slate-500">{c.waliKelas ? `Wali Kelas: ${c.waliKelas}` : 'Belum ada wali kelas'} • {c.jumlahSiswa} siswa</div>
                                        </div>
                                        {c.daftarSiswa.length > 0 && (
                                            <span className="text-[9px] bg-crimson/10 text-crimson px-2 py-0.5 rounded-full font-bold flex-shrink-0">{c.daftarSiswa.length} perlu perhatian</span>
@@ -129,10 +129,10 @@
                                                        <span>{s.name}</span>
                                                        <span className="text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                                    </div>
-                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-400 mt-0.5">{s.details.join(', ')}</div>}
+                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
                                                </div>
                                            )) : (
-                                               <div className="text-[11px] text-slate-400">Tidak ada catatan terlambat di periode ini.</div>
+                                               <div className="text-[11px] text-slate-500">Tidak ada catatan terlambat di periode ini.</div>
                                            )}
                                        </div>
                                        <div className="space-y-1.5">
@@ -143,10 +143,10 @@
                                                        <span>{s.name}</span>
                                                        <span className="text-amber-600 font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                                    </div>
-                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-400 mt-0.5">{s.details.join(', ')}</div>}
+                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
                                                </div>
                                            )) : (
-                                               <div className="text-[11px] text-slate-400">Tidak ada catatan pelanggaran di periode ini.</div>
+                                               <div className="text-[11px] text-slate-500">Tidak ada catatan pelanggaran di periode ini.</div>
                                            )}
                                        </div>
                                    </div>

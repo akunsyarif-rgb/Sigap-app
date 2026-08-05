@@ -68,13 +68,13 @@
                        ))}
                    </div>
 
-                   <div className="flex gap-1.5 overflow-x-auto pb-1">
+                   <ScrollFadeRow>
                        {periods.map(p => (
                            <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition ${period === p.key ? 'bg-sky text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>
                                {p.label}
                            </button>
                        ))}
-                   </div>
+                   </ScrollFadeRow>
 
                    <BarChart data={series} title={`Tren ${activeCat.label} — ${activePeriod.label}`} />
 
@@ -90,7 +90,7 @@
                    {canViewRanking && (
                        <Card>
                            <div className="flex items-center justify-between mb-3">
-                               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rekap per Kelas (Periode Ini)</h3>
+                               <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rekap per Kelas (Periode Ini)</h3>
                                <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
                                    <button onClick={() => setKelasMode('ranking')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'ranking' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Ranking</button>
                                    <button onClick={() => setKelasMode('perkelas')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${kelasMode === 'perkelas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>A-Z</button>
@@ -113,7 +113,7 @@
                                        ))}
                                    </div>
                                ) : (
-                                   <div className="text-xs text-slate-400 py-2 text-center">Belum ada data di periode ini.</div>
+                                   <div className="text-xs text-slate-500 py-2 text-center">Belum ada data di periode ini.</div>
                                );
                            })()}
                        </Card>
@@ -123,25 +123,25 @@
 
                    {canViewRanking && category === 'terlambat' && (
                        <Card className="space-y-3">
-                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Siswa Sering Terlambat (≥3x)</h3>
-                           <div className="flex gap-1.5 overflow-x-auto pb-1">
+                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Siswa Sering Terlambat (≥3x)</h3>
+                           <ScrollFadeRow fadeFrom="white">
                                {freqWindows.map(w => (
                                    <button key={w.key} onClick={() => setFreqWindow(w.key)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition ${freqWindow === w.key ? 'bg-navy text-white' : 'bg-slate-100 text-slate-500'}`}>
                                        {w.label}
                                    </button>
                                ))}
-                           </div>
+                           </ScrollFadeRow>
                            {frequentStudents.length > 0 ? (
                                <div className="space-y-2">
                                    {frequentStudents.map((s, idx) => (
                                        <div key={idx} className="flex items-center justify-between">
-                                           <span className="text-xs text-slate-700 font-medium truncate">{s.name} <span className="text-slate-400 font-normal">({s.class})</span></span>
+                                           <span className="text-xs text-slate-700 font-medium truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></span>
                                            <span className="text-[11px] text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                        </div>
                                    ))}
                                </div>
                            ) : (
-                               <div className="text-xs text-slate-400 py-1 text-center">Tidak ada siswa dengan ≥3x terlambat di periode ini.</div>
+                               <div className="text-xs text-slate-500 py-1 text-center">Tidak ada siswa dengan ≥3x terlambat di periode ini.</div>
                            )}
                        </Card>
                    )}

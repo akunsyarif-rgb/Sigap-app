@@ -172,7 +172,7 @@
                                placeholder="Ketik nama, kelas, atau NISN..."
                                className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm transition"
                            />
-                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-400" />
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
                        </div>
                    </div>
 
@@ -186,12 +186,12 @@
                                    <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
                                        <div className="min-w-0">
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
-                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-400 font-normal">| NISN: {s.nisn}</span></div>
-                                           <div className="text-[10px] text-slate-400 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
+                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn}</span></div>
+                                           <div className="text-[10px] text-slate-500 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
                                        </div>
                                        <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm flex-shrink-0 ml-2">Pilih</span>
                                    </div>
-                               )) : <div className="p-6 text-center text-xs text-slate-400 font-medium">Siswa tidak ditemukan</div>}
+                               )) : <div className="p-6 text-center text-xs text-slate-500 font-medium">Siswa tidak ditemukan</div>}
                            </div>
                        </div>
                    )}
@@ -209,16 +209,16 @@
                                <div className="space-y-2">
                                    {todayActivity.map((item, idx) => (
                                        <div key={idx} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center gap-3">
-                                           <div className="text-[11px] font-bold text-slate-400 w-11 text-center flex-shrink-0">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                                           <div className="text-[11px] font-bold text-slate-500 w-11 text-center flex-shrink-0">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                                            <div className="w-px h-8 bg-slate-200 flex-shrink-0"></div>
                                            <div className="flex-1 min-w-0">
-                                               <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-400 font-normal">({item.class})</span></div>
-                                               <div className="text-[9px] text-slate-400 truncate">👩‍🏫 {waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</div>
+                                               <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-500 font-normal">({item.class})</span></div>
+                                               <div className="text-[9px] text-slate-500 truncate">👩‍🏫 {waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</div>
                                                <div className="text-[10px] mt-0.5 flex items-center justify-between gap-2">
                                                    <span className={item._kind === 'terlambat' ? 'text-crimson font-semibold' : 'text-sky-dim font-semibold'}>
                                                        {item._kind === 'terlambat' ? '⏰ Terlambat' : '📄 Surat'} — {item._kind === 'terlambat' ? item.type : item.jenis}
                                                    </span>
-                                                   <span className="text-slate-400 truncate flex-shrink-0">oleh {item.logged_by}</span>
+                                                   <span className="text-slate-500 truncate flex-shrink-0">oleh {item.logged_by}</span>
                                                </div>
                                            </div>
                                        </div>
@@ -276,7 +276,7 @@
                                                <div className="font-semibold text-sm text-slate-900">{s.name}</div>
                                                <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{s.jenis}</span>
                                            </div>
-                                           <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                                           <div className="text-[10px] text-slate-500 flex justify-between gap-2">
                                                <span>{s.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                                <span className="truncate">{s.keterangan}</span>
                                            </div>
@@ -308,8 +308,8 @@
                                    <div className="text-center">
                                        <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
                                        <div className="font-display text-xl font-extrabold text-slate-900">{pickerStudent.name}</div>
-                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-400 font-normal">| NISN: {pickerStudent.nisn}</span></div>
-                                       <div className="text-[11px] text-slate-400 mt-1">👩‍🏫 {waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</div>
+                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-500 font-normal">| NISN: {pickerStudent.nisn}</span></div>
+                                       <div className="text-[11px] text-slate-500 mt-1">👩‍🏫 {waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</div>
                                    </div>
 
                                    <div className="grid grid-cols-3 gap-2 text-center">
@@ -331,7 +331,7 @@
                                        {lateToday ? (
                                            <div className="bg-slate-100 rounded-xl px-4 py-3">
                                                <div className="text-xs font-bold text-slate-600">✓ Sudah dicatat terlambat</div>
-                                               <div className="text-[10px] text-slate-400 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
+                                               <div className="text-[10px] text-slate-500 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
                                            </div>
                                        ) : (
                                            <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition">
@@ -342,7 +342,7 @@
                                            <div className="bg-slate-100 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
                                                <div className="min-w-0">
                                                    <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
-                                                   <div className="text-[10px] text-slate-400 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
+                                                   <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
                                                </div>
                                                {suratToday.foto_url && <a href={suratToday.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline flex-shrink-0">Lihat</a>}
                                            </div>
