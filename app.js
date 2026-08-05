@@ -222,20 +222,30 @@
                clearSession();
            };
 
+           // Toast "berhasil" HARUS menunggu konfirmasi server sungguhan (sama
+           // seperti handleAddSurat/handleAddPelanggaran di bawah) — sebelumnya
+           // toast sukses ditembakkan seketika, sebelum request selesai, jadi
+           // pada koneksi gerbang yang lemah guru piket bisa yakin sudah
+           // mencatat siswa padahal datanya gagal tersimpan (Audit UX/UI,
+           // temuan Must-have #1). Sheet ditutup lebih dulu (biar tidak
+           // menghalangi guru lanjut ke siswa berikutnya), tapi toast baru
+           // muncul setelah hasil aslinya diketahui.
            const handleRecord = (type) => {
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
+               const studentName = selectedStudent.name;
                const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
+               setSelectedStudent(null); setCustomReasonInput('');
+               const showResultToast = (text) => { setToast(text); setTimeout(() => setToast(null), 2500); };
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
-                       if (data.status === 'success') setAllLogs(prev => [newEntry, ...prev]);
-                       else setToast('Gagal menyimpan, coba lagi.');
+                       if (data.status === 'success') {
+                           setAllLogs(prev => [newEntry, ...prev]);
+                           showResultToast(`✓ ${studentName} berhasil dicatat`);
+                       } else showResultToast(data.message || 'Gagal menyimpan, coba lagi.');
                    })
-                   .catch(() => setToast('Koneksi gagal, coba lagi.'));
-               setToast(`✓ ${selectedStudent.name} berhasil dicatat`);
-               setSelectedStudent(null); setCustomReasonInput('');
-               setTimeout(() => setToast(null), 2000);
+                   .catch(() => showResultToast('Koneksi gagal, coba lagi.'));
            };
 
            const handleAddTeacher = (payload, callback) => {

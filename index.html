@@ -2,7 +2,12 @@
 <html lang="id">
 <head>
    <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <!-- maximum-scale/user-scalable SENGAJA tidak dikunci — mematikan pinch-zoom
+        bawaan browser melanggar WCAG 2.1 SC 1.4.4 (Resize Text). Kontrol
+        Aa+/Aa- di dalam aplikasi (lihat Header, app.js) adalah pelengkap,
+        bukan pengganti hak pengguna memakai zoom bawaan mereka sendiri
+        (Audit UX/UI, temuan Must-have #3). -->
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
    <title>SIGAP - SMAN 2 Tarakan</title>
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,8 +26,15 @@
                    },
                    colors: {
                        navy: { DEFAULT: '#0B2A55', light: '#123B72', dark: '#071A38' },
-                       sky: { DEFAULT: '#2E86D8', light: '#6FB3EA', dim: '#1D5C93' },
-                       crimson: { DEFAULT: '#E0473C', dim: '#B93A31' },
+                       // DEFAULT sky/crimson digelapkan dari #2E86D8/#E0473C —
+                       // versi lama cuma 3.80:1 / 4.09:1 kontras dengan teks putih
+                       // di atasnya (tombol Simpan, Masuk Aplikasi, Hapus, dst.),
+                       // di bawah ambang WCAG AA 4.5:1 untuk teks normal. Nilai
+                       // baru ini ~5:1, jadi satu perubahan di sini otomatis
+                       // membetulkan semua tombol/badge bg-sky & bg-crimson di
+                       // seluruh aplikasi (Audit UX/UI, temuan Must-have #4).
+                       sky: { DEFAULT: '#2571AD', light: '#6FB3EA', dim: '#1D5C93' },
+                       crimson: { DEFAULT: '#C84234', dim: '#B93A31' },
                        ink: { 950: '#0A0D12', 900: '#10141B', 850: '#161B24', 800: '#1C222D', 700: '#262E3B', 600: '#3A4453' },
                    },
                }
@@ -65,7 +77,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 17;
+           var BUILD_VERSION = 18;
            var files = [
                'config.js',
                'helpers.js',

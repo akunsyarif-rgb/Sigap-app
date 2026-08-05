@@ -62,6 +62,11 @@
            const [showDeletePanel, setShowDeletePanel] = useState(false);
            const [delMonth, setDelMonth] = useState(String(new Date().getMonth() + 1));
            const [delYear, setDelYear] = useState(String(new Date().getFullYear()));
+           // Blast radius hapus ini bisa satu bulan penuh catatan surat — WAJIB
+           // lewat langkah konfirmasi eksplisit, sama seperti pola yang sudah
+           // dipakai untuk hapus 1 catatan di menu Riwayat (Audit UX/UI, temuan
+           // Must-have #2). Sebelumnya tombol ini langsung mengeksekusi hapus.
+           const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
            const [msg, setMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
            const fileInputRef = useRef(null);
@@ -243,7 +248,7 @@
                                                </select>
                                                <input type="number" value={delYear} onChange={(e) => setDelYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
                                            </div>
-                                           <button onClick={submitDelete} className="w-full bg-crimson hover:bg-crimson-dim text-white py-2.5 rounded-xl text-xs font-bold">Hapus Data Periode Ini</button>
+                                           <button onClick={() => setConfirmBulkDelete(true)} className="w-full bg-crimson hover:bg-crimson-dim text-white py-2.5 rounded-xl text-xs font-bold">Hapus Data Periode Ini</button>
                                        </div>
                                    )}
                                </div>
@@ -395,6 +400,22 @@
                                    {savingSurat ? 'Menyimpan...' : 'Simpan'}
                                </Button>
                                <Button onClick={() => { setSuratStudent(null); setFotoPreview(null); setFotoBase64(null); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmBulkDelete && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Data Surat?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">
+                                       {new Date(2000, parseInt(delMonth, 10) - 1).toLocaleDateString('id-ID', { month: 'long' })} {delYear}
+                                   </div>
+                                   <p className="text-[11px] text-slate-400 mt-2">Semua catatan surat pada periode ini akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.</p>
+                               </div>
+                               <Button onClick={() => { submitDelete(); setConfirmBulkDelete(false); }} variant="danger" className="w-full">Ya, Hapus Semua</Button>
+                               <Button onClick={() => setConfirmBulkDelete(false)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
