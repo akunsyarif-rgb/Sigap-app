@@ -62,6 +62,20 @@ function doPost(e) {
       return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
     }
 
+    // ---- Kunci SEMUA aksi tulis di bawah titik ini (satu lock untuk
+    // seluruh doPost, bukan per-aksi) — banyak aksi di bawah pakai pola
+    // baca-cek-lalu-tulis (record, addTeacher, setJadwalPiket, dst.) yang
+    // rawan race condition kalau 2 permintaan diproses bersamaan, paling
+    // rawan pas jam gerbang pagi saat banyak guru piket menulis nyaris
+    // serentak. Dilepas otomatis lewat finally di bawah apa pun hasilnya. ----
+    var sigapLock = LockService.getScriptLock();
+    try {
+      sigapLock.waitLock(10000);
+    } catch (lockError) {
+      return jsonOut({ status: 'error', message: 'Server sedang sibuk, coba lagi sebentar.' });
+    }
+    try {
+
     // ---- Catat keterlambatan (bukan untuk OSIS) ----
     if (action === 'record') {
       if (isOsisRole(sessionUser.role)) {
@@ -489,6 +503,9 @@ function doPost(e) {
     }
 
     return jsonOut({ status: 'error', message: 'Action tidak dikenali' });
+    } finally {
+      sigapLock.releaseLock();
+    }
 
   } catch (error) {
     return jsonOut({ status: 'error', message: error.toString() });
