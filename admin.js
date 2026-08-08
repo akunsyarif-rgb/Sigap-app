@@ -11,7 +11,45 @@
            { value: 'admin', label: 'Admin' },
        ];
 
+       // Kartu hub "Kelola" — satu tombol besar per sub-area (Guru / Jadwal
+       // Piket / Pemeliharaan Data), dipakai di layar hub KelolaTab supaya
+       // daftar guru yang panjang (54+ guru di sekolah nyata) tidak lagi
+       // memaksa scroll panjang untuk sampai ke Jadwal Piket / hapus data.
+       function KelolaHubCard({ emoji, title, subtitle, onClick }) {
+           return (
+               <button onClick={onClick} className="w-full bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3.5 text-left hover:border-sky-dim/40 hover:bg-sky-dim/5 transition">
+                   <div className="text-2xl flex-shrink-0">{emoji}</div>
+                   <div className="min-w-0 flex-1">
+                       <div className="text-sm font-display font-bold text-slate-900">{title}</div>
+                       <div className="text-[11px] text-slate-500">{subtitle}</div>
+                   </div>
+                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />} className="h-4 w-4 text-slate-400 flex-shrink-0" />
+               </button>
+           );
+       }
+
+       // Header "← Kembali" dipakai di tiap sub-halaman Kelola — pola baru di
+       // SIGAP (halaman lain semua datar, pindah lewat BottomNav), jadi
+       // dipusatkan di satu komponen kecil supaya konsisten di 3 tempat.
+       function KelolaSubHeader({ title, onBack }) {
+           return (
+               <div className="space-y-1.5">
+                   <button onClick={onBack} className="flex items-center gap-1 text-[11px] font-bold text-sky-dim">
+                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />} className="h-3.5 w-3.5" />
+                       Kelola
+                   </button>
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{title}</h2>
+               </div>
+           );
+       }
+
        function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, onDeleteSurat, loading }) {
+           // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
+           // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
+           // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
+           // masuk ulang menu Kelola, tanpa logic reset manual.
+           const [view, setView] = useState('hub');
+           const [showAddGuru, setShowAddGuru] = useState(false);
            // Dropdown, bukan ketik manual — supaya nama kelas yang dipilih SELALU
            // persis sama dengan Master_Siswa, tidak ada typo yang bikin Rekap
            // Kelas/laporan wali kelas gagal mencocokkan data (lihat diskusi bug
@@ -53,7 +91,7 @@
                if (!newId.trim() || !newName.trim() || !newPassword.trim()) return;
                onAddTeacher({ newId: newId.trim(), newName: newName.trim(), newPassword: newPassword.trim(), newRole, newJabatan: newJabatan.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru'); setNewJabatan(''); }
+                   if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru'); setNewJabatan(''); setShowAddGuru(false); }
                });
            };
 
@@ -136,118 +174,168 @@
 
            return (
                <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kelola Guru</h2>
-
-                   {msg && (
-                       <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
-                           {msg}
-                       </div>
+                   {view === 'hub' && (
+                       <React.Fragment>
+                           <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kelola</h2>
+                           {msg && (
+                               <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                                   {msg}
+                               </div>
+                           )}
+                           <div className="space-y-2.5">
+                               <KelolaHubCard emoji="👤" title="Kelola Guru" subtitle={`Akun, role & wali kelas • ${teachers.length} guru`} onClick={() => setView('guru')} />
+                               <KelolaHubCard emoji="📅" title="Jadwal Piket" subtitle="Atur guru piket harian" onClick={() => setView('jadwal')} />
+                               <KelolaHubCard emoji="🗄️" title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')} />
+                           </div>
+                       </React.Fragment>
                    )}
 
-                   <form onSubmit={submitAdd} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                       <h3 className="text-xs font-display font-bold text-slate-800">Tambah Guru Baru</h3>
-                       <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
-                       <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama Lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
-                       <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password Awal" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
-                       <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                           {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                       </select>
-                       <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                       <p className="text-[10px] text-slate-500 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
-                       <Button type="submit" disabled={loading} className="w-full">
-                           {loading ? 'Menyimpan...' : 'Tambah Guru'}
-                       </Button>
-                   </form>
-
-                   <Card>
-                       <h3 className="text-xs font-display font-bold text-slate-800 mb-3">Daftar Guru ({teachers.length})</h3>
-                       {teachers.length === 0 && <div className="text-xs text-slate-500 py-2">Memuat daftar guru...</div>}
-                       {teachers.length > 0 && (
-                           <input type="text" value={searchGuru} onChange={(e) => setSearchGuru(e.target.value)} placeholder="Cari nama atau ID guru..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky mb-3" />
-                       )}
-                       <div className="space-y-2">
-                           {filteredTeachers.length === 0 && teachers.length > 0 && (
-                               <div className="text-xs text-slate-500 py-2 text-center">Tidak ada guru yang cocok dengan pencarian.</div>
+                   {view === 'guru' && (
+                       <React.Fragment>
+                           <KelolaSubHeader title="Kelola Guru" onBack={() => setView('hub')} />
+                           {msg && (
+                               <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                                   {msg}
+                               </div>
                            )}
-                           {filteredTeachers.map(t => (
-                               <div key={t.id} className="bg-white/60 rounded-xl px-3 py-2.5 space-y-2">
-                                   <div className="flex items-center justify-between gap-2">
-                                       <div className="min-w-0">
-                                           <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                                               {t.name}
-                                               {t.status === 'nonaktif' && <span className="text-[9px] bg-crimson/10 text-crimson px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">NONAKTIF</span>}
-                                           </div>
-                                           <div className="text-[10px] text-slate-500">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}{t.kelasWali && ` • Wali ${t.kelasWali}`}</div>
-                                       </div>
-                                   </div>
-                                   <div className="flex gap-1.5 flex-wrap">
-                                       <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
-                                       <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
-                                       <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
-                                       <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
-                                       <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
-                                           {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
-                                       </button>
-                                   </div>
-                               </div>
-                           ))}
-                       </div>
-                   </Card>
 
-                   <Card className="space-y-3">
-                       <h3 className="text-xs font-display font-bold text-slate-800">Jadwal Piket Mingguan</h3>
-                       <p className="text-[10px] text-slate-500 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
+                           <Button onClick={() => setShowAddGuru(true)} className="w-full">+ Tambah Guru</Button>
 
-                       {HARI_LIST.map(hari => {
-                           const entries = jadwalDraft.filter(j => j.hari === hari);
-                           return (
-                               <div key={hari} className="bg-slate-50 rounded-xl p-3 space-y-1.5">
-                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{hari}</div>
-                                   {entries.length > 0 ? (
-                                       <div className="flex flex-wrap gap-1.5">
-                                           {entries.map((j, i) => (
-                                               <span key={i} className="text-[10px] font-semibold bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                                                   {guruName(j.guruId)}
-                                                   <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} className="text-crimson font-bold">×</button>
-                                               </span>
-                                           ))}
-                                       </div>
-                                   ) : (
-                                       <div className="text-[10px] text-slate-500">Belum ada guru piket.</div>
+                           <Card>
+                               <h3 className="text-xs font-display font-bold text-slate-800 mb-3">Daftar Guru ({teachers.length})</h3>
+                               {teachers.length === 0 && <div className="text-xs text-slate-500 py-2">Memuat daftar guru...</div>}
+                               {teachers.length > 0 && (
+                                   <input type="text" value={searchGuru} onChange={(e) => setSearchGuru(e.target.value)} placeholder="Cari nama atau ID guru..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky mb-3" />
+                               )}
+                               <div className="space-y-2">
+                                   {filteredTeachers.length === 0 && teachers.length > 0 && (
+                                       <div className="text-xs text-slate-500 py-2 text-center">Tidak ada guru yang cocok dengan pencarian.</div>
                                    )}
+                                   {filteredTeachers.map(t => (
+                                       <div key={t.id} className="bg-white/60 rounded-xl px-3 py-2.5 space-y-2">
+                                           <div className="flex items-center justify-between gap-2">
+                                               <div className="min-w-0">
+                                                   <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                                                       {t.name}
+                                                       {t.status === 'nonaktif' && <span className="text-[9px] bg-crimson/10 text-crimson px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">NONAKTIF</span>}
+                                                   </div>
+                                                   <div className="text-[10px] text-slate-500">{t.id} • {t.jabatan || (ROLES[String(t.role).toLowerCase().trim()] ? ROLES[String(t.role).toLowerCase().trim()].label : 'Guru')}{t.kelasWali && ` • Wali ${t.kelasWali}`}</div>
+                                               </div>
+                                           </div>
+                                           <div className="flex gap-1.5 flex-wrap">
+                                               <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
+                                               <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
+                                               <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
+                                               <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
+                                               <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
+                                                   {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
+                                               </button>
+                                           </div>
+                                       </div>
+                                   ))}
                                </div>
-                           );
-                       })}
+                           </Card>
+                       </React.Fragment>
+                   )}
 
-                       <div className="flex gap-2 pt-1">
-                           <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                               {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
-                           </select>
-                           <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                               <option value="">Pilih guru...</option>
-                               {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                           </select>
-                           <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
-                       </div>
+                   {view === 'jadwal' && (
+                       <React.Fragment>
+                           <KelolaSubHeader title="Jadwal Piket" onBack={() => setView('hub')} />
+                           {msg && (
+                               <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                                   {msg}
+                               </div>
+                           )}
+                           <Card className="space-y-3">
+                               <h3 className="text-xs font-display font-bold text-slate-800">Jadwal Piket Mingguan</h3>
+                               <p className="text-[10px] text-slate-500 leading-relaxed">Pola tetap per hari, berulang tiap minggu. Kalau ada tukar piket dadakan, ubah manual di sini.</p>
 
-                       <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
-                   </Card>
+                               {HARI_LIST.map(hari => {
+                                   const entries = jadwalDraft.filter(j => j.hari === hari);
+                                   return (
+                                       <div key={hari} className="bg-slate-50 rounded-xl p-3 space-y-1.5">
+                                           <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{hari}</div>
+                                           {entries.length > 0 ? (
+                                               <div className="flex flex-wrap gap-1.5">
+                                                   {entries.map((j, i) => (
+                                                       <span key={i} className="text-[10px] font-semibold bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                                                           {guruName(j.guruId)}
+                                                           <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} className="text-crimson font-bold">×</button>
+                                                       </span>
+                                                   ))}
+                                               </div>
+                                           ) : (
+                                               <div className="text-[10px] text-slate-500">Belum ada guru piket.</div>
+                                           )}
+                                       </div>
+                                   );
+                               })}
 
-                   <Card className="space-y-3">
-                       <h3 className="text-xs font-display font-bold text-slate-800">Kelola Data Surat</h3>
-                       <button onClick={() => setShowDeleteSuratPanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
-                       {showDeleteSuratPanel && (
-                           <div className="space-y-2 animate-pop">
-                               <div className="grid grid-cols-2 gap-2">
-                                   <select value={delSuratMonth} onChange={(e) => setDelSuratMonth(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900">
-                                       {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
+                               <div className="flex gap-2 pt-1">
+                                   <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
                                    </select>
-                                   <input type="number" value={delSuratYear} onChange={(e) => setDelSuratYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
+                                   <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Pilih guru...</option>
+                                       {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                   </select>
+                                   <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
                                </div>
-                               <Button onClick={submitDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
+
+                               <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
+                           </Card>
+                       </React.Fragment>
+                   )}
+
+                   {view === 'surat' && (
+                       <React.Fragment>
+                           <KelolaSubHeader title="Pemeliharaan Data" onBack={() => setView('hub')} />
+                           {msg && (
+                               <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                                   {msg}
+                               </div>
+                           )}
+                           <Card className="space-y-3">
+                               <h3 className="text-xs font-display font-bold text-slate-800">Data Surat</h3>
+                               <button onClick={() => setShowDeleteSuratPanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
+                               {showDeleteSuratPanel && (
+                                   <div className="space-y-2 animate-pop">
+                                       <div className="grid grid-cols-2 gap-2">
+                                           <select value={delSuratMonth} onChange={(e) => setDelSuratMonth(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900">
+                                               {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
+                                           </select>
+                                           <input type="number" value={delSuratYear} onChange={(e) => setDelSuratYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
+                                       </div>
+                                       <Button onClick={submitDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
+                                   </div>
+                               )}
+                           </Card>
+                       </React.Fragment>
+                   )}
+
+                   {showAddGuru && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-3 animate-pop my-4">
+                               <div className="flex items-center justify-between">
+                                   <h3 className="text-sm font-display font-bold text-slate-800">Tambah Guru Baru</h3>
+                                   <button onClick={() => setShowAddGuru(false)} className="text-slate-400 text-xl leading-none">×</button>
+                               </div>
+                               <form onSubmit={submitAdd} className="space-y-3">
+                                   <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                                   <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama Lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                                   <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password Awal" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                                   <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                   </select>
+                                   <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                   <p className="text-[10px] text-slate-500 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
+                                   <Button type="submit" disabled={loading} className="w-full">
+                                       {loading ? 'Menyimpan...' : 'Tambah Guru'}
+                                   </Button>
+                               </form>
                            </div>
-                       )}
-                   </Card>
+                       </div>
+                   )}
 
                    {resetTarget && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
