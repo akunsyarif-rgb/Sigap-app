@@ -105,7 +105,7 @@
            // Nama hari dihitung dari HARI_PIKET (config.js), bukan locale API, supaya
            // tidak tergantung setting browser/OS pengguna.
            const hariIni = getHariIni();
-           const piketHariIni = [...jadwalPiket.filter(j => j.hari === hariIni)].sort((a, b) => String(a.guruName).localeCompare(String(b.guruName)));
+           const piketHariIni = [...(jadwalPiket || []).filter(j => j.hari === hariIni)].sort((a, b) => String(a.guruName).localeCompare(String(b.guruName)));
            const isPiketToday = piketHariIni.some(j => String(j.guruId) === String(user.id));
            const waliKelas = user.waliKelas || '';
 
