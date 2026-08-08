@@ -17,20 +17,28 @@ function doPost(e) {
 
     // ---- Login ----
     if (action === 'login') {
-      var hashedInput = hashPassword(data.password);
       var sheet = ss.getSheetByName('Master_Guru');
       var rows = sheet.getDataRange().getValues();
 
       var loggedInUser = null;
       var isDisabled = false;
+      var matchedRowIndex = -1;
+      var needsMigration = false;
       for (var i = 1; i < rows.length; i++) {
-        if (String(rows[i][2]) === hashedInput) {
+        // Kolom H (index 7) = Salt. Kosong = akun belum dimigrasi ke skema
+        // hash baru (lihat verifyPassword di Auth.gs) — masih dicek lewat
+        // jalur lama supaya guru yang sudah pernah set password tidak perlu
+        // reset paksa.
+        var checkResult = verifyPassword(data.password, String(rows[i][2]), String(rows[i][7] || ''));
+        if (checkResult && checkResult.matched) {
           if (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') {
             isDisabled = true;
             break;
           }
           // Kolom G (index 6) = Kelas_Wali. Kosong kalau guru ini bukan wali kelas.
           loggedInUser = { id: rows[i][0], name: rows[i][1], role: rows[i][3], jabatan: rows[i][4] || '', waliKelas: rows[i][6] || '' };
+          matchedRowIndex = i;
+          needsMigration = checkResult.needsMigration;
           break;
         }
       }
@@ -39,6 +47,11 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Akun ini sudah dinonaktifkan. Hubungi admin.' });
       }
       if (loggedInUser) {
+        if (needsMigration) {
+          var migratedSalt = generateSalt();
+          sheet.getRange(matchedRowIndex + 1, 3).setValue(hashPasswordSalted(data.password, migratedSalt));
+          sheet.getRange(matchedRowIndex + 1, 8).setValue(migratedSalt);
+        }
         var sessionToken = createSession(loggedInUser);
         logAudit(loggedInUser, 'Login', '');
         return jsonOut({ status: 'success', user: loggedInUser, sessionToken: sessionToken });
@@ -52,6 +65,30 @@ function doPost(e) {
       if (sessionUserForLogout) {
         logAudit(sessionUserForLogout, 'Logout', '');
         CacheService.getScriptCache().remove('sess_' + data.sessionToken);
+      }
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Log error render client-side (ErrorBoundary di app.js). Sengaja
+    // TIDAK butuh sesi valid (biar laporan tetap masuk walau render gagal PAS
+    // sesi baru habis) dan TIDAK ikut LockService (sheet terpisah, independen
+    // dari data operasional, tidak perlu antre di belakang aksi tulis lain).
+    // Kegagalan di sini tidak boleh sampai bikin klien dapat error baru lagi
+    // — makanya dibungkus try/catch sendiri dan selalu balas 'success'. ----
+    if (action === 'logClientError') {
+      try {
+        var errSheet = getOrCreateSheet(ss, 'Error_Log', ['Timestamp', 'Nama', 'ID', 'Pesan', 'Detail', 'Halaman']);
+        var errUser = getSessionUser(data.sessionToken);
+        errSheet.appendRow([
+          new Date(),
+          errUser ? errUser.name : '(sesi tidak valid)',
+          errUser ? errUser.id : '',
+          String(data.message || '').slice(0, 500),
+          String(data.detail || '').slice(0, 2000),
+          String(data.page || '')
+        ]);
+      } catch (logError) {
+        // diamkan — lihat catatan di atas
       }
       return jsonOut({ status: 'success' });
     }
@@ -107,8 +144,13 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: 'ID sudah dipakai, gunakan ID lain' });
         }
       }
-      var hashed = hashPassword(data.newPassword);
-      sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '']);
+      var newSalt = generateSalt();
+      var hashed = hashPasswordSalted(data.newPassword, newSalt);
+      // Kolom F (status) & G (Kelas_Wali) sengaja dikosongkan di sini (diisi
+      // lewat aksi toggleStatus/updateWaliKelas terpisah) — harus tetap
+      // ditulis eksplisit supaya salt di kolom H (index 8) jatuh di kolom
+      // yang benar, appendRow tidak bisa "lompat" kolom.
+      sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '', '', '', newSalt]);
       logAudit(sessionUser, 'Tambah Guru', data.newName + ' (' + data.newId + ', role: ' + data.newRole + ')');
       return jsonOut({ status: 'success' });
     }
@@ -124,7 +166,9 @@ function doPost(e) {
       var targetName = '';
       for (var i = 1; i < rows.length; i++) {
         if (String(rows[i][0]) === String(data.targetId)) {
-          sheet.getRange(i + 1, 3).setValue(hashPassword(data.newPassword));
+          var resetSalt = generateSalt();
+          sheet.getRange(i + 1, 3).setValue(hashPasswordSalted(data.newPassword, resetSalt));
+          sheet.getRange(i + 1, 8).setValue(resetSalt);
           targetName = rows[i][1];
           found = true;
           break;

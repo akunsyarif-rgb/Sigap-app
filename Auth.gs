@@ -30,6 +30,20 @@ function getSessionUser(token) {
   }
 }
 
+// ===== Verifikasi password (dua skema, migrasi otomatis) =====
+// storedSalt kosong = akun belum pernah login sejak salt ditambahkan (skema
+// lama). Kalau match lewat skema lama, needsMigration:true dikembalikan —
+// pemanggil (doPost 'login') yang urus tulis salt+hash baru ke sheet SAAT
+// itu juga, karena ini satu-satunya momen kita masih pegang password asli
+// (belum di-lowercase, belum di-hash). Fungsi ini sendiri tidak menulis apa
+// pun, murni pengecekan, supaya gampang dites terpisah.
+function verifyPassword(inputPassword, storedHash, storedSalt) {
+  if (storedSalt) {
+    return hashPasswordSalted(inputPassword, storedSalt) === storedHash ? { matched: true, needsMigration: false } : null;
+  }
+  return hashPasswordLegacy(inputPassword) === storedHash ? { matched: true, needsMigration: true } : null;
+}
+
 function normalizeRole(role) {
   return String(role || '').toLowerCase().trim();
 }
