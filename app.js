@@ -484,7 +484,7 @@
 
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
                                {activeTab === 'scan' && effectiveMenus.includes('scan') && (
-                                   <GerbangTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} onDeleteSurat={handleDeleteSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
+                                   <GerbangTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
                                )}
                                {activeTab === 'dashboard' && (
                                    <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} />
@@ -501,7 +501,7 @@
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} onDeleteSurat={handleDeleteSurat} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />

@@ -11,7 +11,7 @@
            { value: 'admin', label: 'Admin' },
        ];
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, onDeleteSurat, loading }) {
            // Dropdown, bukan ketik manual — supaya nama kelas yang dipilih SELALU
            // persis sama dengan Master_Siswa, tidak ada typo yang bikin Rekap
            // Kelas/laporan wali kelas gagal mencocokkan data (lihat diskusi bug
@@ -123,6 +123,17 @@
                });
            };
 
+           // ===== Hapus Data Surat per Bulan/Tahun — dipindah dari Gerbang ke
+           // sini (Roadmap: Gerbang tidak lagi jadi tempat browsing/kelola data,
+           // cuma cari-pilih-catat; ini murni tugas admin, bukan guru piket). =====
+           const [showDeleteSuratPanel, setShowDeleteSuratPanel] = useState(false);
+           const [delSuratMonth, setDelSuratMonth] = useState(String(new Date().getMonth() + 1));
+           const [delSuratYear, setDelSuratYear] = useState(String(new Date().getFullYear()));
+           const submitDeleteSurat = () => {
+               onDeleteSurat({ month: delSuratMonth, year: delSuratYear }, (ok, text) => showMsg(ok, text));
+               setShowDeleteSuratPanel(false);
+           };
+
            return (
                <div className="space-y-5 animate-rise">
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kelola Guru</h2>
@@ -220,6 +231,22 @@
                        </div>
 
                        <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
+                   </Card>
+
+                   <Card className="space-y-3">
+                       <h3 className="text-xs font-display font-bold text-slate-800">Kelola Data Surat</h3>
+                       <button onClick={() => setShowDeleteSuratPanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
+                       {showDeleteSuratPanel && (
+                           <div className="space-y-2 animate-pop">
+                               <div className="grid grid-cols-2 gap-2">
+                                   <select value={delSuratMonth} onChange={(e) => setDelSuratMonth(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900">
+                                       {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
+                                   </select>
+                                   <input type="number" value={delSuratYear} onChange={(e) => setDelSuratYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
+                               </div>
+                               <Button onClick={submitDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
+                           </div>
+                       )}
                    </Card>
 
                    {resetTarget && (

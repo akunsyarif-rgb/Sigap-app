@@ -50,7 +50,13 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, onDeleteSurat, isAdminUser, waliKelasMap }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap }) {
+           // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
+           // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
+           // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
+           // Daftar riwayat per-kategori yang dulu ada di sini (dengan filter
+           // kelas & sort) dihapus karena mengulang menu Riwayat — kalau perlu
+           // cek "siapa di kelas X izin/sakit hari ini", arahnya ke Riwayat.
            const [mode, setMode] = useState('terlambat');
            const [searchQuery, setSearchQuery] = useState('');
            const [pickerStudent, setPickerStudent] = useState(null);
@@ -59,21 +65,9 @@
            const [keterangan, setKeterangan] = useState('');
            const [fotoPreview, setFotoPreview] = useState(null);
            const [fotoBase64, setFotoBase64] = useState(null);
-           const [showDeletePanel, setShowDeletePanel] = useState(false);
-           const [delMonth, setDelMonth] = useState(String(new Date().getMonth() + 1));
-           const [delYear, setDelYear] = useState(String(new Date().getFullYear()));
            const [msg, setMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
            const fileInputRef = useRef(null);
-           // Default tetap kronologis — Nama A-Z cuma opsi tambahan (Blueprint SIGAP v2, section VIII)
-           const [suratSortMode, setSuratSortMode] = useState('waktu');
-           // Filter kelas + "Hari Ini saja" (default aktif) — supaya guru yang mau
-           // masuk kelas tertentu bisa cepat cek siapa yang izin/sakit hari itu.
-           // Akses tetap semua guru, lintas kelas (bukan cuma wali kelas) — beda
-           // dengan Pelanggaran, karena guru mata pelajaran bisa masuk kelas mana saja.
-           const [filterKelasSurat, setFilterKelasSurat] = useState('');
-           const [onlyTodaySurat, setOnlyTodaySurat] = useState(true);
-           const kelasOptions = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
 
            // Nama wali kelas wajib tampil di hasil pencarian — guru piket di
            // gerbang sering perlu tahu ini juga (mis. untuk menghubungi wali
@@ -86,11 +80,6 @@
                s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
                (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
            );
-
-           const filteredSurat = [...suratList]
-               .filter(s => !filterKelasSurat || s.class === filterKelasSurat)
-               .filter(s => !onlyTodaySurat || isSameDay(parseTimestamp(s.timestamp), new Date()))
-               .sort((a, b) => suratSortMode === 'nama' ? String(a.name).localeCompare(String(b.name)) : parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
 
            // Live Activity Log — gabungan Terlambat + Surat hari ini, terbaru dulu,
            // supaya guru piket lain langsung tahu siapa yang sudah dicatat (hindari input ganda).
@@ -151,11 +140,6 @@
                setSuratStudent(null); setJenis('Sakit'); setKeterangan(''); setFotoPreview(null); setFotoBase64(null);
            };
 
-           const submitDelete = () => {
-               onDeleteSurat({ month: delMonth, year: delYear }, (ok, text) => showMsg(ok, text));
-               setShowDeletePanel(false);
-           };
-
            return (
                <div className="space-y-5 animate-rise">
                    <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 mt-6">
@@ -165,7 +149,7 @@
 
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
                    <div>
-                       <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Cari Manual (Nama, Kelas, atau NISN)</label>
+                       <label className="text-xs text-slate-500 font-semibold mb-1.5 block">{mode === 'surat' ? 'Cari siswa untuk membuat surat' : 'Cari siswa untuk mencatat keterlambatan'}</label>
                        <div className="relative">
                            <input
                                type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -230,71 +214,6 @@
                        </div>
                    )}
 
-                   {mode === 'surat' && (
-                       <React.Fragment>
-                           {isAdminUser && (
-                               <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                                   <button onClick={() => setShowDeletePanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
-                                   {showDeletePanel && (
-                                       <div className="space-y-2 animate-pop">
-                                           <div className="grid grid-cols-2 gap-2">
-                                               <select value={delMonth} onChange={(e) => setDelMonth(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900">
-                                                   {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
-                                               </select>
-                                               <input type="number" value={delYear} onChange={(e) => setDelYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
-                                           </div>
-                                           <button onClick={submitDelete} className="w-full bg-crimson hover:bg-crimson-dim text-white py-2.5 rounded-xl text-xs font-bold">Hapus Data Periode Ini</button>
-                                       </div>
-                                   )}
-                               </div>
-                           )}
-
-                           <div className="flex items-center justify-between">
-                               <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{suratList.length} catatan surat</h3>
-                               <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
-                                   <button onClick={() => setSuratSortMode('waktu')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${suratSortMode === 'waktu' ? 'bg-sky text-white' : 'text-slate-500'}`}>Terbaru</button>
-                                   <button onClick={() => setSuratSortMode('nama')} className={`px-2.5 py-1 rounded-md text-[9px] font-bold transition ${suratSortMode === 'nama' ? 'bg-sky text-white' : 'text-slate-500'}`}>A-Z</button>
-                               </div>
-                           </div>
-
-                           {/* Cek cepat: "siapa di kelas X izin/sakit hari ini" — dipakai guru
-                               yang mau masuk kelas tertentu, bukan cuma wali kelas. */}
-                           <div className="flex gap-2">
-                               <select value={filterKelasSurat} onChange={(e) => setFilterKelasSurat(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                   <option value="">Semua Kelas</option>
-                                   {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
-                               </select>
-                               <button onClick={() => setOnlyTodaySurat(v => !v)} className={`px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${onlyTodaySurat ? 'bg-sky text-white' : 'bg-white border border-slate-300 text-slate-500'}`}>Hari Ini</button>
-                           </div>
-
-                           <div className="space-y-2.5">
-                               {filteredSurat.slice(0, 30).map((s, idx) => {
-                                   const dt = parseTimestamp(s.timestamp);
-                                   return (
-                                       <div key={idx} className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-1.5">
-                                           <div className="flex items-center justify-between">
-                                               <div className="font-semibold text-sm text-slate-900">{s.name}</div>
-                                               <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{s.jenis}</span>
-                                           </div>
-                                           <div className="text-[10px] text-slate-500 flex justify-between gap-2">
-                                               <span>{s.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
-                                               <span className="truncate">{s.keterangan}</span>
-                                           </div>
-                                           {s.foto_url ? (
-                                               <a href={s.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline">Lihat foto surat</a>
-                                           ) : (
-                                               <span className="text-[10px] text-amber-600 font-semibold">⚠ Belum ada bukti foto</span>
-                                           )}
-                                       </div>
-                                   );
-                               })}
-                               {filteredSurat.length === 0 && (
-                                   <EmptyState emoji="✉️" text={suratList.length === 0 ? 'Belum ada catatan surat masuk.' : 'Tidak ada catatan surat yang cocok dengan filter.'} />
-                               )}
-                           </div>
-                       </React.Fragment>
-                   )}
-
                    {/* Bottom sheet setelah pilih siswa — satu tempat, tanpa pindah
                        halaman: ringkasan singkat + pilih mau catat apa. Kalau salah
                        satu kategori sudah tercatat hari ini, langsung kelihatan di
@@ -327,29 +246,35 @@
                                        </div>
                                    </div>
 
-                                   <div className="space-y-2 pt-1 border-t border-slate-100">
-                                       {lateToday ? (
-                                           <div className="bg-slate-100 rounded-xl px-4 py-3">
-                                               <div className="text-xs font-bold text-slate-600">✓ Sudah dicatat terlambat</div>
-                                               <div className="text-[10px] text-slate-500 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
-                                           </div>
-                                       ) : (
-                                           <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition">
-                                               ⏰ Catat Terlambat
-                                           </button>
-                                       )}
-                                       {suratToday ? (
-                                           <div className="bg-slate-100 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
-                                               <div className="min-w-0">
-                                                   <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
-                                                   <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
+                                   {/* Cuma 1 aksi yang ditampilkan, sesuai "mode" yang sudah
+                                       dipilih di atas sebelum mencari — bukan lagi menawarkan
+                                       2 pilihan di sini seperti sebelumnya. */}
+                                   <div className="pt-1 border-t border-slate-100">
+                                       {mode === 'terlambat' ? (
+                                           lateToday ? (
+                                               <div className="bg-slate-100 rounded-xl px-4 py-3">
+                                                   <div className="text-xs font-bold text-slate-600">✓ Sudah dicatat terlambat</div>
+                                                   <div className="text-[10px] text-slate-500 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
                                                </div>
-                                               {suratToday.foto_url && <a href={suratToday.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline flex-shrink-0">Lihat</a>}
-                                           </div>
+                                           ) : (
+                                               <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition">
+                                                   ⏰ Catat Terlambat
+                                               </button>
+                                           )
                                        ) : (
-                                           <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition">
-                                               📄 Catat Surat
-                                           </button>
+                                           suratToday ? (
+                                               <div className="bg-slate-100 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
+                                                   <div className="min-w-0">
+                                                       <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
+                                                       <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
+                                                   </div>
+                                                   {suratToday.foto_url && <a href={suratToday.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline flex-shrink-0">Lihat</a>}
+                                               </div>
+                                           ) : (
+                                               <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition">
+                                                   📄 Catat Surat
+                                               </button>
+                                           )
                                        )}
                                    </div>
 
