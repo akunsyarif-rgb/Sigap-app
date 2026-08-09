@@ -176,7 +176,10 @@
                        fetchJadwalPiket();
                        fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
-                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
+                       // fetchAuditLog sempat lupa dipanggil di sini — fungsinya sudah
+                       // ada sejak lama, tapi tidak pernah dieksekusi, jadi tab Audit
+                       // Log selalu kosong walau sheet Audit_Log sendiri terisi normal.
+                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan' || user.waliKelas) fetchTindakLanjut();
                    }
                }
