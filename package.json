@@ -1,0 +1,12 @@
+{
+  "name": "sigap-app",
+  "private": true,
+  "description": "SIGAP tidak punya build step di production (lihat index.html) — package.json ini HANYA untuk menjalankan test lokal (npm install sekali, lalu npm test), tidak dipakai untuk deploy.",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0"
+  }
+}

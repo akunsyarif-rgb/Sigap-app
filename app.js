@@ -176,7 +176,10 @@
                        fetchJadwalPiket();
                        fetchWaliKelasMap();
                        if (roleKey === 'admin') fetchTeachers();
-                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); }
+                       // fetchAuditLog sempat lupa dipanggil di sini — fungsinya sudah
+                       // ada sejak lama, tapi tidak pernah dieksekusi, jadi tab Audit
+                       // Log selalu kosong walau sheet Audit_Log sendiri terisi normal.
+                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan' || user.waliKelas) fetchTindakLanjut();
                    }
                }
@@ -415,6 +418,7 @@
            const handleEditEntry = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'editEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json())
+                   .then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            if (payload.category === 'terlambat') {
@@ -434,6 +438,7 @@
            const handleDeleteEntry = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json())
+                   .then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
                            if (payload.category === 'terlambat') setAllLogs(prev => prev.filter(item => !sameEntry(item, payload)));
@@ -547,6 +552,27 @@
            }
            componentDidCatch(error, info) {
                console.error('SIGAP gagal render:', error, info.componentStack);
+               // ErrorBoundary ada DI LUAR <App/>, jadi tidak bisa akses
+               // sessionToken lewat props/state React — ambil langsung dari
+               // localStorage (sumber yang sama dipakai loadStoredSession()).
+               // Aksi 'logClientError' di Code.gs sengaja tidak butuh sesi
+               // valid, supaya laporan tetap masuk walau render gagal PAS
+               // sesi baru saja habis. Kalau kirim laporan ini sendiri gagal
+               // (offline dsb.), diamkan saja — sudah ada fallback console.error di atas.
+               try {
+                   const token = localStorage.getItem('sigap_session_token');
+                   fetch(API_URL, {
+                       method: 'POST',
+                       body: JSON.stringify({
+                           action: 'logClientError',
+                           token: API_TOKEN,
+                           sessionToken: token,
+                           message: String((error && error.message) || error),
+                           detail: String((info && info.componentStack) || ''),
+                           page: window.location.href,
+                       }),
+                   }).catch(() => {});
+               } catch (e) {}
            }
            render() {
                if (this.state.hasError) {

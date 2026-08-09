@@ -17,12 +17,33 @@ function checkToken(token) {
   return token && validToken && token === validToken;
 }
 
-function hashPassword(password) {
+// ===== Hash password =====
+// Skema LAMA (hashPasswordLegacy): SHA-256 tanpa salt, DAN password
+// di-lowercase paksa sebelum di-hash — jadi "Sigap123" & "sigap123" dianggap
+// password yang sama (melemahkan kekuatan password nyata), dan satu tabel
+// pelangi (rainbow table) generik bisa dipakai untuk semua akun sekaligus.
+// Skema BARU (hashPasswordSalted): tiap akun punya salt acak sendiri (kolom
+// H Master_Guru), hash case-sensitive. Akun lama tidak direset paksa — lihat
+// verifyPassword() di Auth.gs untuk alur migrasi otomatis saat login.
+function hashPasswordLegacy(password) {
   var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password.toLowerCase().trim());
-  return raw.map(function(byte) {
+  return bytesToHex(raw);
+}
+
+function hashPasswordSalted(password, salt) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + password.trim());
+  return bytesToHex(raw);
+}
+
+function bytesToHex(bytes) {
+  return bytes.map(function (byte) {
     var v = (byte < 0 ? byte + 256 : byte).toString(16);
     return v.length === 1 ? '0' + v : v;
   }).join('');
+}
+
+function generateSalt() {
+  return Utilities.getUuid().replace(/-/g, '');
 }
 
 // Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
