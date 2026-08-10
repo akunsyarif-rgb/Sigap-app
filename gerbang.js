@@ -89,7 +89,9 @@
            ].sort((a, b) => b._time - a._time).slice(0, 25);
 
            const [msgTone, setMsgTone] = useState('sky');
-           const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
+           // 6 detik (sebelumnya 3) — pesan fotoError di submitSurat jauh lebih
+           // panjang dari toast sukses/gagal biasa, 3 detik tidak cukup untuk dibaca.
+           const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 6000); };
            const alreadyToday = (list, nisn) => list.find(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
            const monthCount = (list, nisn) => {
                const now = new Date();

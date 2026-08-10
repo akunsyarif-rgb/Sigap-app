@@ -360,7 +360,15 @@
                        if (data.status === 'success') {
                            const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
-                           callback(true, 'Surat berhasil dicatat.');
+                           // fotoError: catatan surat tetap tersimpan, tapi foto-nya gagal
+                           // ke-upload — beri tahu jelas (sebelumnya ditelan diam-diam jadi
+                           // fotoUrl kosong tanpa penjelasan) supaya guru tahu harus upload
+                           // ulang lewat Edit di Riwayat, bukan mengira semuanya berhasil.
+                           if (payload.fotoBase64 && data.fotoError) {
+                               callback(true, 'Surat tersimpan, TAPI foto gagal diupload. Buka Riwayat > Surat lalu edit catatan ini untuk upload ulang.');
+                           } else {
+                               callback(true, 'Surat berhasil dicatat.');
+                           }
                        } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
