@@ -116,12 +116,19 @@
            if (waliKelas) {
                const lateWeek = allLogs.filter(l => sameClass(l.class, waliKelas) && parseTimestamp(l.timestamp) >= weekStart);
                const pelanggaranWeek = pelanggaranList.filter(p => sameClass(p.class, waliKelas) && parseTimestamp(p.timestamp) >= weekStart);
+               // Surat kelas perwalian minggu ini — daftar (bukan cuma hitungan),
+               // supaya wali kelas bisa langsung lihat siapa izin/sakit & lihat
+               // foto suratnya, tanpa harus buka Riwayat lalu filter kelas sendiri.
+               const suratWeek = suratList
+                   .filter(s => sameClass(s.class, waliKelas) && parseTimestamp(s.timestamp) >= weekStart)
+                   .sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
                const bermasalah = {};
                lateWeek.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
                pelanggaranWeek.forEach(p => { bermasalah[p.nisn] = bermasalah[p.nisn] || { nisn: p.nisn, name: p.name }; });
                kelasPerwalian = {
                    jumlahSiswaBermasalah: Object.keys(bermasalah).length,
                    daftarSiswa: Object.values(bermasalah),
+                   suratKelas: suratWeek,
                };
            }
 
@@ -169,6 +176,30 @@
                        <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
                    </div>
+
+                   {/* Surat Hari Ini — daftar KHUSUS surat (bukan tercampur di
+                       "Aktivitas Hari Ini" bersama Terlambat/Pelanggaran), supaya
+                       semua guru (bukan cuma yang piket Gerbang) bisa cek cepat
+                       siapa saja izin/sakit hari ini, termasuk lihat foto suratnya
+                       kalau ada — semua kelas, bukan dibatasi wali kelas. */}
+                   <Card className="space-y-2.5">
+                       <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">📄 Surat Hari Ini ({todaySurat.length})</h3>
+                       {todaySurat.length > 0 ? (
+                           <div className="space-y-2">
+                               {[...todaySurat].sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).map((s, idx) => (
+                                   <div key={idx} className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                                       <div className="min-w-0">
+                                           <div className="text-xs font-bold text-slate-800 truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></div>
+                                           <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} • {s.logged_by}</div>
+                                       </div>
+                                       {s.foto_url && <a href={s.foto_url} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[10px] font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1.5 rounded-lg">📷 Foto</a>}
+                                   </div>
+                               ))}
+                           </div>
+                       ) : (
+                           <div className="text-xs text-slate-500">Belum ada surat masuk hari ini.</div>
+                       )}
+                   </Card>
 
                    {/* ④ Perlu Perhatian */}
                    {frequentLatecomers.length > 0 && (
@@ -276,6 +307,21 @@
                            ) : (
                                <div className="text-xs text-slate-500">Belum ada siswa bermasalah minggu ini. 🎉</div>
                            )}
+                           {/* Surat masuk atas nama kelas perwalian ini saja — beda dari
+                               kartu "Surat Hari Ini" di atas yang semua kelas, ini
+                               khusus scoped ke kelas wali kelas yang login. */}
+                           <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
+                               <div className="text-xs text-slate-600">Surat masuk kelas ini minggu ini{kelasPerwalian.suratKelas.length > 0 ? ` (${kelasPerwalian.suratKelas.length})` : ''}:</div>
+                               {kelasPerwalian.suratKelas.length > 0 ? kelasPerwalian.suratKelas.map((s, idx) => (
+                                   <div key={idx} className="bg-slate-50 rounded-lg p-2 flex items-center justify-between gap-2">
+                                       <div className="min-w-0">
+                                           <div className="text-[11px] font-semibold text-slate-700 truncate">{s.name}</div>
+                                           <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</div>
+                                       </div>
+                                       {s.foto_url && <a href={s.foto_url} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[10px] font-bold text-sky-dim bg-sky-dim/10 px-2 py-1 rounded-lg">📷 Foto</a>}
+                                   </div>
+                               )) : <div className="text-[11px] text-slate-500">Belum ada surat masuk minggu ini.</div>}
+                           </div>
                        </Card>
                    )}
                </div>

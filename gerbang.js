@@ -131,13 +131,22 @@
                reader.readAsDataURL(file);
            };
 
+           // Modal HANYA ditutup & form direset setelah server konfirmasi
+           // sukses — sebelumnya modal langsung tertutup begitu tombol Simpan
+           // ditekan, jadi kalau gagal (mis. siswa itu sudah punya catatan
+           // surat hari ini, atau koneksi putus), guru tidak sadar karena
+           // pesan errornya cuma toast 3 detik di layar yang sudah tertutup
+           // modal. Sekarang kalau gagal, modal tetap terbuka dengan isian
+           // (foto/keterangan) masih ada supaya bisa langsung coba lagi.
            const submitSurat = () => {
                setSavingSurat(true);
                onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan, fotoBase64 }, (ok, text) => {
                    setSavingSurat(false);
                    showMsg(ok, text);
+                   if (ok) {
+                       setSuratStudent(null); setJenis('Sakit'); setKeterangan(''); setFotoPreview(null); setFotoBase64(null);
+                   }
                });
-               setSuratStudent(null); setJenis('Sakit'); setKeterangan(''); setFotoPreview(null); setFotoBase64(null);
            };
 
            return (
@@ -298,6 +307,11 @@
                                        <button key={j} onClick={() => setJenis(j)} className={`py-2.5 rounded-xl text-xs font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
                                    ))}
                                </div>
+
+                               {/* Toast `msg` di layar belakang tertutup modal ini (z-50,
+                                   full-screen) — pesan gagal DIULANG di sini supaya kelihatan
+                                   selama modal masih terbuka (lihat catatan di submitSurat). */}
+                               {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
                                <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
