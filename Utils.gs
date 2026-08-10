@@ -83,7 +83,28 @@ function uploadFotoSurat(base64Data, fileName) {
   var decoded = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(decoded, 'image/jpeg', fileName);
   var file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  // Banyak akun Google Workspace instansi/sekolah MEMATIKAN kebijakan share
+  // "Siapa saja dengan link" (ANYONE_WITH_LINK) di level admin domain —
+  // setSharing() throw exception kalau begitu, dan SEBELUM perbaikan ini,
+  // exception itu bikin caller (addSurat di Code.gs) menganggap SELURUH
+  // upload gagal lalu buang file yang sebenarnya sudah berhasil ter-upload
+  // (fotoUrl dikosongkan). Sekarang: coba ANYONE_WITH_LINK dulu (paling
+  // fleksibel, guru bisa buka linknya kapan saja); kalau ditolak kebijakan
+  // domain, turunkan ke DOMAIN_WITH_LINK (siapa saja SATU DOMAIN sekolah
+  // yang sedang login akun Google-nya) sebagai fallback; kalau itu juga
+  // ditolak, file TETAP disimpan & URL tetap dikembalikan (pemilik akun
+  // script masih bisa buka manual) — daripada foto yang sudah ke-upload
+  // terbuang sia-sia gara-gara langkah share saja yang gagal.
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (shareErr) {
+    try {
+      file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (domainShareErr) {
+      // Diamkan — file & URL tetap valid, cuma sharing otomatisnya yang
+      // tidak berhasil diterapkan (lihat komentar di atas).
+    }
+  }
   return file.getUrl();
 }
 
