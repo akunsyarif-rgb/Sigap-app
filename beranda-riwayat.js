@@ -392,8 +392,14 @@
            const activeCat = categories.find(c => c.key === category);
            const sourceData = activeCat.data;
 
-           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya
-           useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); }, [category]);
+           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya.
+           // Sort ikut direset per kategori: Surat default "Terbaru" (bukan
+           // Kelas & Nama A-Z) — beda dari Terlambat/Pelanggaran, guru piket
+           // buka Surat justru paling sering buat mastiin "surat yang BARU
+           // saya catat masuk atau tidak", jadi kalau harus scroll manual/cari
+           // di daftar alfabet dulu, sering disangka datanya hilang padahal
+           // cuma ketutup entri kelas lain di atasnya (lihat histori bug ini).
+           useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); setSortMode(category === 'surat' ? 'waktu' : 'nama'); }, [category]);
 
            const classes = useMemo(() => [...new Set(sourceData.map(l => l.class))].sort(), [sourceData]);
            const subOptions = useMemo(() => [...new Set(sourceData.map(l => l[activeCat.subField]))].filter(Boolean).sort(), [sourceData, category]);
