@@ -401,18 +401,28 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah punya catatan surat hari ini.' });
         }
       }
+      // Kegagalan upload foto TIDAK boleh menggagalkan seluruh pencatatan
+      // surat (catatan tetap lebih penting daripada foto), tapi sebelumnya
+      // errornya ditelan diam-diam (fotoUrl dikosongkan tanpa jejak) — guru
+      // dapat pesan "berhasil" penuh padahal fotonya hilang, dan tidak ada
+      // cara tahu kenapa. Sekarang errornya dicatat ke Audit Log (bisa
+      // dicek admin/BK) dan `fotoError:true` dikirim balik ke client supaya
+      // guru diberi tahu jelas untuk upload ulang lewat Edit.
       var fotoUrl = '';
+      var fotoError = false;
       if (data.fotoBase64) {
         try {
           fotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
         } catch (err) {
           fotoUrl = '';
+          fotoError = true;
+          logAudit(sessionUser, 'Upload Foto Surat Gagal', data.name + ': ' + String(err));
         }
       }
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', fotoUrl, sessionUser.name]);
       CacheService.getScriptCache().remove('surat_list');
       CacheService.getScriptCache().remove('today_data');
-      return jsonOut({ status: 'success', fotoUrl: fotoUrl });
+      return jsonOut({ status: 'success', fotoUrl: fotoUrl, fotoError: fotoError });
     }
 
     // ---- Hapus data surat per bulan/tahun (admin only) ----

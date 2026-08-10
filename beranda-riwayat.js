@@ -61,11 +61,14 @@
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
            const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
 
-           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat
+           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat.
+           // Surat SENGAJA tidak diikutkan di sini lagi — sudah ada kartu "Surat
+           // Hari Ini" tersendiri (lebih detail: keterangan + link foto), jadi
+           // kalau surat masih ikut digabung di sini juga, setiap surat masuk
+           // muncul dobel di Beranda.
            const combinedFeed = [
                ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
                ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
-               ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
            // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu
@@ -389,8 +392,14 @@
            const activeCat = categories.find(c => c.key === category);
            const sourceData = activeCat.data;
 
-           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya
-           useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); }, [category]);
+           // Ganti kategori = reset filter, supaya tidak ada filter nyangkut dari kategori sebelumnya.
+           // Sort ikut direset per kategori: Surat default "Terbaru" (bukan
+           // Kelas & Nama A-Z) — beda dari Terlambat/Pelanggaran, guru piket
+           // buka Surat justru paling sering buat mastiin "surat yang BARU
+           // saya catat masuk atau tidak", jadi kalau harus scroll manual/cari
+           // di daftar alfabet dulu, sering disangka datanya hilang padahal
+           // cuma ketutup entri kelas lain di atasnya (lihat histori bug ini).
+           useEffect(() => { setFilterClass(''); setFilterSub(''); setPeriod('semua'); setCustomDate(''); setExpandedStudent(null); setSortMode(category === 'surat' ? 'waktu' : 'nama'); }, [category]);
 
            const classes = useMemo(() => [...new Set(sourceData.map(l => l.class))].sort(), [sourceData]);
            const subOptions = useMemo(() => [...new Set(sourceData.map(l => l[activeCat.subField]))].filter(Boolean).sort(), [sourceData, category]);
