@@ -516,6 +516,7 @@ function doPost(e) {
         }
       }
       var rowIndex = found.rowIndex;
+      var fotoError = false;
       if (data.category === 'terlambat') {
         sheet.getRange(rowIndex, 5).setValue(data.type || '');
       } else if (data.category === 'pelanggaran') {
@@ -530,7 +531,11 @@ function doPost(e) {
             var newFotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
             sheet.getRange(rowIndex, 7).setValue(newFotoUrl);
           } catch (err) {
-            // Upload foto baru gagal — field lain tetap tersimpan, foto lama dipertahankan
+            // Upload foto baru gagal — field lain tetap tersimpan, foto lama
+            // dipertahankan. Sama seperti addSurat: dicatat ke Audit Log +
+            // dikabari ke client (fotoError), bukan ditelan diam-diam.
+            fotoError = true;
+            logAudit(sessionUser, 'Upload Foto Surat Gagal (Edit)', data.name + ': ' + String(err));
           }
         }
       } else {
@@ -538,7 +543,7 @@ function doPost(e) {
       }
       clearCacheForCategory(data.category);
       logAudit(sessionUser, 'Edit Data ' + data.category, data.name + ' (' + data.nisn + ')');
-      return jsonOut({ status: 'success' });
+      return jsonOut({ status: 'success', fotoError: fotoError });
     }
 
     // ---- Hapus 1 catatan — aturan sama seperti edit (semua role non-OSIS,
