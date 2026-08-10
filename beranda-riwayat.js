@@ -61,11 +61,14 @@
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
            const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
 
-           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat
+           // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat.
+           // Surat SENGAJA tidak diikutkan di sini lagi — sudah ada kartu "Surat
+           // Hari Ini" tersendiri (lebih detail: keterangan + link foto), jadi
+           // kalau surat masih ikut digabung di sini juga, setiap surat masuk
+           // muncul dobel di Beranda.
            const combinedFeed = [
                ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
                ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
-               ...todaySurat.map(s => ({ ...s, _kind: 'surat', _time: parseTimestamp(s.timestamp) })),
            ].sort((a, b) => b._time - a._time);
 
            // Siswa yang sudah 3x terlambat minggu ini ATAU 5x bulan ini — perlu
