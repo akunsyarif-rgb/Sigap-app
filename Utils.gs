@@ -87,6 +87,42 @@ function uploadFotoSurat(base64Data, fileName) {
   return file.getUrl();
 }
 
+// ===== RATE LIMIT LOGIN =====
+// Login SIGAP cuma minta password, tanpa username (lihat LoginScreen di
+// ui-common.js) — server mencocokkan password yang dikirim ke SEMUA baris
+// Master_Guru sampai ketemu. Karena itu, saat password SALAH, server belum
+// tahu itu menyasar akun siapa — rate-limit di sini scoped GLOBAL (semua
+// user sekaligus), bukan per-akun.
+// Fixed window (bukan sliding, bukan extend-on-write): counter dikunci ke
+// blok waktu LOGIN_RATE_WINDOW_MS yang tetap (mis. semua request 10:00:00-
+// 10:04:59 pakai key yang sama), lalu reset otomatis begitu masuk blok
+// berikutnya. Ini sengaja supaya traffic sah yang tersebar sepanjang hari
+// (typo sesekali dari guru berbeda-beda) TIDAK menumpuk jadi lockout permanen
+// — beda dari skema "extend TTL tiap gagal" yang bisa terus mengunci selama
+// masih ada 1 saja percobaan gagal per window.
+var LOGIN_RATE_WINDOW_MS = 5 * 60 * 1000; // 5 menit per window
+var LOGIN_RATE_MAX_FAILURES = 15; // percobaan password-salah per window sebelum lockout
+
+function isLoginRateLimited() {
+  var key = 'login_fail_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
+  var raw = CacheService.getScriptCache().get(key);
+  var count = raw ? parseInt(raw, 10) : 0;
+  return count >= LOGIN_RATE_MAX_FAILURES;
+}
+
+// Return jumlah kegagalan SETELAH ditambah (dipakai pemanggil untuk deteksi
+// momen pertama kali lockout terpicu, supaya cuma dicatat sekali ke Audit Log).
+function recordLoginFailure() {
+  var cache = CacheService.getScriptCache();
+  var key = 'login_fail_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
+  var raw = cache.get(key);
+  var count = (raw ? parseInt(raw, 10) : 0) + 1;
+  // TTL sedikit lebih lama dari window supaya key masih kebaca request lain
+  // sampai akhir window, baru dibuang cache-nya.
+  cache.put(key, String(count), Math.ceil(LOGIN_RATE_WINDOW_MS / 1000) + 30);
+  return count;
+}
+
 // ===== AUDIT LOG =====
 // Jejak keamanan & akuntabilitas — beda dari Live Activity Log (yang untuk
 // operasional harian). Ini permanen, mencatat SIAPA melakukan APA, dan cuma

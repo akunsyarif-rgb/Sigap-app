@@ -1,0 +1,124 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+SIGAP: a Google Apps Script (GAS) web app for SMAN 2 Tarakan that logs student
+lateness, violations ("pelanggaran"), incoming letters ("surat"), and ceremony
+("upacara") infractions, with role-based views for admin/BK-kesiswaan/guru/OSIS.
+Google Sheets is the database (via `SpreadsheetApp`); Google Drive stores
+uploaded photos (`uploadFotoSurat` in `Utils.gs`).
+
+**There is no build step in production** (see `package.json` description).
+`package.json`/`npm install` exist ONLY to run the local test suite — they are
+never used for deploy.
+
+## Commands
+
+```bash
+npm install       # once, to get @babel/core + @babel/preset-react for tests
+npm test          # runs node --test tests/*.test.js (all tests)
+node --test tests/password.test.js       # run a single test file
+node --test tests/render-smoke.test.js   # the other test file
+```
+
+CI (`.github/workflows/test.yml`) runs `npm install && npm test` on every push/PR to `main`.
+
+There is no linter/formatter configured in this repo.
+
+## Architecture
+
+### Backend: Google Apps Script (`*.gs` files)
+
+All `.gs` files in a GAS project share one global scope automatically (no
+imports) — declaration order across files doesn't matter, only within-file
+order does for anything not hoisted.
+
+- **`Code.gs`** — the entire router. `doPost(e)` handles every mutating/auth
+  action (`login`, `logout`, record/edit/delete entries, admin actions, audit
+  log, etc.) via `if (action === '...')` chains reading `data.action` from the
+  JSON POST body. `doGet(e)` handles read-only list/status actions via query
+  params. Every request (`doPost` and `doGet`, except the bare status ping) is
+  gated by `checkToken()` (shared `API_TOKEN`), and every action beyond
+  `login`/`logout` additionally requires a valid session (`getSessionUser`).
+- **`Auth.gs`** — session creation/lookup (`createSession`/`getSessionUser`,
+  backed by `CacheService`, 6h max TTL — a hard GAS `CacheService.put()` limit,
+  not a design choice) and password verification (`verifyPassword`, supports
+  both the legacy unsalted-lowercased SHA-256 scheme and the current salted
+  scheme, with automatic migration on next successful login). Role helpers
+  (`isAdminRole`, `isBkRole`, `isOsisRole`) normalize and check role strings.
+- **`Utils.gs`** — cross-cutting helpers: `jsonOut`, `checkToken`, password
+  hashing (`hashPasswordLegacy`/`hashPasswordSalted`), `sameClass` (tolerant
+  class-name matching — mirrors `normalizeClass()` in `helpers.js`, keep both
+  in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
+  throws), `getRowsSince` (binary-search over timestamps to avoid scanning
+  full sheets), and **login rate limiting** (`isLoginRateLimited`/
+  `recordLoginFailure`): login is **password-only** (no username field — see
+  `LoginScreen` in `ui-common.js`), so the server matches a submitted password
+  against every row in `Master_Guru` until one hits. Because a failed attempt
+  can't be attributed to one account, the rate limiter is a **global, fixed
+  5-minute window** (not per-account, not sliding) capped at 15 failures.
+
+Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
+`Pelanggaran`, `Surat_Masuk`, `Audit_Log`, `Error_Log`. Column positions are
+significant and accessed by index (e.g. `Master_Guru` col H/index 7 = salt) —
+check existing row-index comments before touching sheet read/write code.
+`LockService` guards concurrent writes to shared sheets.
+
+### Frontend: React with no bundler
+
+`index.html` is the only real entry point. At load time it:
+1. `fetch()`es a fixed, ordered list of `.js` files in parallel (order matters —
+   later files reference globals/components defined in earlier ones; this is
+   NOT resolved by any module system).
+2. Joins their text together and runs the combined source through
+   `Babel.transform` **once**, with `runtime: 'classic'` explicitly forced
+   (an unpinned Babel version once defaulted to `automatic` JSX runtime, which
+   injects an `import` statement and silently white-screens the app — see the
+   comment in `index.html`).
+3. Injects the transformed result as one `<script>` tag.
+
+File load order (`index.html`'s `files` array):
+`config.js → helpers.js → ui-common.js → admin.js → beranda-riwayat.js → statistik.js → gerbang.js → pelanggaran-bimbingan-upacara.js → rekap-kelas.js → app.js`
+
+- **`config.js`** — `API_URL`/`API_TOKEN` (sent from every client; there is no
+  way to truly hide this in a bundler-less static-JS app), the `ROLES` map
+  (per-role menu lists + `canExport`/`canViewRanking` flags), and `NAV_ITEMS`
+  (icons/labels per menu key). This is the source of truth for what each role
+  can see — cross-reference here first when changing access control.
+- **`helpers.js`** — pure functions (date formatting, period math, chart data
+  shaping, CSV export) used by nearly every tab file.
+- **`ui-common.js`** — shared small components (Badge, stat cards, bar chart)
+  plus `LoginScreen`, Header, and Bottom Nav.
+- **`app.js`** (loaded last) — the `App()` root component: login/session flow
+  (session persisted in `localStorage`, server session lives 6h — the two are
+  independent, client-side "logged in" state can outlive the server session),
+  all data fetching, all save/edit/delete handlers, and the top-level render/
+  routing between tabs. Also computes runtime-only access rules not expressible
+  as static role config — e.g. Rekap Kelas access for a `guru` who is a wali
+  kelas is granted per-person here, not via `ROLES` in `config.js`.
+- Remaining files (`gerbang.js`, `beranda-riwayat.js`,
+  `pelanggaran-bimbingan-upacara.js`, `rekap-kelas.js`, `statistik.js`,
+  `admin.js`) are one file per feature tab/group of tabs, named after what
+  they contain.
+
+**Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
+constant appended as `?v=` to every fetched file. **Bump this on every deploy
+that touches any `.js` file** — otherwise returning users keep serving stale
+cached files indefinitely.
+
+**CDN dependencies** are pinned to major-version tags, not floating `latest`,
+and use production (not development) builds:
+`react@18`/`react-dom@18` → `production.min.js`, `@babel/standalone@7`. Keep
+this pattern (major-version pin, not exact patch — unverifiable exact patches
+risk 404s from unpkg; not `latest` — risks silent breaking upgrades) when
+touching these `<script>` tags.
+
+### Tests
+
+`tests/render-smoke.test.js` renders each top-level tab component with a
+fake `React`/`document`/`fetch` shim (no jsdom) and asserts it doesn't throw —
+this is where real render bugs typically surface, per its own header comment.
+It requires `@babel/core` (a devDependency) to transform JSX before running.
+`tests/password.test.js` covers the hashing/migration logic in `Utils.gs`/`Auth.gs`.

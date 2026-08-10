@@ -17,6 +17,12 @@ function doPost(e) {
 
     // ---- Login ----
     if (action === 'login') {
+      // Cek lockout SEBELUM sentuh sheet sama sekali — lihat komentar
+      // isLoginRateLimited() di Utils.gs kenapa ini global, bukan per-akun.
+      if (isLoginRateLimited()) {
+        return jsonOut({ status: 'error', message: 'Terlalu banyak percobaan login gagal. Coba lagi dalam beberapa menit.' });
+      }
+
       var sheet = ss.getSheetByName('Master_Guru');
       var rows = sheet.getDataRange().getValues();
 
@@ -55,6 +61,15 @@ function doPost(e) {
         var sessionToken = createSession(loggedInUser);
         logAudit(loggedInUser, 'Login', '');
         return jsonOut({ status: 'success', user: loggedInUser, sessionToken: sessionToken });
+      }
+
+      // Password tidak cocok ke akun mana pun — hitung sebagai percobaan
+      // gagal untuk rate limit. Lockout baru dicatat ke Audit Log SEKALI
+      // (saat count baru menyentuh batas), bukan tiap request, supaya log
+      // tidak banjir kalau ada percobaan brute-force beneran.
+      var failCount = recordLoginFailure();
+      if (failCount === LOGIN_RATE_MAX_FAILURES) {
+        logAudit({ name: 'System', id: '-' }, 'Login Rate Limit Triggered', 'Lockout global aktif ' + (LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + failCount + ' percobaan gagal');
       }
       return jsonOut({ status: 'error', message: 'Password salah!' });
     }
