@@ -10,20 +10,55 @@ lateness, violations ("pelanggaran"), incoming letters ("surat"), and ceremony
 Google Sheets is the database (via `SpreadsheetApp`); Google Drive stores
 uploaded photos (`uploadFotoSurat` in `Utils.gs`).
 
-**There is no build step in production** (see `package.json` description).
-`package.json`/`npm install` exist ONLY to run the local test suite — they are
-never used for deploy.
+**There is no build step for the frontend** (see `package.json` description).
+
+## Two SEPARATE deploy targets — merging to `main` does NOT deploy both
+
+This repo maps to two independently-deployed systems, and a merged PR only
+ever auto-deploys one of them:
+
+- **Frontend** (`index.html` + every `*.js` except `.gs` files) is hosted as a
+  static site (observed live on Vercel) that auto-redeploys on every push to
+  `main`. No action needed after merging a frontend-only PR.
+- **Backend** (`Code.gs`, `Auth.gs`, `Utils.gs`) is a Google Apps Script Web
+  App bound to the Google Sheet used as the database. **Nothing in this repo
+  auto-deploys it.** Merging a PR that touches a `.gs` file changes the code
+  on GitHub only — the live Web App keeps running whatever was last manually
+  deployed until someone explicitly pushes + redeploys via `clasp` (see below)
+  or by hand-copying the file contents into the Apps Script editor and
+  creating a new deployment version. **A `.gs`-touching PR is not actually
+  live until this manual step happens** — say so explicitly when finishing
+  such a change, don't assume merge == deployed.
+
+### clasp (Apps Script CLI)
+
+- `.claspignore` restricts `clasp push` to only the `.gs` files + `appsscript.json`.
+- `.clasp.json` is gitignored (copy `.clasp.json.example` → `.clasp.json` and
+  fill in the real `scriptId` from Apps Script Project Settings — this is
+  per-person/per-checkout, not committed).
+- `npm run clasp:login` / `clasp:push` / `clasp:deploy` — `clasp:deploy` runs
+  `clasp push && clasp deploy`, but a bare `clasp deploy` creates a **new**
+  deployment with a **different** Web App URL, which the live `config.js`
+  (frontend) won't know about. To update the URL already in use, deploy
+  targeting the existing deployment ID: `clasp deploy -i <deploymentId>`
+  (find it via `clasp deployments`).
+- `.github/workflows/deploy-gas.yml` is an opt-in, `workflow_dispatch`-only
+  (manual button, not automatic on push) CI job that does the push +
+  `clasp deploy -i` for you, gated behind three repo secrets
+  (`CLASP_CREDENTIALS`, `CLASP_SCRIPT_ID`, `CLASP_DEPLOYMENT_ID`) that must be
+  configured before it can run.
 
 ## Commands
 
 ```bash
-npm install       # once, to get @babel/core + @babel/preset-react for tests
+npm install       # once, to get @babel/core + @babel/preset-react for tests + clasp
 npm test          # runs node --test tests/*.test.js (all tests)
 node --test tests/password.test.js       # run a single test file
 node --test tests/render-smoke.test.js   # the other test file
 ```
 
 CI (`.github/workflows/test.yml`) runs `npm install && npm test` on every push/PR to `main`.
+`.github/workflows/deploy-gas.yml` is separate — see clasp section above.
 
 There is no linter/formatter configured in this repo.
 

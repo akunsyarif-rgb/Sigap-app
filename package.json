@@ -1,12 +1,16 @@
 {
   "name": "sigap-app",
   "private": true,
-  "description": "SIGAP tidak punya build step di production (lihat index.html) — package.json ini HANYA untuk menjalankan test lokal (npm install sekali, lalu npm test), tidak dipakai untuk deploy.",
+  "description": "Frontend (index.html + *.js) tidak punya build step, ter-deploy otomatis lewat Vercel — lihat index.html. Backend (*.gs) TIDAK otomatis ter-deploy sama sekali; package.json ini juga dipakai untuk clasp (push/deploy manual ke Apps Script, lihat script clasp:* di bawah) selain untuk menjalankan test lokal (npm install sekali, lalu npm test).",
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "clasp:login": "clasp login",
+    "clasp:push": "clasp push",
+    "clasp:deploy": "clasp push && clasp deploy"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
-    "@babel/preset-react": "^7.24.0"
+    "@babel/preset-react": "^7.24.0",
+    "@google/clasp": "^2.4.2"
   }
 }
