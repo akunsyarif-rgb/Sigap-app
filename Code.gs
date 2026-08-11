@@ -114,6 +114,18 @@ function doPost(e) {
       return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
     }
 
+    // ---- Rate-limit PER SESI untuk semua aksi tulis (baris 132 ke bawah,
+    // semuanya action tulis — action baca ada di doGet, tidak lewat sini
+    // sama sekali) — lihat checkWriteRateLimit() di Utils.gs untuk kebijakan
+    // lengkapnya. Dicek di SATU titik ini (bukan diulang di tiap handler)
+    // karena semua aksi tulis sudah lewat gerbang sesi-valid yang sama ini
+    // sebelum masuk ke handler manapun — menaruhnya di sini menjamin aksi
+    // tulis BARU yang ditambahkan nanti otomatis ikut terbatasi juga, tanpa
+    // risiko lupa menambahkan pengecekan di satu handler baru. ----
+    if (!checkWriteRateLimit(data.sessionToken)) {
+      return jsonOut({ status: 'error', message: 'Terlalu banyak aksi. Coba lagi dalam 1 menit.' });
+    }
+
     // ---- Kunci SEMUA aksi tulis di bawah titik ini (satu lock untuk
     // seluruh doPost, bukan per-aksi) — banyak aksi di bawah pakai pola
     // baca-cek-lalu-tulis (record, addTeacher, setJadwalPiket, dst.) yang

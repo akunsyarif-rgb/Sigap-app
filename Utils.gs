@@ -144,6 +144,39 @@ function recordLoginFailure() {
   return count;
 }
 
+// ===== RATE LIMIT AKSI TULIS PER SESI =====
+// Beda dari rate-limit login di atas (global, karena password-only berarti
+// server belum tahu akun mana yang ditarget saat gagal) — begitu sesi VALID
+// ada, identitasnya sudah pasti (getSessionUser sudah lolos), jadi dibatasi
+// PER SESI, bukan global. Kenapa perlu ini terpisah dari LockService: lock
+// cuma menyerialkan penulisan (mencegah race condition/data korup), TIDAK
+// membatasi VOLUME — sesi yang bocor (mis. lewat riwayat browser, karena
+// sessionToken ikut terkirim di query string doGet) bisa dipakai menulis
+// data tanpa batas selama 6 jam token itu masih hidup, kalau tidak ada ini.
+// Fixed window sama seperti rate-limit login, supaya guru yang memang aktif
+// mencatat banyak siswa berturut-turut (jam gerbang pagi) tidak keblokir
+// cuma karena kebetulan menyentuh batas — 30/menit jauh di atas kecepatan
+// wajar manusia mengetik form satu per satu.
+var WRITE_RATE_WINDOW_MS = 60 * 1000; // 1 menit per window
+var WRITE_RATE_MAX = 30; // aksi tulis per menit per SESI (bukan global)
+
+// Return true kalau MASIH boleh menulis (dan otomatis menghitung percobaan
+// ini), false kalau sudah melewati batas window ini.
+function checkWriteRateLimit(sessionToken) {
+  if (!sessionToken) return false;
+  var cache = CacheService.getScriptCache();
+  // Hash ringan token sesi (bukan token mentah) buat key cache — pola sama
+  // seperti bytesToHex() yang sudah dipakai hashPasswordSalted di atas,
+  // supaya sessionToken asli tidak ikut nampang di key CacheService.
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sessionToken);
+  var tokenHash = bytesToHex(digest).slice(0, 16);
+  var key = 'writelimit_' + tokenHash + '_' + Math.floor(Date.now() / WRITE_RATE_WINDOW_MS);
+  var raw = cache.get(key);
+  var count = (raw ? parseInt(raw, 10) : 0) + 1;
+  cache.put(key, String(count), Math.ceil(WRITE_RATE_WINDOW_MS / 1000) + 15);
+  return count <= WRITE_RATE_MAX;
+}
+
 // ===== AUDIT LOG =====
 // Jejak keamanan & akuntabilitas — beda dari Live Activity Log (yang untuk
 // operasional harian). Ini permanen, mencatat SIAPA melakukan APA, dan cuma
