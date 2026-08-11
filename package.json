@@ -11,6 +11,6 @@
   "devDependencies": {
     "@babel/core": "^7.24.0",
     "@babel/preset-react": "^7.24.0",
-    "@google/clasp": "^2.4.2"
+    "@google/clasp": "^3.3.0"
   }
 }
