@@ -1,0 +1,35 @@
+name: Deploy backend to Apps Script
+
+# Sengaja workflow_dispatch (tombol manual di tab Actions), BUKAN otomatis
+# tiap push ke main — Code.gs/Auth.gs/Utils.gs menjalankan SIGAP yang
+# dipakai sekolah beneran, jadi deploy ke Apps Script tetap tindakan sadar
+# yang dipicu manual, bukan efek samping dari merge PR.
+#
+# Perlu 3 repo secret sebelum bisa dipakai (Settings > Secrets and
+# variables > Actions):
+#   CLASP_CREDENTIALS  - isi lengkap ~/.clasprc.json hasil `clasp login` lokal
+#   CLASP_SCRIPT_ID    - Script ID project Apps Script (Project Settings > IDs)
+#   CLASP_DEPLOYMENT_ID - ID deployment Web App yang SUDAH ADA & dipakai
+#                         (API_URL di config.js) — supaya di-UPDATE di
+#                         tempat, bukan bikin deployment baru dengan URL
+#                         beda yang tidak dikenali config.js manapun.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Siapkan kredensial clasp
+        run: |
+          echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
+          echo "{\"scriptId\":\"${{ secrets.CLASP_SCRIPT_ID }}\",\"rootDir\":\".\"}" > .clasp.json
+      - name: Push kode ke Apps Script
+        run: npx clasp push --force
+      - name: Update deployment Web App yang sudah ada
+        run: npx clasp deploy -i "${{ secrets.CLASP_DEPLOYMENT_ID }}" -d "Deploy dari GitHub Actions - ${{ github.sha }}"

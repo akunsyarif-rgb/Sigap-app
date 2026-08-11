@@ -1,1 +1,8 @@
 node_modules/
+
+# clasp (Apps Script deploy CLI) — .clasp.json cuma berisi scriptId, tapi
+# tetap project-specific per orang, isi dari .clasp.json.example sendiri.
+# .clasprc.json (kredensial OAuth clasp login) JANGAN PERNAH di-commit.
+.clasp.json
+.clasprc.json
+

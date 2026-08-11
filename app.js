@@ -437,7 +437,11 @@
                                setSuratList(prev => prev.map(item => sameEntry(item, payload) ? { ...item, jenis: payload.jenis, keterangan: payload.keterangan } : item));
                                if (payload.fotoBase64) fetchData(); // foto baru butuh URL asli dari server, sinkronkan ulang
                            }
-                           callback(true, 'Berhasil diperbarui.');
+                           if (payload.fotoBase64 && data.fotoError) {
+                               callback(true, 'Data tersimpan, TAPI upload foto masih gagal. Cek Audit Log untuk detail errornya.');
+                           } else {
+                               callback(true, 'Berhasil diperbarui.');
+                           }
                        } else callback(false, data.message || 'Gagal memperbarui data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));

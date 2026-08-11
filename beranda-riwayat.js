@@ -62,10 +62,18 @@
            const todaySurat = suratList.filter(s => isSameDay(parseTimestamp(s.timestamp), now));
 
            // Hanya aktivitas HARI INI — untuk data lebih lama, arahkan ke menu Riwayat.
-           // Surat SENGAJA tidak diikutkan di sini lagi — sudah ada kartu "Surat
-           // Hari Ini" tersendiri (lebih detail: keterangan + link foto), jadi
-           // kalau surat masih ikut digabung di sini juga, setiap surat masuk
-           // muncul dobel di Beranda.
+           //
+           // DEVIASI SADAR DARI BLUEPRINT (didokumentasikan, bukan lupa): Blueprint
+           // SIGAP v2 section III menyebut "Aktivitas Hari Ini" sebagai gabungan
+           // Terlambat + Surat + Pelanggaran dalam satu feed. Surat SENGAJA tidak
+           // diikutkan lagi di sini sejak kartu "📄 Surat Hari Ini" ditambahkan —
+           // kartu itu lebih detail (keterangan + link foto per entri) daripada
+           // baris ringkas di combinedFeed, dan menggabungkan keduanya bikin
+           // setiap surat masuk tampil dobel di halaman Beranda yang sama.
+           // Keputusan produk (bukan bug): pertahankan pemisahan ini, prioritaskan
+           // kejelasan (tidak ada duplikasi visual) di atas kepatuhan literal ke
+           // kalimat blueprint. Kalau blueprint sendiri perlu diperbarui untuk
+           // mencerminkan ini, itu tindak lanjut terpisah di luar kode.
            const combinedFeed = [
                ...todayLate.map(l => ({ ...l, _kind: 'terlambat', _time: parseTimestamp(l.timestamp) })),
                ...todayPelanggaran.map(p => ({ ...p, _kind: 'pelanggaran', _time: parseTimestamp(p.timestamp) })),
