@@ -167,9 +167,28 @@
            const [showDeleteSuratPanel, setShowDeleteSuratPanel] = useState(false);
            const [delSuratMonth, setDelSuratMonth] = useState(String(new Date().getMonth() + 1));
            const [delSuratYear, setDelSuratYear] = useState(String(new Date().getFullYear()));
-           const submitDeleteSurat = () => {
-               onDeleteSurat({ month: delSuratMonth, year: delSuratYear }, (ok, text) => showMsg(ok, text));
-               setShowDeleteSuratPanel(false);
+           // Hapus massal (1 bulan penuh, tidak bisa dibatalkan) sebelumnya
+           // langsung eksekusi begitu tombol ditekan — beda dari hapus 1 baris
+           // di Riwayat yang sudah punya dialog konfirmasi (confirmDeleteTarget).
+           // confirmDeleteSurat MENYIMPAN snapshot bulan/tahun saat tombol
+           // ditekan (bukan baca ulang delSuratMonth/delSuratYear saat eksekusi)
+           // supaya kalau dropdown sempat berubah selagi dialog terbuka, yang
+           // benar-benar terhapus tetap sesuai yang ditampilkan di dialog.
+           const [confirmDeleteSurat, setConfirmDeleteSurat] = useState(null);
+           const [deletingSurat, setDeletingSurat] = useState(false);
+           const monthLabel = (m) => new Date(2000, parseInt(m, 10) - 1).toLocaleDateString('id-ID', { month: 'long' });
+           const requestDeleteSurat = () => {
+               setConfirmDeleteSurat({ month: delSuratMonth, year: delSuratYear });
+           };
+           const executeDeleteSurat = () => {
+               if (!confirmDeleteSurat) return;
+               setDeletingSurat(true);
+               onDeleteSurat({ month: confirmDeleteSurat.month, year: confirmDeleteSurat.year }, (ok, text) => {
+                   setDeletingSurat(false);
+                   showMsg(ok, text);
+                   setConfirmDeleteSurat(null);
+                   setShowDeleteSuratPanel(false);
+               });
            };
 
            return (
@@ -306,7 +325,7 @@
                                            </select>
                                            <input type="number" value={delSuratYear} onChange={(e) => setDelSuratYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
                                        </div>
-                                       <Button onClick={submitDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
+                                       <Button onClick={requestDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
                                    </div>
                                )}
                            </Card>
@@ -396,6 +415,25 @@
                                </select>
                                <Button onClick={submitWaliKelas} className="w-full">Simpan Wali Kelas</Button>
                                <Button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {/* Konfirmasi hapus massal — pola sama persis dengan confirmDeleteTarget
+                       di Riwayat (beranda-riwayat.js), supaya hapus 1 baris & hapus 1
+                       bulan penuh sama-sama tidak bisa langsung tereksekusi dari 1 tap. */}
+                   {confirmDeleteSurat && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Data Surat?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{monthLabel(confirmDeleteSurat.month)} {confirmDeleteSurat.year}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Anda akan menghapus seluruh data surat bulan {monthLabel(confirmDeleteSurat.month)} {confirmDeleteSurat.year}. Tindakan ini tidak bisa dibatalkan.</p>
+                               </div>
+                               <Button onClick={executeDeleteSurat} disabled={deletingSurat} variant="danger" className="w-full">
+                                   {deletingSurat ? 'Menghapus...' : 'Ya, Hapus'}
+                               </Button>
+                               <Button onClick={() => setConfirmDeleteSurat(null)} variant="secondary" className="w-full" disabled={deletingSurat}>Batal</Button>
                            </div>
                        </div>
                    )}
