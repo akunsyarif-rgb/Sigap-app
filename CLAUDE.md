@@ -7,8 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 SIGAP: a Google Apps Script (GAS) web app for SMAN 2 Tarakan that logs student
 lateness, violations ("pelanggaran"), incoming letters ("surat"), and ceremony
 ("upacara") infractions, with role-based views for admin/BK-kesiswaan/guru/OSIS.
-Google Sheets is the database (via `SpreadsheetApp`); Google Drive stores
-uploaded photos (`uploadFotoSurat` in `Utils.gs`).
+Google Sheets is the database (via `SpreadsheetApp`). Surat is a written report
+only (jenis + keterangan) — photo attachment was removed after repeatedly
+failing in the field on Google Workspace Drive-sharing authorization; see the
+comment at the top of `Utils.gs` where `uploadFotoSurat` used to live. The
+`Foto_URL` column still exists in the `Surat_Masuk` sheet (old rows may still
+have a value) but is no longer written or read by any UI — don't resurrect a
+photo upload/display feature without re-reading that history first.
 
 **There is no build step for the frontend** (see `package.json` description).
 

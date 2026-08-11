@@ -413,28 +413,17 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah punya catatan surat hari ini.' });
         }
       }
-      // Kegagalan upload foto TIDAK boleh menggagalkan seluruh pencatatan
-      // surat (catatan tetap lebih penting daripada foto), tapi sebelumnya
-      // errornya ditelan diam-diam (fotoUrl dikosongkan tanpa jejak) — guru
-      // dapat pesan "berhasil" penuh padahal fotonya hilang, dan tidak ada
-      // cara tahu kenapa. Sekarang errornya dicatat ke Audit Log (bisa
-      // dicek admin/BK) dan `fotoError:true` dikirim balik ke client supaya
-      // guru diberi tahu jelas untuk upload ulang lewat Edit.
-      var fotoUrl = '';
-      var fotoError = false;
-      if (data.fotoBase64) {
-        try {
-          fotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
-        } catch (err) {
-          fotoUrl = '';
-          fotoError = true;
-          logAudit(sessionUser, 'Upload Foto Surat Gagal', data.name + ': ' + String(err));
-        }
-      }
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', fotoUrl, sessionUser.name]);
+      // Surat cuma laporan tertulis (jenis + keterangan) — TIDAK ada lampiran
+      // foto lagi (fitur upload foto dihapus, lihat catatan di Utils.gs).
+      // Kolom Foto_URL (index 6) TETAP ditulis kosong, BUKAN dihapus dari
+      // struktur baris — posisi kolom di sheet ini signifikan (dibaca by
+      // index di getSurat/getTodayData), menghapusnya akan menggeser
+      // Dicatat_Oleh ke posisi Foto_URL dan mematahkan baris-baris lama
+      // yang sudah terlanjur punya URL foto tersimpan.
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', '', sessionUser.name]);
       CacheService.getScriptCache().remove('surat_list');
       CacheService.getScriptCache().remove('today_data');
-      return jsonOut({ status: 'success', fotoUrl: fotoUrl, fotoError: fotoError });
+      return jsonOut({ status: 'success' });
     }
 
     // ---- Hapus data surat per bulan/tahun (admin only) ----
@@ -528,7 +517,6 @@ function doPost(e) {
         }
       }
       var rowIndex = found.rowIndex;
-      var fotoError = false;
       if (data.category === 'terlambat') {
         sheet.getRange(rowIndex, 5).setValue(data.type || '');
       } else if (data.category === 'pelanggaran') {
@@ -538,24 +526,12 @@ function doPost(e) {
       } else if (data.category === 'surat') {
         sheet.getRange(rowIndex, 5).setValue(data.jenis || '');
         sheet.getRange(rowIndex, 6).setValue(data.keterangan || '');
-        if (data.fotoBase64) {
-          try {
-            var newFotoUrl = uploadFotoSurat(data.fotoBase64, 'surat_' + data.nisn + '_' + new Date().getTime() + '.jpg');
-            sheet.getRange(rowIndex, 7).setValue(newFotoUrl);
-          } catch (err) {
-            // Upload foto baru gagal — field lain tetap tersimpan, foto lama
-            // dipertahankan. Sama seperti addSurat: dicatat ke Audit Log +
-            // dikabari ke client (fotoError), bukan ditelan diam-diam.
-            fotoError = true;
-            logAudit(sessionUser, 'Upload Foto Surat Gagal (Edit)', data.name + ': ' + String(err));
-          }
-        }
       } else {
         return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
       }
       clearCacheForCategory(data.category);
       logAudit(sessionUser, 'Edit Data ' + data.category, data.name + ' (' + data.nisn + ')');
-      return jsonOut({ status: 'success', fotoError: fotoError });
+      return jsonOut({ status: 'success' });
     }
 
     // ---- Hapus 1 catatan — aturan sama seperti edit (semua role non-OSIS,

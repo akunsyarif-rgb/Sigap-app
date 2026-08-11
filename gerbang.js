@@ -1,6 +1,7 @@
 // ===== gerbang.js =====
 // Form catat keterlambatan (RecordModal) dan tab Gerbang gabungan
-// (Catat Terlambat / Catat Surat, termasuk foto surat).
+// (Catat Terlambat / Catat Surat). Surat cuma laporan tertulis (jenis +
+// keterangan) — TIDAK ada lampiran foto (dihapus, lihat catatan di Utils.gs).
 
        function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs }) {
            const presets = [
@@ -63,11 +64,8 @@
            const [suratStudent, setSuratStudent] = useState(null);
            const [jenis, setJenis] = useState('Sakit');
            const [keterangan, setKeterangan] = useState('');
-           const [fotoPreview, setFotoPreview] = useState(null);
-           const [fotoBase64, setFotoBase64] = useState(null);
            const [msg, setMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
-           const fileInputRef = useRef(null);
 
            // Nama wali kelas wajib tampil di hasil pencarian — guru piket di
            // gerbang sering perlu tahu ini juga (mis. untuk menghubungi wali
@@ -89,8 +87,6 @@
            ].sort((a, b) => b._time - a._time).slice(0, 25);
 
            const [msgTone, setMsgTone] = useState('sky');
-           // 6 detik (sebelumnya 3) — pesan fotoError di submitSurat jauh lebih
-           // panjang dari toast sukses/gagal biasa, 3 detik tidak cukup untuk dibaca.
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 6000); };
            const alreadyToday = (list, nisn) => list.find(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
            const monthCount = (list, nisn) => {
@@ -108,45 +104,20 @@
                setPickerStudent(s);
            };
 
-           // Kompres foto di sisi browser (maks lebar 800px, kualitas 60%) sebelum
-           // dikirim, supaya ukuran data tetap kecil dan tidak membebani penyimpanan.
-           const handleFotoChange = (e) => {
-               const file = e.target.files[0];
-               if (!file) return;
-               const reader = new FileReader();
-               reader.onload = (ev) => {
-                   const img = new Image();
-                   img.onload = () => {
-                       const maxWidth = 800;
-                       const scale = Math.min(1, maxWidth / img.width);
-                       const canvas = document.createElement('canvas');
-                       canvas.width = img.width * scale;
-                       canvas.height = img.height * scale;
-                       const ctx = canvas.getContext('2d');
-                       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                       const compressed = canvas.toDataURL('image/jpeg', 0.6);
-                       setFotoPreview(compressed);
-                       setFotoBase64(compressed.split(',')[1]);
-                   };
-                   img.src = ev.target.result;
-               };
-               reader.readAsDataURL(file);
-           };
-
            // Modal HANYA ditutup & form direset setelah server konfirmasi
            // sukses — sebelumnya modal langsung tertutup begitu tombol Simpan
            // ditekan, jadi kalau gagal (mis. siswa itu sudah punya catatan
            // surat hari ini, atau koneksi putus), guru tidak sadar karena
            // pesan errornya cuma toast 3 detik di layar yang sudah tertutup
            // modal. Sekarang kalau gagal, modal tetap terbuka dengan isian
-           // (foto/keterangan) masih ada supaya bisa langsung coba lagi.
+           // (keterangan) masih ada supaya bisa langsung coba lagi.
            const submitSurat = () => {
                setSavingSurat(true);
-               onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan, fotoBase64 }, (ok, text) => {
+               onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan }, (ok, text) => {
                    setSavingSurat(false);
                    showMsg(ok, text);
                    if (ok) {
-                       setSuratStudent(null); setJenis('Sakit'); setKeterangan(''); setFotoPreview(null); setFotoBase64(null);
+                       setSuratStudent(null); setJenis('Sakit'); setKeterangan('');
                    }
                });
            };
@@ -274,12 +245,9 @@
                                            )
                                        ) : (
                                            suratToday ? (
-                                               <div className="bg-slate-100 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
-                                                   <div className="min-w-0">
-                                                       <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
-                                                       <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
-                                                   </div>
-                                                   {suratToday.foto_url && <a href={suratToday.foto_url} target="_blank" rel="noreferrer" className="text-[10px] text-sky-dim underline flex-shrink-0">Lihat</a>}
+                                               <div className="bg-slate-100 rounded-xl px-4 py-3">
+                                                   <div className="text-xs font-bold text-slate-600">✓ Sudah ada catatan surat</div>
+                                                   <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
                                                </div>
                                            ) : (
                                                <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition">
@@ -317,25 +285,10 @@
 
                                <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
-                               <div>
-                                   <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} className="hidden" />
-                                   {fotoPreview ? (
-                                       <div className="relative">
-                                           <img src={fotoPreview} alt="Preview surat" className="w-full h-32 object-cover rounded-xl border border-slate-300" />
-                                           <button onClick={() => { setFotoPreview(null); setFotoBase64(null); }} className="absolute top-2 right-2 bg-crimson text-white text-[10px] font-bold px-2 py-1 rounded-lg">Hapus Foto</button>
-                                       </div>
-                                   ) : (
-                                       <button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="w-full bg-slate-100 border-2 border-dashed border-slate-300 text-slate-500 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />} className="h-4 w-4" />
-                                           Foto Surat (Opsional)
-                                       </button>
-                                   )}
-                               </div>
-
                                <Button onClick={submitSurat} disabled={savingSurat} className="w-full">
                                    {savingSurat ? 'Menyimpan...' : 'Simpan'}
                                </Button>
-                               <Button onClick={() => { setSuratStudent(null); setFotoPreview(null); setFotoBase64(null); }} variant="secondary" className="w-full">Batal</Button>
+                               <Button onClick={() => setSuratStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}

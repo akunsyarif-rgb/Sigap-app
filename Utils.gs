@@ -1,7 +1,7 @@
 // ===== UTILS.gs =====
 // Fungsi-fungsi dasar/pembantu (helper) yang dipakai di seluruh project:
 // respons JSON, keamanan token API, hash password, cek tanggal sama,
-// bikin sheet otomatis, dan upload foto ke Drive.
+// dan bikin sheet otomatis.
 // Catatan: di Google Apps Script, SEMUA file .gs dalam 1 project otomatis
 // digabung jadi satu konteks — file ini bisa dipanggil dari Main.gs/Auth.gs
 // tanpa perlu import apa pun.
@@ -76,37 +76,16 @@ function getOrCreateSheet(ss, name, headers) {
   return sheet;
 }
 
-function uploadFotoSurat(base64Data, fileName) {
-  var folderName = 'SIGAP_Foto_Surat';
-  var folders = DriveApp.getFoldersByName(folderName);
-  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-  var decoded = Utilities.base64Decode(base64Data);
-  var blob = Utilities.newBlob(decoded, 'image/jpeg', fileName);
-  var file = folder.createFile(blob);
-  // Banyak akun Google Workspace instansi/sekolah MEMATIKAN kebijakan share
-  // "Siapa saja dengan link" (ANYONE_WITH_LINK) di level admin domain —
-  // setSharing() throw exception kalau begitu, dan SEBELUM perbaikan ini,
-  // exception itu bikin caller (addSurat di Code.gs) menganggap SELURUH
-  // upload gagal lalu buang file yang sebenarnya sudah berhasil ter-upload
-  // (fotoUrl dikosongkan). Sekarang: coba ANYONE_WITH_LINK dulu (paling
-  // fleksibel, guru bisa buka linknya kapan saja); kalau ditolak kebijakan
-  // domain, turunkan ke DOMAIN_WITH_LINK (siapa saja SATU DOMAIN sekolah
-  // yang sedang login akun Google-nya) sebagai fallback; kalau itu juga
-  // ditolak, file TETAP disimpan & URL tetap dikembalikan (pemilik akun
-  // script masih bisa buka manual) — daripada foto yang sudah ke-upload
-  // terbuang sia-sia gara-gara langkah share saja yang gagal.
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (shareErr) {
-    try {
-      file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (domainShareErr) {
-      // Diamkan — file & URL tetap valid, cuma sharing otomatisnya yang
-      // tidak berhasil diterapkan (lihat komentar di atas).
-    }
-  }
-  return file.getUrl();
-}
+// uploadFotoSurat() (upload foto surat ke Drive) DIHAPUS — fitur lampiran
+// foto untuk Surat dicabut total, Surat sekarang cuma laporan tertulis
+// (jenis + keterangan). Alasan: berulang kali gagal di lapangan karena
+// masalah otorisasi/kebijakan sharing Google Workspace sekolah yang tidak
+// pernah benar-benar tuntas (lihat riwayat commit sebelumnya soal
+// ANYONE_WITH_LINK/DOMAIN_WITH_LINK) — daripada fitur setengah-jalan yang
+// sering gagal diam-diam, dicabut supaya alurnya sederhana & bisa diandalkan.
+// Kolom Foto_URL di sheet Surat_Masuk TETAP ada (baris lama masih punya
+// nilainya) tapi tidak lagi ditulis/dibaca UI — lihat catatan di addSurat
+// (Code.gs) soal kenapa kolomnya tidak dihapus dari struktur baris.
 
 // ===== RATE LIMIT LOGIN =====
 // Login SIGAP cuma minta password, tanpa username (lihat LoginScreen di

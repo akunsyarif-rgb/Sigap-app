@@ -358,17 +358,9 @@
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
-                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', foto_url: data.fotoUrl || '', logged_by: user.name };
+                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
-                           // fotoError: catatan surat tetap tersimpan, tapi foto-nya gagal
-                           // ke-upload — beri tahu jelas (sebelumnya ditelan diam-diam jadi
-                           // fotoUrl kosong tanpa penjelasan) supaya guru tahu harus upload
-                           // ulang lewat Edit di Riwayat, bukan mengira semuanya berhasil.
-                           if (payload.fotoBase64 && data.fotoError) {
-                               callback(true, 'Surat tersimpan, TAPI foto gagal diupload. Buka Riwayat > Surat lalu edit catatan ini untuk upload ulang.');
-                           } else {
-                               callback(true, 'Surat berhasil dicatat.');
-                           }
+                           callback(true, 'Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -435,13 +427,8 @@
                                setPelanggaranList(prev => prev.map(item => sameEntry(item, payload) ? { ...item, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan } : item));
                            } else if (payload.category === 'surat') {
                                setSuratList(prev => prev.map(item => sameEntry(item, payload) ? { ...item, jenis: payload.jenis, keterangan: payload.keterangan } : item));
-                               if (payload.fotoBase64) fetchData(); // foto baru butuh URL asli dari server, sinkronkan ulang
                            }
-                           if (payload.fotoBase64 && data.fotoError) {
-                               callback(true, 'Data tersimpan, TAPI upload foto masih gagal. Cek Audit Log untuk detail errornya.');
-                           } else {
-                               callback(true, 'Berhasil diperbarui.');
-                           }
+                           callback(true, 'Berhasil diperbarui.');
                        } else callback(false, data.message || 'Gagal memperbarui data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));

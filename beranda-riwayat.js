@@ -67,7 +67,7 @@
            // SIGAP v2 section III menyebut "Aktivitas Hari Ini" sebagai gabungan
            // Terlambat + Surat + Pelanggaran dalam satu feed. Surat SENGAJA tidak
            // diikutkan lagi di sini sejak kartu "📄 Surat Hari Ini" ditambahkan —
-           // kartu itu lebih detail (keterangan + link foto per entri) daripada
+           // kartu itu lebih detail (keterangan per entri) daripada
            // baris ringkas di combinedFeed, dan menggabungkan keduanya bikin
            // setiap surat masuk tampil dobel di halaman Beranda yang sama.
            // Keputusan produk (bukan bug): pertahankan pemisahan ini, prioritaskan
@@ -128,8 +128,8 @@
                const lateWeek = allLogs.filter(l => sameClass(l.class, waliKelas) && parseTimestamp(l.timestamp) >= weekStart);
                const pelanggaranWeek = pelanggaranList.filter(p => sameClass(p.class, waliKelas) && parseTimestamp(p.timestamp) >= weekStart);
                // Surat kelas perwalian minggu ini — daftar (bukan cuma hitungan),
-               // supaya wali kelas bisa langsung lihat siapa izin/sakit & lihat
-               // foto suratnya, tanpa harus buka Riwayat lalu filter kelas sendiri.
+               // supaya wali kelas bisa langsung lihat siapa izin/sakit tanpa
+               // harus buka Riwayat lalu filter kelas sendiri.
                const suratWeek = suratList
                    .filter(s => sameClass(s.class, waliKelas) && parseTimestamp(s.timestamp) >= weekStart)
                    .sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
@@ -191,19 +191,17 @@
                    {/* Surat Hari Ini — daftar KHUSUS surat (bukan tercampur di
                        "Aktivitas Hari Ini" bersama Terlambat/Pelanggaran), supaya
                        semua guru (bukan cuma yang piket Gerbang) bisa cek cepat
-                       siapa saja izin/sakit hari ini, termasuk lihat foto suratnya
-                       kalau ada — semua kelas, bukan dibatasi wali kelas. */}
+                       siapa saja izin/sakit hari ini — semua kelas, bukan dibatasi
+                       wali kelas. Laporan tertulis saja (jenis + keterangan), tidak
+                       ada lampiran foto — lihat catatan di Utils.gs. */}
                    <Card className="space-y-2.5">
                        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">📄 Surat Hari Ini ({todaySurat.length})</h3>
                        {todaySurat.length > 0 ? (
                            <div className="space-y-2">
                                {[...todaySurat].sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).map((s, idx) => (
-                                   <div key={idx} className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-between gap-2">
-                                       <div className="min-w-0">
-                                           <div className="text-xs font-bold text-slate-800 truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></div>
-                                           <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} • {s.logged_by}</div>
-                                       </div>
-                                       {s.foto_url && <a href={s.foto_url} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[10px] font-bold text-sky-dim bg-sky-dim/10 px-2.5 py-1.5 rounded-lg">📷 Foto</a>}
+                                   <div key={idx} className="bg-slate-50 rounded-xl p-2.5">
+                                       <div className="text-xs font-bold text-slate-800 truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></div>
+                                       <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} • {s.logged_by}</div>
                                    </div>
                                ))}
                            </div>
@@ -324,12 +322,9 @@
                            <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
                                <div className="text-xs text-slate-600">Surat masuk kelas ini minggu ini{kelasPerwalian.suratKelas.length > 0 ? ` (${kelasPerwalian.suratKelas.length})` : ''}:</div>
                                {kelasPerwalian.suratKelas.length > 0 ? kelasPerwalian.suratKelas.map((s, idx) => (
-                                   <div key={idx} className="bg-slate-50 rounded-lg p-2 flex items-center justify-between gap-2">
-                                       <div className="min-w-0">
-                                           <div className="text-[11px] font-semibold text-slate-700 truncate">{s.name}</div>
-                                           <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</div>
-                                       </div>
-                                       {s.foto_url && <a href={s.foto_url} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[10px] font-bold text-sky-dim bg-sky-dim/10 px-2 py-1 rounded-lg">📷 Foto</a>}
+                                   <div key={idx} className="bg-slate-50 rounded-lg p-2">
+                                       <div className="text-[11px] font-semibold text-slate-700 truncate">{s.name}</div>
+                                       <div className="text-[10px] text-slate-500 truncate">{s.jenis}{s.keterangan ? ` — ${s.keterangan}` : ''} • {parseTimestamp(s.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</div>
                                    </div>
                                )) : <div className="text-[11px] text-slate-500">Belum ada surat masuk minggu ini.</div>}
                            </div>
@@ -367,14 +362,11 @@
            const [editCatatan, setEditCatatan] = useState('');
            const [editJenisSurat, setEditJenisSurat] = useState('');
            const [editKeterangan, setEditKeterangan] = useState('');
-           const [editFotoPreview, setEditFotoPreview] = useState(null);
-           const [editFotoBase64, setEditFotoBase64] = useState(null);
            const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
            const [manageMsg, setManageMsg] = useState('');
            const [manageMsgTone, setManageMsgTone] = useState('sky');
            const [manageLoading, setManageLoading] = useState(false);
            const [restrictedMsg, setRestrictedMsg] = useState('');
-           const editFileInputRef = useRef(null);
 
            // Ikon edit/hapus tetap ditampilkan (bukan disembunyikan total) walau
            // dibatasi, supaya guru tahu fiturnya ADA tapi lagi tidak bisa dipakai
@@ -483,40 +475,12 @@
                } else if (category === 'surat') {
                    setEditJenisSurat(item.jenis || '');
                    setEditKeterangan(item.keterangan || '');
-                   setEditFotoPreview(item.foto_url || null);
-                   setEditFotoBase64(null);
                }
            };
 
            const closeManage = () => {
                setManageTarget(null);
-               setEditFotoPreview(null);
-               setEditFotoBase64(null);
                setManageMsg('');
-           };
-
-           // Kompres foto (maks lebar 800px, kualitas 60%) — sama seperti di form Catat Surat
-           const handleEditFotoChange = (e) => {
-               const file = e.target.files[0];
-               if (!file) return;
-               const reader = new FileReader();
-               reader.onload = (ev) => {
-                   const img = new Image();
-                   img.onload = () => {
-                       const maxWidth = 800;
-                       const scale = Math.min(1, maxWidth / img.width);
-                       const canvas = document.createElement('canvas');
-                       canvas.width = img.width * scale;
-                       canvas.height = img.height * scale;
-                       const ctx = canvas.getContext('2d');
-                       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                       const compressed = canvas.toDataURL('image/jpeg', 0.6);
-                       setEditFotoPreview(compressed);
-                       setEditFotoBase64(compressed.split(',')[1]);
-                   };
-                   img.src = ev.target.result;
-               };
-               reader.readAsDataURL(file);
            };
 
            const submitEdit = () => {
@@ -532,7 +496,6 @@
                } else if (category === 'surat') {
                    payload.jenis = editJenisSurat;
                    payload.keterangan = editKeterangan;
-                   if (editFotoBase64) payload.fotoBase64 = editFotoBase64;
                }
                onEditEntry(payload, (ok, text) => {
                    setManageLoading(false);
@@ -676,9 +639,6 @@
                                            {category === 'pelanggaran' && item.sanksi && (
                                                <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
                                            )}
-                                           {category === 'surat' && item.foto_url && (
-                                               <a href={item.foto_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-sky-dim underline inline-block">Lihat foto surat</a>
-                                           )}
                                        </RowCard>
                                        {expandedStudent === item.nisn && (
                                            <div className="ml-3 mt-1.5 mb-1 pl-3 border-l-2 border-sky-dim space-y-1.5 animate-pop">
@@ -748,20 +708,6 @@
                                            ))}
                                        </div>
                                        <input type="text" value={editKeterangan} onChange={(e) => setEditKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                                       <div>
-                                           <input ref={editFileInputRef} type="file" accept="image/*" capture="environment" onChange={handleEditFotoChange} className="hidden" />
-                                           {editFotoPreview ? (
-                                               <div className="relative">
-                                                   <img src={editFotoPreview} alt="Preview surat" className="w-full h-32 object-cover rounded-xl border border-slate-300" />
-                                                   <button onClick={() => { setEditFotoPreview(null); setEditFotoBase64(null); }} className="absolute top-2 right-2 bg-crimson text-white text-[10px] font-bold px-2 py-1 rounded-lg">Hapus Foto</button>
-                                               </div>
-                                           ) : (
-                                               <button onClick={() => editFileInputRef.current && editFileInputRef.current.click()} className="w-full bg-slate-100 border-2 border-dashed border-slate-300 text-slate-500 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />} className="h-4 w-4" />
-                                                   Ganti Foto Surat
-                                               </button>
-                                           )}
-                                       </div>
                                    </div>
                                )}
 
