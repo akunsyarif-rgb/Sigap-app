@@ -118,7 +118,16 @@ const cases = [
   ['DashboardTab (modal tindak lanjut terbuka)', { user, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: jadwal, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: false, isAdmin: false, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {} }, 'DashboardTab', [undefined, student]],
   ['RekapKelasTab (privileged)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: true, myWaliKelas: '' }, 'RekapKelasTab'],
   ['RekapKelasTab (wali kelas)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: false, myWaliKelas: 'XI B' }, 'RekapKelasTab'],
-  ['LoginScreen', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {} }],
+  // Perilaku detail layar Login (interaktif saat loading, fallback legacy,
+  // pencarian nama) diuji terpisah di tests/login.test.js — di sini cukup
+  // memastikan ketiga state daftar guru tidak bikin render meledak.
+  ['LoginScreen', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {}, users: [], usersState: 'loading', onRetryUsers: () => {}, selectedTeacher: null, setSelectedTeacher: () => {} }],
+  ['LoginScreen (daftar guru siap, sedang mencari)', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {}, users: [{ id: 'G01', name: 'Kartina' }], usersState: 'ready', onRetryUsers: () => {}, selectedTeacher: null, setSelectedTeacher: () => {} }, 'LoginScreen', ['ka']],
+  ['LoginScreen (guru sudah dipilih)', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {}, users: [{ id: 'G01', name: 'Kartina' }], usersState: 'ready', onRetryUsers: () => {}, selectedTeacher: { id: 'G01', name: 'Kartina' }, setSelectedTeacher: () => {} }, 'LoginScreen'],
+  ['LoginScreen (daftar guru gagal dimuat)', { onLogin: () => {}, loading: false, error: 'Password salah!', password: '', setPassword: () => {}, users: [], usersState: 'error', onRetryUsers: () => {}, selectedTeacher: null, setSelectedTeacher: () => {} }, 'LoginScreen'],
+  // Props lama (tanpa daftar guru sama sekali) — memastikan LoginScreen tidak
+  // pecah kalau dipanggil tanpa prop baru.
+  ['LoginScreen (tanpa prop daftar guru)', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {} }, 'LoginScreen'],
   ['StatsTab', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], canExport: true, canViewRanking: true }],
   ['StatsTab (guru, no ranking)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], canExport: false, canViewRanking: false }, 'StatsTab'],
   ['LogTab (admin)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], initialCategory: 'terlambat', canManage: true, isAdmin: true, isBk: true, currentUserName: 'Kartina', onEditEntry: () => {}, onDeleteEntry: () => {} }, 'LogTab'],

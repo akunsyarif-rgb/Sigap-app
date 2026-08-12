@@ -6,24 +6,90 @@
        // sesi di server (CacheService) hidup 6 jam sejak login (lihat
        // createSession di Auth.gs); localStorage cuma "mengingat" token itu,
        // validitas sebenarnya tetap ditentukan server di setiap panggilan API.
+       //
+       // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: dulu `user` dipulihkan
+       // dari localStorage TANPA cek umur sama sekali. Karena sesi server mati
+       // setelah 6 jam sementara localStorage tidak pernah kedaluwarsa, membuka
+       // aplikasi keesokan harinya me-render tampilan "sudah login" lengkap
+       // dengan NAMA guru di Header — padahal semua datanya kosong dan tidak
+       // ada yang bisa dikerjakan. Beberapa detik kemudian respons pertama dari
+       // Apps Script datang berisi "Sesi berakhir", checkSession() memaksa
+       // logout, nama itu hilang begitu saja, dan barulah layar login muncul.
+       // Itulah "form tidak bisa diklik lalu nama hilang sendiri" yang
+       // dilaporkan guru. Stempel kedaluwarsa di bawah ini yang mencegahnya:
+       // sesi yang sudah lewat umur tidak pernah dipakai untuk render sama
+       // sekali, jadi aplikasi langsung membuka layar login yang bisa dipakai.
+       const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000; // samakan dengan TTL createSession() di Auth.gs
+
        function loadStoredSession() {
            try {
                const token = localStorage.getItem('sigap_session_token');
                const rawUser = localStorage.getItem('sigap_user');
-               if (token && rawUser) return { token, user: JSON.parse(rawUser) };
+               if (!token || !rawUser) return { token: null, user: null, expired: false };
+               const expiresAt = parseInt(localStorage.getItem('sigap_session_expires') || '0', 10);
+               // Tanpa stempel = sesi dari versi lama aplikasi. Umurnya tidak
+               // bisa diketahui, jadi diperlakukan sebagai kedaluwarsa: sekali
+               // login ulang jauh lebih baik daripada mengulang bug di atas.
+               if (!expiresAt || Date.now() >= expiresAt) return { token: null, user: null, expired: true };
+               return { token, user: JSON.parse(rawUser), expired: false };
            } catch (e) {}
-           return { token: null, user: null };
+           return { token: null, user: null, expired: false };
+       }
+
+       // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru'
+       // kalau role tidak dikenali. Dipakai App() dan juga nilai awal activeTab,
+       // makanya ditarik keluar jadi satu fungsi (dulu logikanya ditulis dua
+       // kali dan sempat beda).
+       function resolveRoleKey(user) {
+           const key = String((user && user.role) || '').toLowerCase().trim();
+           return ROLES[key] ? key : 'guru';
        }
 
        function App() {
-           const storedSession = loadStoredSession();
+           // useState dengan initializer fungsi = dijalankan SEKALI saat mount,
+           // bukan tiap render. Sebelumnya loadStoredSession() dipanggil langsung
+           // di badan App(), jadi setiap perubahan state apa pun memicu baca
+           // localStorage + JSON.parse ulang secara percuma.
+           const [storedSession] = useState(loadStoredSession);
+           // Snapshot data terakhir milik pengguna ini. null kalau tidak ada,
+           // beda pengguna, versi cache berbeda, atau sesinya sudah lewat umur —
+           // jadi cache tidak akan pernah membuat orang terlihat masih login.
+           const [bootCache] = useState(() => {
+               if (!storedSession.user) return null;
+               try { return readClientCache(localStorage.getItem(CLIENT_CACHE_KEY), storedSession.user.id); } catch (e) { return null; }
+           });
+           const bootData = (bootCache && bootCache.data) || {};
+
            const [user, setUser] = useState(storedSession.user);
            const [sessionToken, setSessionToken] = useState(storedSession.token);
            const [passwordInput, setPasswordInput] = useState('');
            const [loadingLogin, setLoadingLogin] = useState(false);
-           const [loginError, setLoginError] = useState('');
+           const [loginError, setLoginError] = useState(storedSession.expired ? 'Sesi sebelumnya sudah berakhir. Silakan login ulang.' : '');
 
-           const [activeTab, setActiveTab] = useState(null);
+           // Daftar nama guru untuk pencarian di layar login. 'loading' dari
+           // awal supaya LoginScreen tahu bedanya "belum datang" dan "gagal" —
+           // keduanya tetap membiarkan form bisa dipakai (mode legacy PIN saja).
+           const [loginUsers, setLoginUsers] = useState([]);
+           const [loginUsersState, setLoginUsersState] = useState('loading');
+           const [selectedTeacher, setSelectedTeacher] = useState(null);
+           // Penjaga double-tap tombol Masuk. Pakai ref, bukan loadingLogin:
+           // state React baru terlihat di render berikutnya, jadi dua tap cepat
+           // di frame yang sama masih sama-sama lolos kalau mengandalkan state.
+           const loginInFlight = useRef(false);
+           // Tab sekunder yang datanya sudah pernah ditarik sesi ini. Ref,
+           // bukan state: harus terbaca seketika saat tab berpindah, bukan di
+           // render berikutnya — kalau tidak, pindah tab bolak-balik menembak
+           // request berulang.
+           const loadedTabs = useRef({});
+
+           // Langsung ke tab pertama milik role-nya, bukan null. Kalau null,
+           // frame pertama setelah refresh merender cangkang kosong walaupun
+           // datanya sudah siap dari snapshot — baru terisi setelah efek boot
+           // jalan. Untuk pengguna yang baru login (belum ada storedSession)
+           // tetap null, dan diisi efek boot seperti sebelumnya.
+           const [activeTab, setActiveTab] = useState(() => (
+               storedSession.user ? ROLES[resolveRoleKey(storedSession.user)].menus[0] : null
+           ));
            const [fontScale, setFontScale] = useState(() => {
                try { return parseFloat(localStorage.getItem('sigap_font_scale')) || 1; } catch (e) { return 1; }
            });
@@ -40,24 +106,31 @@
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
-           const [students, setStudents] = useState([]);
-           const [allLogs, setAllLogs] = useState([]);
+           // Nilai awal diambil dari cache klien kalau ada (lihat bootCache di
+           // atas) — inilah yang membuat refresh langsung menampilkan layar
+           // terakhir alih-alih layar kosong sambil menunggu Apps Script.
+           const [students, setStudents] = useState(bootData.students || []);
+           const [allLogs, setAllLogs] = useState(bootData.allLogs || []);
            const [loadingLogs, setLoadingLogs] = useState(false);
+           // true = yang sedang tampil berasal dari cache dan BELUM disegarkan
+           // dari server. Dipakai banner "memperbarui data" supaya data lama
+           // tidak pernah tersaji diam-diam sebagai data final.
+           const [fromCache, setFromCache] = useState(!!bootCache);
+           const [cacheTruncated] = useState(!!(bootCache && bootCache.truncated));
 
            const [teachers, setTeachers] = useState([]);
            const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
-           const [suratList, setSuratList] = useState([]);
-           const [pelanggaranList, setPelanggaranList] = useState([]);
+           const [suratList, setSuratList] = useState(bootData.suratList || []);
+           const [pelanggaranList, setPelanggaranList] = useState(bootData.pelanggaranList || []);
            const [bimbinganList, setBimbinganList] = useState([]);
            const [upacaraList, setUpacaraList] = useState([]);
            const [auditLog, setAuditLog] = useState([]);
-           const [jadwalPiket, setJadwalPiket] = useState([]);
-           const [waliKelasMap, setWaliKelasMap] = useState([]);
-           const [tindakLanjutList, setTindakLanjutList] = useState([]);
+           const [jadwalPiket, setJadwalPiket] = useState(bootData.jadwalPiket || []);
+           const [waliKelasMap, setWaliKelasMap] = useState(bootData.waliKelasMap || []);
+           const [tindakLanjutList, setTindakLanjutList] = useState(bootData.tindakLanjutList || []);
            const [slowConnection, setSlowConnection] = useState(false);
 
-           // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru' kalau role tidak dikenali
-           const roleKey = user && ROLES[String(user.role).toLowerCase().trim()] ? String(user.role).toLowerCase().trim() : 'guru';
+           const roleKey = resolveRoleKey(user);
            const roleConfig = ROLES[roleKey];
 
            // Siapa boleh lihat detail per-kelas (Rekap Kelas & daftar pelanggaran):
@@ -80,10 +153,24 @@
                try {
                    localStorage.removeItem('sigap_session_token');
                    localStorage.removeItem('sigap_user');
+                   localStorage.removeItem('sigap_session_expires');
+                   // Data operasional ikut dibuang saat logout/sesi habis —
+                   // HP yang dipakai bergantian tidak boleh menyisakan daftar
+                   // siswa & catatan pelanggaran milik guru sebelumnya.
+                   localStorage.removeItem(CLIENT_CACHE_KEY);
                } catch (e) {}
                setUser(null);
                setSessionToken(null);
                setLoginError(errorMessage || '');
+               // Data tab sekunder sekarang lazy-load, jadi tidak lagi otomatis
+               // tertimpa saat ada yang login berikutnya. Harus dibuang eksplisit
+               // di sini — kalau tidak, guru B yang login setelah guru A di HP
+               // yang sama bisa melihat sisa daftar milik guru A.
+               loadedTabs.current = {};
+               setTeachers([]);
+               setBimbinganList([]);
+               setUpacaraList([]);
+               setAuditLog([]);
            };
 
            // Dipasang di setiap respons API (lewat .then(checkSession) setelah
@@ -163,27 +250,97 @@
                    .then(data => { if (data.status === 'success') setTindakLanjutList(data.tindakLanjut); });
            };
 
+           // Tidak butuh sesi (dipanggil justru sebelum login) — lihat
+           // getLoginUsers di doGet Code.gs. Kegagalannya BUKAN kondisi fatal:
+           // layar login tetap jalan penuh dalam mode legacy (PIN saja).
+           const fetchLoginUsers = () => {
+               setLoginUsersState('loading');
+               fetch(`${API_URL}?action=getLoginUsers&token=${API_TOKEN}`)
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data && data.status === 'success' && Array.isArray(data.users) && data.users.length > 0) {
+                           setLoginUsers(data.users.map(u => ({ id: u.id, name: u.name })));
+                           setLoginUsersState('ready');
+                       } else {
+                           setLoginUsers([]);
+                           setLoginUsersState('error');
+                       }
+                   })
+                   .catch(() => { setLoginUsers([]); setLoginUsersState('error'); });
+           };
+
+           // Ditarik saat layar login tampil (termasuk setelah sesi habis),
+           // tidak saat sudah login — daftarnya tidak dipakai di dalam aplikasi.
+           useEffect(() => {
+               if (!user) fetchLoginUsers();
+           }, [user]);
+
+           // Data yang HANYA dipakai satu tab tidak ikut ditarik saat boot.
+           // Sebelumnya seorang admin memicu 11 request Apps Script sekaligus
+           // begitu login — 4 di antaranya (Kelola Guru, Bimbingan, Audit Log,
+           // Upacara) untuk tab yang belum tentu dibuka hari itu, dan 4 itu
+           // justru yang paling mahal karena TIDAK punya cache di server sama
+           // sekali. Sekarang ditarik saat tabnya pertama kali dibuka, dan
+           // ditandai di loadedTabs supaya pindah-pindah tab tidak menarik
+           // ulang data yang sudah ada (ref, bukan state: harus terbaca
+           // seketika, bukan di render berikutnya).
+           const ensureTabData = (tab) => {
+               if (!tab || loadedTabs.current[tab]) return;
+               loadedTabs.current[tab] = true;
+               if (tab === 'kelola') fetchTeachers();
+               else if (tab === 'bimbingan') fetchBimbingan();
+               else if (tab === 'auditlog') fetchAuditLog();
+               else if (tab === 'upacara') fetchUpacara();
+           };
+
+           useEffect(() => { ensureTabData(activeTab); }, [activeTab]);
+
            useEffect(() => {
                if (user) {
-                   setActiveTab(roleConfig.menus[0]);
+                   const firstTab = roleConfig.menus[0];
+                   setActiveTab(firstTab);
+                   // Lewat ensureTabData, BUKAN fetch langsung — saat refresh,
+                   // activeTab sudah terisi dari awal sehingga efek tab sudah
+                   // menariknya duluan. Memanggil fetch langsung di sini membuat
+                   // request yang sama ditembak dua kali.
+                   ensureTabData(firstTab);
                    if (roleKey === 'osis') {
                        // OSIS cuma butuh cari siswa + riwayat upacara mereka sendiri —
-                       // tidak perlu (dan tidak diizinkan server) menarik data lain
+                       // tidak perlu (dan tidak diizinkan server) menarik data lain.
                        fetchStudentsOnly();
-                       fetchUpacara();
                    } else {
                        fetchData();
                        fetchJadwalPiket();
                        fetchWaliKelasMap();
-                       if (roleKey === 'admin') fetchTeachers();
-                       // fetchAuditLog sempat lupa dipanggil di sini — fungsinya sudah
-                       // ada sejak lama, tapi tidak pernah dieksekusi, jadi tab Audit
-                       // Log selalu kosong walau sheet Audit_Log sendiri terisi normal.
-                       if (roleKey === 'admin' || roleKey === 'bk_kesiswaan') { fetchBimbingan(); fetchUpacara(); fetchAuditLog(); }
                        if (roleKey === 'admin' || roleKey === 'bk_kesiswaan' || user.waliKelas) fetchTindakLanjut();
                    }
                }
            }, [user]);
+
+           // Snapshot ke localStorage setiap kali dataset inti berubah, supaya
+           // refresh berikutnya punya sesuatu untuk ditampilkan seketika.
+           // Sengaja TIDAK menyimpan bimbingan/auditlog/upacara: itu data tab
+           // sekunder yang sekarang lazy-load, tidak dibutuhkan saat boot.
+           // Ditunda 1 detik dan di-reset tiap ada perubahan baru: saat boot,
+           // 4 respons datang beruntun dalam hitungan detik dan tanpa jeda ini
+           // snapshot ratusan KB akan ditulis 4x berturut-turut. localStorage
+           // itu sinkron — di HP kelas menengah itu terasa sebagai patah-patah
+           // persis saat data mulai tampil.
+           useEffect(() => {
+               if (!user) return;
+               const timer = setTimeout(() => {
+                   try {
+                       const expiresAt = parseInt(localStorage.getItem('sigap_session_expires') || '0', 10);
+                       if (!expiresAt) return;
+                       const snapshot = buildClientCache(user.id, { students, allLogs, suratList, pelanggaranList, jadwalPiket, waliKelasMap, tindakLanjutList }, expiresAt);
+                       localStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(snapshot));
+                   } catch (e) {
+                       // Kuota localStorage penuh / mode privat — cache cuma
+                       // percepatan, aplikasi harus tetap jalan normal tanpanya.
+                   }
+               }, 1000);
+               return () => clearTimeout(timer);
+           }, [user, students, allLogs, suratList, pelanggaranList, jadwalPiket, waliKelasMap, tindakLanjutList]);
 
            const fetchData = () => {
                setLoadingLogs(true);
@@ -193,6 +350,9 @@
                fetch(`${API_URL}?action=getLogs&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(data => {
                    if (data.status === 'success') setAllLogs(data.logs);
                    setLoadingLogs(false);
+                   // Sinkronisasi latar selesai — yang tampil sekarang data
+                   // server, bukan cache lagi, jadi banner boleh hilang.
+                   setFromCache(false);
                    clearTimeout(slowTimer);
                    setSlowConnection(false);
                }).catch(() => { setLoadingLogs(false); clearTimeout(slowTimer); setSlowConnection(false); });
@@ -201,12 +361,18 @@
            };
 
            const handleLogin = (e) => {
-               e.preventDefault();
+               if (e && e.preventDefault) e.preventDefault();
+               // Tap kedua saat request pertama masih jalan = diabaikan, bukan
+               // request login kedua (Apps Script lambat, guru sering menekan
+               // tombolnya dua kali).
+               if (loginInFlight.current) return;
+               loginInFlight.current = true;
                setLoadingLogin(true);
                setLoginError('');
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(buildLoginPayload(passwordInput, selectedTeacher, API_TOKEN)) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
+                       loginInFlight.current = false;
                        setLoadingLogin(false);
                        if (data.status === 'success') {
                            setUser(data.user);
@@ -214,10 +380,13 @@
                            try {
                                localStorage.setItem('sigap_session_token', data.sessionToken);
                                localStorage.setItem('sigap_user', JSON.stringify(data.user));
+                               // Stempel ini yang dipakai loadStoredSession()
+                               // supaya sesi mati tidak pernah dirender lagi.
+                               localStorage.setItem('sigap_session_expires', String(Date.now() + SESSION_MAX_AGE_MS));
                            } catch (e) {}
                        } else setLoginError(data.message || 'Password salah!');
                    })
-                   .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+                   .catch(() => { loginInFlight.current = false; setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
            };
 
            const handleLogout = () => {
@@ -465,7 +634,12 @@
            return (
                <div style={{ zoom: fontScale }}>
                    {!user ? (
-                       <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
+                       <LoginScreen
+                           onLogin={handleLogin} loading={loadingLogin} error={loginError}
+                           password={passwordInput} setPassword={setPasswordInput}
+                           users={loginUsers} usersState={loginUsersState} onRetryUsers={fetchLoginUsers}
+                           selectedTeacher={selectedTeacher} setSelectedTeacher={setSelectedTeacher}
+                       />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
                            <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />
@@ -478,8 +652,20 @@
                                </div>
                            )}
 
-                           {slowConnection && loadingLogs && (
-                               <div className="fixed top-16 inset-x-0 z-40 px-4">
+                           {/* Data dari cache TIDAK pernah disajikan diam-diam seolah
+                               final — selama banner ini tampil, yang terlihat adalah
+                               snapshot terakhir dan sinkronisasi masih jalan. Banner
+                               ini menggantikan slowConnection saat keduanya aktif,
+                               karena pesannya lebih tepat: aplikasi sudah bisa
+                               dipakai, cuma datanya belum tentu terbaru. */}
+                           {fromCache ? (
+                               <div className="fixed top-16 inset-x-0 z-40 px-4 pointer-events-none">
+                                   <div className="max-w-2xl mx-auto bg-sky-dim/10 text-sky-dim text-[11px] px-4 py-2 rounded-xl shadow-md border border-sky-dim/30 text-center animate-pop">
+                                       Menampilkan data tersimpan — sedang memperbarui...{cacheTruncated ? ' (riwayat lama menyusul)' : ''}
+                                   </div>
+                               </div>
+                           ) : slowConnection && loadingLogs && (
+                               <div className="fixed top-16 inset-x-0 z-40 px-4 pointer-events-none">
                                    <div className="max-w-2xl mx-auto bg-amber-50 text-amber-700 text-[11px] px-4 py-2 rounded-xl shadow-md border border-amber-200 text-center animate-pop">
                                        Masih mengambil data... koneksi internet sedang lambat.
                                    </div>

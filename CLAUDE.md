@@ -94,11 +94,41 @@ order does for anything not hoisted.
   in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
   throws), `getRowsSince` (binary-search over timestamps to avoid scanning
   full sheets), and **login rate limiting** (`isLoginRateLimited`/
-  `recordLoginFailure`): login is **password-only** (no username field — see
-  `LoginScreen` in `ui-common.js`), so the server matches a submitted password
-  against every row in `Master_Guru` until one hits. Because a failed attempt
-  can't be attributed to one account, the rate limiter is a **global, fixed
-  5-minute window** (not per-account, not sliding) capped at 15 failures.
+  `recordLoginFailure`): the rate limiter is a **global, fixed 5-minute
+  window** (not per-account, not sliding) capped at 15 failures. It's global
+  because login used to be password-only, so a failed attempt couldn't be
+  attributed to one account — still true of the legacy path below, so it stays
+  global.
+
+### Login flow (two paths, both live)
+
+`LoginScreen` (`ui-common.js`) shows a **searchable teacher selector**: it
+fetches `getLoginUsers` — a `doGet` action that is deliberately **session-free**
+(it's called before anyone is logged in; gated by `API_TOKEN` only) and returns
+**only `{id, name}`** for non-`nonaktif` rows. Never add role/jabatan/status/
+hash/salt to that response — it is served unauthenticated.
+
+- **With a teacher picked**, the client sends `teacherId` and the server checks
+  only that row of `Master_Guru`.
+- **Without one** (list still loading, or the fetch failed — this fallback is
+  intentional and must keep working), no `teacherId` is sent and the server
+  matches the password against every row, as it always did.
+
+Three rules in `LoginScreen` exist because of a real field bug — read the
+comment block above the component before touching it: the form must be usable
+on the first frame (never disable it or cover it with an overlay while
+`getLoginUsers` is in flight), its field structure must not change between the
+loading/ready/error states, and a failed fetch must degrade to legacy login
+*with* a visible message. `tests/login.test.js` enforces all three.
+
+Session restore (`loadStoredSession` in `app.js`) writes an expiry stamp
+(`sigap_session_expires`, 6h — same as `createSession`'s `CacheService` TTL)
+and **refuses to render the logged-in UI from a stored session past it**.
+Without the stamp the app rendered the logged-in shell (teacher's name in the
+Header) from an already-dead server session, sat there unusable for several
+seconds, then yanked it away when the first API response came back `Sesi
+berakhir` — exactly what users reported as "the name disappears by itself".
+Don't remove the stamp.
 
 Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
 `Pelanggaran`, `Surat_Masuk`, `Audit_Log`, `Error_Log`. Column positions are

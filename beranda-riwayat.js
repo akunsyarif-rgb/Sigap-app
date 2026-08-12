@@ -24,7 +24,12 @@
            const detailMap = {
                terlambat: item.type,
                pelanggaran: `${item.jenis_pelanggaran} — ${item.sanksi}`,
-               surat: item.jenis,
+               // Keterangan surat ikut ditampilkan: untuk jenis "Lainnya",
+               // keterangan itulah satu-satunya isi sebenarnya — tanpa ini
+               // kartu cuma menampilkan label preset sementara Sheet menyimpan
+               // penjelasan yang diketik guru. (Daftar Surat di Beranda sudah
+               // menampilkannya, kartu gabungan ini yang belum.)
+               surat: item.keterangan ? `${item.jenis} — ${item.keterangan}` : item.jenis,
            };
            return (
                <RowCard className="space-y-1 shadow-sm">

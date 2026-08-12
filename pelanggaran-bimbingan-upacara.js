@@ -154,9 +154,15 @@
 
                                <div>
                                    <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
+                                   {/* Memilih preset WAJIB mengosongkan kotak ketik manual di
+                                       bawahnya. Tanpa itu, teks manual yang terlanjur diketik
+                                       tetap terpampang padahal yang tersimpan adalah preset —
+                                       yang dilihat guru beda dengan yang masuk Sheet. Arah
+                                       sebaliknya sudah aman: mengetik manual menyetel
+                                       jenis='Custom' sehingga tidak ada preset yang tersorot. */}
                                    <div className="grid grid-cols-3 gap-2">
                                        {jenisPresets.map(j => (
-                                           <button key={j} onClick={() => setJenis(j)} className={`py-2 rounded-xl text-[10px] font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
+                                           <button key={j} onClick={() => { setJenis(j); setJenisCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
                                        ))}
                                    </div>
                                    <input type="text" value={jenisCustom} onChange={(e) => { setJenisCustom(e.target.value); setJenis('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
@@ -166,7 +172,7 @@
                                    <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Sanksi</label>
                                    <div className="grid grid-cols-3 gap-2">
                                        {sanksiPresets.map(s => (
-                                           <button key={s} onClick={() => setSanksi(s)} className={`py-2 rounded-xl text-[10px] font-bold ${sanksi === s ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{s}</button>
+                                           <button key={s} onClick={() => { setSanksi(s); setSanksiCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${sanksi === s ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{s}</button>
                                        ))}
                                    </div>
                                    <input type="text" value={sanksiCustom} onChange={(e) => { setSanksiCustom(e.target.value); setSanksi('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
@@ -215,6 +221,10 @@
                                        <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span className="truncate">{p.sanksi}</span>
                                    </div>
+                                   {/* Catatan tambahan sempat tersimpan ke sheet tapi tidak
+                                       pernah dirender di sini — guru yang mengetiknya jadi
+                                       mengira catatannya hilang. Ikut pola BimbinganTab. */}
+                                   {p.catatan && <div className="text-[11px] text-slate-600 break-words">{p.catatan}</div>}
                                </RowCard>
                            );
                        })}
@@ -312,9 +322,15 @@
                                </div>
                                <div>
                                    <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
+                                   {/* Memilih preset WAJIB mengosongkan kotak ketik manual di
+                                       bawahnya. Tanpa itu, teks manual yang terlanjur diketik
+                                       tetap terpampang padahal yang tersimpan adalah preset —
+                                       yang dilihat guru beda dengan yang masuk Sheet. Arah
+                                       sebaliknya sudah aman: mengetik manual menyetel
+                                       jenis='Custom' sehingga tidak ada preset yang tersorot. */}
                                    <div className="grid grid-cols-3 gap-2">
                                        {jenisPresets.map(j => (
-                                           <button key={j} onClick={() => setJenis(j)} className={`py-2 rounded-xl text-[10px] font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
+                                           <button key={j} onClick={() => { setJenis(j); setJenisCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${jenis === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
                                        ))}
                                    </div>
                                    <input type="text" value={jenisCustom} onChange={(e) => { setJenisCustom(e.target.value); setJenis('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
@@ -340,6 +356,10 @@
                                        <span>{u.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                    </div>
+                                   {/* Sama seperti di PelanggaranTab: catatan tambahan ikut
+                                       tersimpan ke sheet (kolom Catatan) tapi tidak pernah
+                                       ditampilkan, jadi terlihat seperti hilang. */}
+                                   {u.catatan && <div className="text-[11px] text-slate-600 break-words">{u.catatan}</div>}
                                    {!isOsis && <div className="text-[10px] text-slate-500">Dicatat oleh: {u.logged_by}</div>}
                                </RowCard>
                            );
