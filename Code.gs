@@ -30,7 +30,15 @@ function doPost(e) {
       var isDisabled = false;
       var matchedRowIndex = -1;
       var needsMigration = false;
+      // Dikirim kalau guru memilih namanya lewat pencarian di layar login.
+      // Kosong = mode legacy (password-only, tanpa pilih nama) yang SENGAJA
+      // masih dipertahankan — lihat komentar isLoginRateLimited() di Utils.gs.
+      var requestedTeacherId = String(data.teacherId || '').trim();
       for (var i = 1; i < rows.length; i++) {
+        // Kalau ID-nya sudah diketahui, cukup cek baris itu saja — password
+        // guru lain tidak ikut dicocokkan, jadi PIN yang kebetulan sama
+        // tidak bisa nyasar masuk ke akun orang lain.
+        if (requestedTeacherId && String(rows[i][0]).trim() !== requestedTeacherId) continue;
         // Kolom H (index 7) = Salt. Kosong = akun belum dimigrasi ke skema
         // hash baru (lihat verifyPassword di Auth.gs) — masih dicek lewat
         // jalur lama supaya guru yang sudah pernah set password tidak perlu
@@ -71,7 +79,7 @@ function doPost(e) {
       if (failCount === LOGIN_RATE_MAX_FAILURES) {
         logAudit({ name: 'System', id: '-' }, 'Login Rate Limit Triggered', 'Lockout global aktif ' + (LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + failCount + ' percobaan gagal');
       }
-      return jsonOut({ status: 'error', message: 'Password salah!' });
+      return jsonOut({ status: 'error', message: requestedTeacherId ? 'PIN salah!' : 'Password salah!' });
     }
 
     // ---- Logout (dicatat ke Audit Log, sesi dihapus dari server) ----
@@ -178,6 +186,9 @@ function doPost(e) {
       // ditulis eksplisit supaya salt di kolom H (index 8) jatuh di kolom
       // yang benar, appendRow tidak bisa "lompat" kolom.
       sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '', '', '', newSalt]);
+      // Daftar nama di layar login ikut berubah — buang cache-nya supaya guru
+      // baru langsung ketemu saat mencari namanya, tidak nunggu TTL 5 menit.
+      CacheService.getScriptCache().remove('login_users');
       logAudit(sessionUser, 'Tambah Guru', data.newName + ' (' + data.newId + ', role: ' + data.newRole + ')');
       return jsonOut({ status: 'success' });
     }
@@ -357,6 +368,8 @@ function doPost(e) {
       if (!found) {
         return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
       }
+      // Guru nonaktif tidak muncul di daftar nama layar login — buang cache.
+      CacheService.getScriptCache().remove('login_users');
       logAudit(sessionUser, newStatus === 'nonaktif' ? 'Nonaktifkan Akun' : 'Aktifkan Akun', targetName + ' (' + data.targetId + ')');
       return jsonOut({ status: 'success', newStatus: newStatus });
     }
@@ -589,6 +602,37 @@ function doGet(e) {
   // Status publik, tidak perlu sesi — dipakai untuk cek API hidup
   if (!action) {
     return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+  }
+
+  // ---- Daftar nama guru untuk pencarian di layar Login. SENGAJA tidak butuh
+  // sesi: justru dipanggil SEBELUM login (tetap digembok API_TOKEN seperti
+  // semua endpoint lain). Yang dikirim HANYA {id, name} — JANGAN pernah
+  // menambahkan role/jabatan/status/hash/salt ke respons ini, karena
+  // endpoint ini terbuka untuk siapa pun yang belum terautentikasi.
+  // Guru berstatus 'nonaktif' tidak ikut (memang tidak bisa login).
+  // Cache 5 menit, alasannya sama dengan students_list di bawah: Master_Guru
+  // kadang diedit langsung di Sheet tanpa lewat aplikasi. Aksi yang mengubah
+  // daftar ini lewat aplikasi (addTeacher/toggleTeacherStatus) membuang
+  // cache-nya sendiri, jadi perubahan dari dalam aplikasi tetap instan. ----
+  if (action === 'getLoginUsers') {
+    var cachedLoginUsers = cache.get('login_users');
+    if (cachedLoginUsers) {
+      return ContentService.createTextOutput(cachedLoginUsers).setMimeType(ContentService.MimeType.JSON);
+    }
+    var guruSheet = ss.getSheetByName('Master_Guru');
+    var guruRows = guruSheet.getDataRange().getValues();
+    var loginUsers = [];
+    for (var gi = 1; gi < guruRows.length; gi++) {
+      var guruId = String(guruRows[gi][0] || '').trim();
+      var guruName = String(guruRows[gi][1] || '').trim();
+      if (!guruId || !guruName) continue;
+      if (String(guruRows[gi][5]).toLowerCase().trim() === 'nonaktif') continue;
+      loginUsers.push({ id: guruId, name: guruName });
+    }
+    loginUsers.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+    var loginUsersResult = JSON.stringify({ status: 'success', users: loginUsers });
+    cache.put('login_users', loginUsersResult, 300);
+    return ContentService.createTextOutput(loginUsersResult).setMimeType(ContentService.MimeType.JSON);
   }
 
   // Semua aksi GET lainnya WAJIB sesi valid

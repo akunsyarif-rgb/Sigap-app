@@ -159,9 +159,59 @@
            );
        }
 
-       function LoginScreen({ onLogin, loading, error, password, setPassword }) {
+       // ===== Layar Login =====
+       // ATURAN YANG TIDAK BOLEH DILANGGAR LAGI DI SINI (ini bug nyata yang
+       // pernah terjadi, bukan preferensi gaya):
+       //
+       // 1. Form ini HARUS bisa disentuh sejak frame pertama. Daftar nama guru
+       //    (getLoginUsers) datang belakangan dari Apps Script yang lambat —
+       //    JANGAN pernah men-disable field/tombol, memasang overlay, atau
+       //    menunda render form sambil menunggu daftar itu.
+       // 2. Struktur form TIDAK berubah antar state. Kotak "Nama Guru" selalu
+       //    ada; yang berganti hanya ISI-nya (memuat / pencarian / pesan
+       //    gagal). Sebelumnya ada field yang muncul lalu hilang sendiri
+       //    beberapa detik kemudian dan itu bikin guru mengira aplikasi hang.
+       // 3. Gagal memuat daftar = turun ke mode legacy (PIN saja, server
+       //    mencocokkan ke semua akun) DENGAN pesan kecil + tombol "Coba
+       //    lagi", bukan diam-diam.
+       //
+       // usersState: 'loading' | 'ready' | 'error'
+       function LoginScreen({ onLogin, loading, error, password, setPassword, users, usersState, onRetryUsers, selectedTeacher, setSelectedTeacher }) {
+           const [query, setQuery] = useState('');
+           // PIN guru umumnya angka, jadi keyboard HP dibuka langsung sebagai
+           // numpad. Tapi password lama boleh mengandung huruf — makanya ada
+           // sakelar kecil, bukan numpad yang dipaksakan permanen.
+           const [numericPin, setNumericPin] = useState(true);
+
+           const userList = Array.isArray(users) ? users : [];
+           const state = usersState || 'loading';
+           const results = filterLoginUsers(userList, query);
+           const showResults = !selectedTeacher && query.trim().length > 0;
+
+           const pickTeacher = (teacher) => {
+               setSelectedTeacher({ id: teacher.id, name: teacher.name });
+               setQuery(''); // daftar hasil ikut tertutup karena showResults jadi false
+           };
+
+           const clearTeacher = () => {
+               setSelectedTeacher(null);
+               setQuery('');
+           };
+
+           // Tombol Masuk ada di bawah field PIN; tanpa ini keyboard HP sering
+           // menutupinya persis setelah PIN diketik.
+           const keepInView = (e) => {
+               const el = e && e.target;
+               if (el && typeof el.scrollIntoView === 'function') {
+                   setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+               }
+           };
+
            return (
-               <div className="min-h-screen flex flex-col justify-center p-6 bg-slate-50">
+               // min-h-[100dvh] (bukan 100vh) — dvh ikut mengecil saat keyboard
+               // HP naik, jadi isi form tetap bisa di-scroll sampai tombol
+               // Masuk kelihatan. pb-24 menyisakan ruang aman di bawahnya.
+               <div className="min-h-[100dvh] overflow-y-auto flex flex-col justify-center p-6 pb-24 bg-slate-50">
                    <div className="w-full max-w-sm mx-auto">
                        <div className="text-center mb-8 mt-2">
                            <div className="relative inline-block mb-6">
@@ -176,13 +226,76 @@
                        </div>
 
                        <form onSubmit={onLogin} className="space-y-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                           {/* Kotak "Nama Guru" SELALU dirender (lihat aturan 2 di atas) —
+                               isinya yang berganti sesuai usersState. */}
                            <div>
-                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
+                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Nama Guru</label>
+
+                               {selectedTeacher ? (
+                                   <div className="w-full bg-sky-dim/10 border border-sky-dim/30 rounded-2xl px-4 py-3 flex items-center gap-3">
+                                       <div className="min-w-0 flex-1">
+                                           <div className="text-sm font-bold text-navy truncate">{selectedTeacher.name}</div>
+                                           <div className="text-[10px] text-slate-500 mt-0.5">Bukan Anda? Ketuk Ganti.</div>
+                                       </div>
+                                       <button type="button" onClick={clearTeacher} className="flex-shrink-0 min-h-[44px] px-4 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-600 active:bg-slate-100 transition">
+                                           Ganti
+                                       </button>
+                                   </div>
+                               ) : (
+                                   <React.Fragment>
+                                       <input
+                                           type="text"
+                                           value={query}
+                                           onChange={(e) => setQuery(e.target.value)}
+                                           onFocus={keepInView}
+                                           placeholder="🔍 Cari nama guru..."
+                                           autoComplete="off"
+                                           className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                                       />
+                                       {state === 'loading' && (
+                                           <div className="text-[10px] text-slate-500 mt-1.5 px-1">Memuat daftar guru... Anda tetap bisa langsung mengisi PIN di bawah.</div>
+                                       )}
+                                       {state === 'error' && (
+                                           <div className="flex items-center gap-2 mt-1.5 px-1">
+                                               <span className="text-[10px] text-amber-700 flex-1">Daftar guru gagal dimuat. Login dengan PIN saja tetap bisa.</span>
+                                               <button type="button" onClick={onRetryUsers} className="flex-shrink-0 text-[10px] font-bold text-sky-dim underline py-2 px-1">Coba lagi</button>
+                                           </div>
+                                       )}
+                                       {showResults && state === 'ready' && (
+                                           <div className="mt-2 border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                                               {results.length === 0 ? (
+                                                   <div className="px-4 py-3 text-xs text-slate-500">Nama tidak ditemukan.</div>
+                                               ) : results.map(u => (
+                                                   <button
+                                                       key={u.id}
+                                                       type="button"
+                                                       onClick={() => pickTeacher(u)}
+                                                       className="w-full text-left px-4 py-3 min-h-[48px] text-sm font-semibold text-slate-700 bg-white active:bg-sky-dim/10 transition"
+                                                   >
+                                                       {u.name}
+                                                   </button>
+                                               ))}
+                                           </div>
+                                       )}
+                                   </React.Fragment>
+                               )}
+                           </div>
+
+                           <div>
+                               <div className="flex items-center justify-between mb-1.5">
+                                   <label className="text-xs text-slate-500 font-semibold">{selectedTeacher ? 'PIN' : 'PIN / Password Petugas'}</label>
+                                   <button type="button" onClick={() => setNumericPin(v => !v)} className="text-[10px] font-bold text-sky-dim py-1 px-2 rounded-lg bg-slate-100 border border-slate-200">
+                                       {numericPin ? 'Ada huruf? ABC' : 'Angka saja? 123'}
+                                   </button>
+                               </div>
                                <input
                                    type="password"
                                    value={password}
                                    onChange={(e) => setPassword(e.target.value)}
-                                   placeholder="Masukkan password..."
+                                   onFocus={keepInView}
+                                   inputMode={numericPin ? 'numeric' : 'text'}
+                                   autoComplete="current-password"
+                                   placeholder={numericPin ? 'Masukkan PIN...' : 'Masukkan password...'}
                                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
                                    required
                                />

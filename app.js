@@ -6,13 +6,34 @@
        // sesi di server (CacheService) hidup 6 jam sejak login (lihat
        // createSession di Auth.gs); localStorage cuma "mengingat" token itu,
        // validitas sebenarnya tetap ditentukan server di setiap panggilan API.
+       //
+       // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: dulu `user` dipulihkan
+       // dari localStorage TANPA cek umur sama sekali. Karena sesi server mati
+       // setelah 6 jam sementara localStorage tidak pernah kedaluwarsa, membuka
+       // aplikasi keesokan harinya me-render tampilan "sudah login" lengkap
+       // dengan NAMA guru di Header — padahal semua datanya kosong dan tidak
+       // ada yang bisa dikerjakan. Beberapa detik kemudian respons pertama dari
+       // Apps Script datang berisi "Sesi berakhir", checkSession() memaksa
+       // logout, nama itu hilang begitu saja, dan barulah layar login muncul.
+       // Itulah "form tidak bisa diklik lalu nama hilang sendiri" yang
+       // dilaporkan guru. Stempel kedaluwarsa di bawah ini yang mencegahnya:
+       // sesi yang sudah lewat umur tidak pernah dipakai untuk render sama
+       // sekali, jadi aplikasi langsung membuka layar login yang bisa dipakai.
+       const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000; // samakan dengan TTL createSession() di Auth.gs
+
        function loadStoredSession() {
            try {
                const token = localStorage.getItem('sigap_session_token');
                const rawUser = localStorage.getItem('sigap_user');
-               if (token && rawUser) return { token, user: JSON.parse(rawUser) };
+               if (!token || !rawUser) return { token: null, user: null, expired: false };
+               const expiresAt = parseInt(localStorage.getItem('sigap_session_expires') || '0', 10);
+               // Tanpa stempel = sesi dari versi lama aplikasi. Umurnya tidak
+               // bisa diketahui, jadi diperlakukan sebagai kedaluwarsa: sekali
+               // login ulang jauh lebih baik daripada mengulang bug di atas.
+               if (!expiresAt || Date.now() >= expiresAt) return { token: null, user: null, expired: true };
+               return { token, user: JSON.parse(rawUser), expired: false };
            } catch (e) {}
-           return { token: null, user: null };
+           return { token: null, user: null, expired: false };
        }
 
        function App() {
@@ -21,7 +42,18 @@
            const [sessionToken, setSessionToken] = useState(storedSession.token);
            const [passwordInput, setPasswordInput] = useState('');
            const [loadingLogin, setLoadingLogin] = useState(false);
-           const [loginError, setLoginError] = useState('');
+           const [loginError, setLoginError] = useState(storedSession.expired ? 'Sesi sebelumnya sudah berakhir. Silakan login ulang.' : '');
+
+           // Daftar nama guru untuk pencarian di layar login. 'loading' dari
+           // awal supaya LoginScreen tahu bedanya "belum datang" dan "gagal" —
+           // keduanya tetap membiarkan form bisa dipakai (mode legacy PIN saja).
+           const [loginUsers, setLoginUsers] = useState([]);
+           const [loginUsersState, setLoginUsersState] = useState('loading');
+           const [selectedTeacher, setSelectedTeacher] = useState(null);
+           // Penjaga double-tap tombol Masuk. Pakai ref, bukan loadingLogin:
+           // state React baru terlihat di render berikutnya, jadi dua tap cepat
+           // di frame yang sama masih sama-sama lolos kalau mengandalkan state.
+           const loginInFlight = useRef(false);
 
            const [activeTab, setActiveTab] = useState(null);
            const [fontScale, setFontScale] = useState(() => {
@@ -80,6 +112,7 @@
                try {
                    localStorage.removeItem('sigap_session_token');
                    localStorage.removeItem('sigap_user');
+                   localStorage.removeItem('sigap_session_expires');
                } catch (e) {}
                setUser(null);
                setSessionToken(null);
@@ -163,6 +196,31 @@
                    .then(data => { if (data.status === 'success') setTindakLanjutList(data.tindakLanjut); });
            };
 
+           // Tidak butuh sesi (dipanggil justru sebelum login) — lihat
+           // getLoginUsers di doGet Code.gs. Kegagalannya BUKAN kondisi fatal:
+           // layar login tetap jalan penuh dalam mode legacy (PIN saja).
+           const fetchLoginUsers = () => {
+               setLoginUsersState('loading');
+               fetch(`${API_URL}?action=getLoginUsers&token=${API_TOKEN}`)
+                   .then(res => res.json())
+                   .then(data => {
+                       if (data && data.status === 'success' && Array.isArray(data.users) && data.users.length > 0) {
+                           setLoginUsers(data.users.map(u => ({ id: u.id, name: u.name })));
+                           setLoginUsersState('ready');
+                       } else {
+                           setLoginUsers([]);
+                           setLoginUsersState('error');
+                       }
+                   })
+                   .catch(() => { setLoginUsers([]); setLoginUsersState('error'); });
+           };
+
+           // Ditarik saat layar login tampil (termasuk setelah sesi habis),
+           // tidak saat sudah login — daftarnya tidak dipakai di dalam aplikasi.
+           useEffect(() => {
+               if (!user) fetchLoginUsers();
+           }, [user]);
+
            useEffect(() => {
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
@@ -201,12 +259,18 @@
            };
 
            const handleLogin = (e) => {
-               e.preventDefault();
+               if (e && e.preventDefault) e.preventDefault();
+               // Tap kedua saat request pertama masih jalan = diabaikan, bukan
+               // request login kedua (Apps Script lambat, guru sering menekan
+               // tombolnya dua kali).
+               if (loginInFlight.current) return;
+               loginInFlight.current = true;
                setLoadingLogin(true);
                setLoginError('');
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(buildLoginPayload(passwordInput, selectedTeacher, API_TOKEN)) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
+                       loginInFlight.current = false;
                        setLoadingLogin(false);
                        if (data.status === 'success') {
                            setUser(data.user);
@@ -214,10 +278,13 @@
                            try {
                                localStorage.setItem('sigap_session_token', data.sessionToken);
                                localStorage.setItem('sigap_user', JSON.stringify(data.user));
+                               // Stempel ini yang dipakai loadStoredSession()
+                               // supaya sesi mati tidak pernah dirender lagi.
+                               localStorage.setItem('sigap_session_expires', String(Date.now() + SESSION_MAX_AGE_MS));
                            } catch (e) {}
                        } else setLoginError(data.message || 'Password salah!');
                    })
-                   .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+                   .catch(() => { loginInFlight.current = false; setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
            };
 
            const handleLogout = () => {
@@ -465,7 +532,12 @@
            return (
                <div style={{ zoom: fontScale }}>
                    {!user ? (
-                       <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
+                       <LoginScreen
+                           onLogin={handleLogin} loading={loadingLogin} error={loginError}
+                           password={passwordInput} setPassword={setPasswordInput}
+                           users={loginUsers} usersState={loginUsersState} onRetryUsers={fetchLoginUsers}
+                           selectedTeacher={selectedTeacher} setSelectedTeacher={setSelectedTeacher}
+                       />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
                            <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />

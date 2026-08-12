@@ -3,6 +3,43 @@
 // bikin data grafik, ekspor CSV. Dipakai oleh hampir semua file tab.
 
 
+       // ===== Layar Login: pencarian nama guru =====
+       // Dipisah dari LoginScreen (murni, tanpa React) supaya logikanya bisa
+       // diuji langsung di tests/login.test.js.
+       //
+       // Sengaja hanya mengembalikan {id, name}: apa pun field lain yang ikut
+       // terbawa dari server (role/jabatan/status) dibuang di sini, supaya
+       // tidak ada jalan untuk tidak sengaja menampilkannya di layar login.
+       const LOGIN_SEARCH_LIMIT = 8;
+
+       function filterLoginUsers(users, query, limit) {
+           const list = Array.isArray(users) ? users : [];
+           const q = String(query == null ? '' : query).trim().toLowerCase();
+           if (!q) return [];
+           const max = typeof limit === 'number' ? limit : LOGIN_SEARCH_LIMIT;
+           const hits = [];
+           for (const u of list) {
+               if (!u || !u.id || !u.name) continue;
+               const name = String(u.name);
+               const pos = name.toLowerCase().indexOf(q);
+               if (pos === -1) continue;
+               hits.push({ id: String(u.id), name: name, pos: pos });
+           }
+           // Yang cocok di awal nama muncul lebih dulu — mengetik 1-2 huruf
+           // ("ka") harus memunculkan "Kartina" di atas "Bu Eka".
+           hits.sort((a, b) => (a.pos - b.pos) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+           return hits.slice(0, max).map(h => ({ id: h.id, name: h.name }));
+       }
+
+       // Body request login. teacherId hanya ikut kalau guru benar-benar
+       // memilih namanya; kalau tidak, dikirim tanpa teacherId sehingga
+       // server jatuh ke jalur legacy (cocokkan password ke semua akun).
+       function buildLoginPayload(password, teacher, apiToken) {
+           const payload = { action: 'login', password: password, token: apiToken };
+           if (teacher && teacher.id) payload.teacherId = String(teacher.id);
+           return payload;
+       }
+
        function Icon({ path, className = "h-5 w-5", filled = false }) {
            return (
                <svg xmlns="http://www.w3.org/2000/svg" className={className} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={filled ? 0 : 1.6}>
