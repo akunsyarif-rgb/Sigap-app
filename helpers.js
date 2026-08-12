@@ -3,6 +3,63 @@
 // bikin data grafik, ekspor CSV. Dipakai oleh hampir semua file tab.
 
 
+       // ===== Cache data di sisi klien (localStorage) =====
+       // Masalah yang dipecahkan: setiap refresh halaman, SEMUA state data
+       // kembali ke [] dan aplikasi mengunduh ulang seluruh dataset dari Apps
+       // Script (lambat) sebelum ada apa pun yang bisa dilihat. Padahal data
+       // yang sama baru saja ada di layar sedetik sebelumnya.
+       //
+       // Aturan main yang TIDAK boleh dilanggar:
+       // 1. Tidak pernah menyimpan PIN/password/hash/salt/token sesi. Yang
+       //    disimpan hanya data operasional yang memang sudah tampil di layar.
+       // 2. Terikat ke satu pengguna (userId) — HP yang dipakai bergantian
+       //    tidak boleh menampilkan data pengguna sebelumnya.
+       // 3. Terikat ke masa berlaku sesi. Cache yang lebih tua dari sesi
+       //    server dibuang, jadi cache TIDAK PERNAH bisa membuat orang
+       //    terlihat masih login (lihat clearSession + loadStoredSession).
+       // 4. Dibuang total saat logout / sesi berakhir.
+       // 5. Data dari cache SELALU ditandai di UI sebagai "sedang diperbarui",
+       //    tidak pernah disajikan diam-diam sebagai data final.
+       const CLIENT_CACHE_KEY = 'sigap_data_cache';
+       // Naikkan kalau BENTUK data yang disimpan berubah (nama field, dsb) —
+       // cache versi lama akan diabaikan, bukan dibaca salah.
+       const CLIENT_CACHE_VERSION = 1;
+       // Batas jumlah baris per daftar. Log_Gerbang setahun bisa puluhan ribu
+       // baris; disimpan utuh, localStorage (±5MB) jebol dan penyimpanannya
+       // sendiri jadi lambat. Daftar dari server sudah urut terbaru-dulu, jadi
+       // potongan ini selalu berisi yang paling relevan. Kalau terpotong,
+       // ditandai `truncated` supaya UI tahu ini belum lengkap.
+       const CLIENT_CACHE_MAX_ROWS = 800;
+
+       function buildClientCache(userId, datasets, expiresAt) {
+           const payload = { v: CLIENT_CACHE_VERSION, userId: String(userId || ''), savedAt: Date.now(), expiresAt: expiresAt || 0, truncated: false, data: {} };
+           Object.keys(datasets || {}).forEach(key => {
+               const value = datasets[key];
+               if (!Array.isArray(value)) return;
+               if (value.length > CLIENT_CACHE_MAX_ROWS) {
+                   payload.truncated = true;
+                   payload.data[key] = value.slice(0, CLIENT_CACHE_MAX_ROWS);
+               } else {
+                   payload.data[key] = value;
+               }
+           });
+           return payload;
+       }
+
+       function readClientCache(raw, userId, now) {
+           const at = typeof now === 'number' ? now : Date.now();
+           if (!raw) return null;
+           let parsed;
+           try { parsed = JSON.parse(raw); } catch (e) { return null; }
+           if (!parsed || parsed.v !== CLIENT_CACHE_VERSION) return null;
+           if (!parsed.data || typeof parsed.data !== 'object') return null;
+           // Pengguna lain (HP dipakai bergantian) — jangan pernah tampilkan.
+           if (String(parsed.userId || '') !== String(userId || '')) return null;
+           // Sesi server sudah lewat umur — cache ikut mati bersamanya.
+           if (!parsed.expiresAt || at >= parsed.expiresAt) return null;
+           return parsed;
+       }
+
        // ===== Layar Login: pencarian nama guru =====
        // Dipisah dari LoginScreen (murni, tanpa React) supaya logikanya bisa
        // diuji langsung di tests/login.test.js.

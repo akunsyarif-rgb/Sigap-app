@@ -154,9 +154,19 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = ss.getSheetByName('Log_Gerbang');
-      var rows = sheet.getDataRange().getValues();
+      // Cek "sudah tercatat hari ini?" CUKUP melihat baris hari ini saja.
+      // Sebelumnya ini getDataRange().getValues() — menarik SELURUH isi
+      // Log_Gerbang (seluruh tahun ajaran) hanya untuk mencocokkan satu NISN,
+      // dan itu terjadi SAMBIL MEMEGANG script lock global. Jam gerbang pagi
+      // saat banyak guru piket menyimpan hampir serentak, setiap simpan
+      // mengantre di belakang pemindaian sheet penuh milik guru sebelumnya —
+      // makin banyak data, makin lambat, tanpa batas. getRowsSince()
+      // binary-search ke baris pertama hari ini, jadi biayanya tetap segitu
+      // saja berapa pun panjang riwayatnya.
       var today = new Date();
-      for (var i = 1; i < rows.length; i++) {
+      var todayStartLog = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+      var rows = getRowsSince(sheet, todayStartLog, 6);
+      for (var i = 0; i < rows.length; i++) {
         if (String(rows[i][1]) === String(data.nisn) && isSameDayServer(new Date(rows[i][0]), today)) {
           return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
         }
@@ -419,9 +429,13 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getOrCreateSheet(ss, 'Surat_Masuk', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis', 'Keterangan', 'Foto_URL', 'Dicatat_Oleh']);
-      var existingRows = sheet.getDataRange().getValues();
+      // Sama seperti 'record' di atas: cukup baris hari ini, bukan seluruh
+      // Surat_Masuk — pemindaian penuh di sini terjadi sambil memegang script
+      // lock global dan ikut memperlambat SEMUA aksi tulis lain.
       var todaySurat = new Date();
-      for (var i = 1; i < existingRows.length; i++) {
+      var todayStartSurat = new Date(todaySurat.getFullYear(), todaySurat.getMonth(), todaySurat.getDate(), 0, 0, 0, 0);
+      var existingRows = getRowsSince(sheet, todayStartSurat, 8);
+      for (var i = 0; i < existingRows.length; i++) {
         if (String(existingRows[i][1]) === String(data.nisn) && isSameDayServer(new Date(existingRows[i][0]), todaySurat)) {
           return jsonOut({ status: 'error', message: data.name + ' sudah punya catatan surat hari ini.' });
         }
@@ -494,7 +508,7 @@ function doPost(e) {
       }
       var sheet = getOrCreateSheet(ss, 'Pelanggaran_Upacara', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID']);
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
-      CacheService.getScriptCache().remove('pelanggaran_upacara_list');
+      CacheService.getScriptCache().remove('pelanggaran_upacara_raw');
       return jsonOut({ status: 'success' });
     }
 
@@ -881,17 +895,40 @@ function doGet(e) {
     if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
       return jsonOut({ status: 'error', message: 'Unauthorized' });
     }
-    var sheet = ss.getSheetByName('Pelanggaran_Upacara');
-    var upacara = [];
-    if (sheet) {
-      var rows = sheet.getDataRange().getValues();
-      for (var i = 1; i < rows.length; i++) {
-        if (isOsisRole(sessionUser.role) && String(rows[i][7]) !== String(sessionUser.id)) {
-          continue; // OSIS hanya lihat catatan yang mereka input sendiri
+    // Cache MENTAH (semua pencatat) lalu difilter per-pengguna SETELAH dibaca
+    // dari cache — pola yang sama persis dengan pelanggaran_list_raw di atas,
+    // dan alasannya sama: kalau yang di-cache adalah hasil yang sudah
+    // difilter untuk satu orang, pengguna berikutnya bisa menerima daftar
+    // milik orang lain. Kolom H (index 7) = Dicatat_Oleh_ID ikut disimpan di
+    // cache karena filter OSIS membutuhkannya, tapi TIDAK ikut dikirim ke
+    // klien (tetap hanya 7 field seperti sebelumnya).
+    //
+    // Invalidasi 'pelanggaran_upacara_raw' sudah dipasang di
+    // addPelanggaranUpacara sejak lama, tapi tidak pernah ada yang MENULIS
+    // cache-nya — jadi setiap pembukaan tab Upacara memindai seluruh sheet.
+    var upacaraRaw;
+    var cachedUpacara = cache.get('pelanggaran_upacara_raw');
+    if (cachedUpacara) {
+      upacaraRaw = JSON.parse(cachedUpacara);
+    } else {
+      var sheet = ss.getSheetByName('Pelanggaran_Upacara');
+      upacaraRaw = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          upacaraRaw.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], catatan: rows[i][5], logged_by: rows[i][6], by_id: String(rows[i][7]) });
         }
-        upacara.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis_pelanggaran: rows[i][4], catatan: rows[i][5], logged_by: rows[i][6] });
+        upacaraRaw.reverse();
       }
-      upacara.reverse();
+      cache.put('pelanggaran_upacara_raw', JSON.stringify(upacaraRaw), 60);
+    }
+    var upacara = [];
+    for (var ui = 0; ui < upacaraRaw.length; ui++) {
+      var u = upacaraRaw[ui];
+      if (isOsisRole(sessionUser.role) && u.by_id !== String(sessionUser.id)) {
+        continue; // OSIS hanya lihat catatan yang mereka input sendiri
+      }
+      upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
     }
     return jsonOut({ status: 'success', upacara: upacara });
   }
