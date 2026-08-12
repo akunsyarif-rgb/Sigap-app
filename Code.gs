@@ -891,8 +891,21 @@ function doGet(e) {
   }
 
   // ---- Pelanggaran Upacara — OSIS cuma lihat punya sendiri, BK/Admin lihat semua ----
+  // Siapa boleh apa di Rekap Pelanggaran Upacara — ditegakkan DI SINI, bukan
+  // sekadar menyembunyikan menu di frontend:
+  // - admin & BK/Kesiswaan : seluruh sekolah
+  // - OSIS                 : seluruh sekolah, TAPI hanya untuk data upacara.
+  //                          Semua endpoint disiplin lain (getLogs, getSurat,
+  //                          getPelanggaran, getBimbingan, getTindakLanjut)
+  //                          tetap menolak OSIS seperti sebelumnya.
+  // - guru wali kelas      : HANYA kelasnya sendiri — dipakai kategori Upacara
+  //                          di Rekap Kelas, supaya wali kelas tidak perlu
+  //                          membuka menu Upacara cuma untuk tahu kondisi
+  //                          anaknya.
+  // - guru biasa           : tidak dapat akses.
   if (action === 'getPelanggaranUpacara') {
-    if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role))) {
+    var upacaraWaliKelas = String(sessionUser.waliKelas || '');
+    if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role) || upacaraWaliKelas)) {
       return jsonOut({ status: 'error', message: 'Unauthorized' });
     }
     // Cache MENTAH (semua pencatat) lalu difilter per-pengguna SETELAH dibaca
@@ -922,11 +935,16 @@ function doGet(e) {
       }
       cache.put('pelanggaran_upacara_raw', JSON.stringify(upacaraRaw), 60);
     }
+    // OSIS sekarang melihat SELURUH rekap upacara (sebelumnya hanya catatan
+    // yang dia input sendiri) — Rekap Upacara memang dimaksudkan sebagai alat
+    // baca bersama untuk petugas upacara. Yang tidak berubah: OSIS tetap
+    // terkunci dari semua kategori disiplin lain.
+    var seluruhSekolah = isBkRole(sessionUser.role) || isOsisRole(sessionUser.role);
     var upacara = [];
     for (var ui = 0; ui < upacaraRaw.length; ui++) {
       var u = upacaraRaw[ui];
-      if (isOsisRole(sessionUser.role) && u.by_id !== String(sessionUser.id)) {
-        continue; // OSIS hanya lihat catatan yang mereka input sendiri
+      if (!seluruhSekolah && !sameClass(u.class, upacaraWaliKelas)) {
+        continue; // wali kelas: hanya kelasnya sendiri
       }
       upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
     }

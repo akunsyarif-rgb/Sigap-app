@@ -264,7 +264,161 @@
            );
        }
 
-       function UpacaraTab({ students, upacaraList, onAddUpacara, isOsis }) {
+       // ===== Rekap Pelanggaran Upacara =====
+       // Alat BACA, bukan halaman administrasi: ringkasan satu baris, lalu
+       // dikelompokkan per kelas. Sengaja tanpa tabel — di HP tabel lebar
+       // memaksa scroll horizontal.
+       //
+       // Filter dipecah dua tingkat supaya tidak memakan layar: pencarian siswa
+       // selalu terlihat (paling sering dipakai), sedangkan Periode/Kelas/Jenis
+       // disembunyikan di bottom sheet dan hanya dibuka saat perlu.
+       function RekapUpacara({ upacaraList }) {
+           const [period, setPeriod] = useState('bulan-ini');
+           const [filterClass, setFilterClass] = useState('');
+           const [filterJenis, setFilterJenis] = useState('');
+           const [query, setQuery] = useState('');
+           const [showFilter, setShowFilter] = useState(false);
+
+           const periods = [
+               { key: 'hari-ini', label: 'Hari Ini' },
+               { key: 'minggu-ini', label: 'Minggu Ini' },
+               { key: 'bulan-ini', label: 'Bulan Ini' },
+               { key: 'semua', label: 'Semua' },
+           ];
+
+           const list = Array.isArray(upacaraList) ? upacaraList : [];
+           const now = new Date();
+           const passesPeriod = (dt) => {
+               if (period === 'hari-ini') return isSameDay(dt, now);
+               if (period === 'minggu-ini') return dt >= startOfWeek(now) && dt <= now;
+               if (period === 'bulan-ini') return dt >= startOfMonth(now) && dt <= now;
+               return true;
+           };
+
+           const allClasses = [...new Set(list.map(u => u.class).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+           const allJenis = [...new Set(list.map(u => u.jenis_pelanggaran).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+
+           const q = query.trim().toLowerCase();
+           const filtered = list.filter(u => {
+               if (!passesPeriod(parseTimestamp(u.timestamp))) return false;
+               if (filterClass && !sameClass(u.class, filterClass)) return false;
+               if (filterJenis && u.jenis_pelanggaran !== filterJenis) return false;
+               if (q && !String(u.name || '').toLowerCase().includes(q)) return false;
+               return true;
+           });
+
+           // Urutan default: Kelas -> Nama A-Z -> waktu (terlama dulu dalam satu
+           // siswa, supaya urutan kejadiannya terbaca wajar).
+           const sorted = [...filtered].sort((a, b) =>
+               String(a.class).localeCompare(String(b.class))
+               || String(a.name).localeCompare(String(b.name))
+               || parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp)
+           );
+
+           const jumlahSiswa = new Set(sorted.map(u => u.nisn)).size;
+           const jumlahKelas = new Set(sorted.map(u => normalizeClass(u.class))).size;
+
+           const byClass = [];
+           sorted.forEach(u => {
+               let group = byClass.find(g => sameClass(g.kelas, u.class));
+               if (!group) { group = { kelas: u.class, items: [] }; byClass.push(group); }
+               group.items.push(u);
+           });
+
+           const filterAktif = (filterClass ? 1 : 0) + (filterJenis ? 1 : 0) + (period !== 'bulan-ini' ? 1 : 0);
+           const resetFilter = () => { setPeriod('bulan-ini'); setFilterClass(''); setFilterJenis(''); };
+
+           return (
+               <div className="space-y-4">
+                   <div className="flex items-center gap-2">
+                       <input
+                           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                           placeholder="Cari nama siswa..."
+                           className="flex-1 min-w-0 bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky"
+                       />
+                       <button
+                           type="button" onClick={() => setShowFilter(true)}
+                           className={`flex-shrink-0 min-h-[48px] px-4 rounded-2xl text-xs font-bold border transition ${filterAktif > 0 ? 'bg-sky text-white border-sky' : 'bg-white text-slate-600 border-slate-300'}`}
+                       >
+                           Filter{filterAktif > 0 ? ` (${filterAktif})` : ''}
+                       </button>
+                   </div>
+
+                   <div className="text-[11px] text-slate-500 font-semibold px-1">
+                       {sorted.length} Pelanggaran • {jumlahSiswa} Siswa • {jumlahKelas} Kelas
+                   </div>
+
+                   <div className="space-y-3">
+                       {byClass.map((g) => (
+                           <div key={g.kelas} className="space-y-1.5">
+                               <div className="flex items-baseline justify-between px-1">
+                                   <div className="font-display font-bold text-sm text-slate-900">{g.kelas}</div>
+                                   <div className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-2">{g.items.length} catatan</div>
+                               </div>
+                               {g.items.map((u, i) => (
+                                   <RowCard key={i} className="space-y-1">
+                                       <div className="flex items-center justify-between gap-2">
+                                           <div className="font-semibold text-sm text-slate-900 truncate">{u.name}</div>
+                                           <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{u.jenis_pelanggaran}</span>
+                                       </div>
+                                       {u.catatan && <div className="text-[11px] text-slate-600 break-words">{u.catatan}</div>}
+                                       <div className="text-[10px] text-slate-500 flex justify-between gap-2">
+                                           <span className="truncate">{parseTimestamp(u.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} • {u.logged_by}</span>
+                                           <span className="flex-shrink-0">{parseTimestamp(u.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                                       </div>
+                                   </RowCard>
+                               ))}
+                           </div>
+                       ))}
+                       {sorted.length === 0 && <EmptyState emoji="🚩" text="Tidak ada pelanggaran upacara di filter ini." />}
+                   </div>
+
+                   {showFilter && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center" onClick={() => setShowFilter(false)}>
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop" onClick={(e) => e.stopPropagation()}>
+                               <div className="flex items-center justify-between">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Filter Rekap</h3>
+                                   <button type="button" onClick={resetFilter} className="text-[10px] text-crimson font-bold py-2 px-1">Reset</button>
+                               </div>
+
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Periode</label>
+                                   <div className="grid grid-cols-2 gap-2">
+                                       {periods.map(p => (
+                                           <button key={p.key} type="button" onClick={() => setPeriod(p.key)} className={`min-h-[44px] rounded-xl text-[11px] font-bold ${period === p.key ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{p.label}</button>
+                                       ))}
+                                   </div>
+                               </div>
+
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Kelas</label>
+                                   <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full min-h-[44px] bg-white border border-slate-300 rounded-xl px-3 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Semua kelas</option>
+                                       {allClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                                   </select>
+                               </div>
+
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
+                                   <select value={filterJenis} onChange={(e) => setFilterJenis(e.target.value)} className="w-full min-h-[44px] bg-white border border-slate-300 rounded-xl px-3 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Semua jenis</option>
+                                       {allJenis.map(j => <option key={j} value={j}>{j}</option>)}
+                                   </select>
+                               </div>
+
+                               <Button onClick={() => setShowFilter(false)} className="w-full">Terapkan</Button>
+                           </div>
+                       </div>
+                   )}
+               </div>
+           );
+       }
+
+       // canSeeRekap: admin/BK/OSIS. Guru biasa tidak dapat — dan itu juga
+       // ditegakkan server-side di getPelanggaranUpacara (Code.gs), bukan cuma
+       // dengan menyembunyikan tombol di sini.
+       function UpacaraTab({ students, upacaraList, onAddUpacara, isOsis, canSeeRekap }) {
+           const [view, setView] = useState('catat');
            const [searchQuery, setSearchQuery] = useState('');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [jenis, setJenis] = useState('');
@@ -289,10 +443,35 @@
                setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setCatatan('');
            };
 
+           // Rekap dibuka lewat sakelar di dalam menu Upacara, BUKAN menu baru
+           // di Bottom Nav — jumlah menu utama tidak bertambah, dan alur mencatat
+           // tetap sama persis: buka Upacara -> cari siswa -> pilih jenis ->
+           // Simpan. Tidak ada klik tambahan untuk pekerjaan yang lama.
+           const rekapAktif = canSeeRekap && view === 'rekap';
+
            return (
                <div className="space-y-5 animate-rise">
-                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catat Pelanggaran Upacara</h2>
+                   <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                       {rekapAktif ? 'Rekap Pelanggaran Upacara' : 'Catat Pelanggaran Upacara'}
+                   </h2>
 
+                   {canSeeRekap && (
+                       <div className="flex gap-1 bg-white border border-slate-200 rounded-2xl p-1">
+                           {[{ key: 'catat', label: 'Catat' }, { key: 'rekap', label: 'Rekap' }].map(v => (
+                               <button
+                                   key={v.key} type="button" onClick={() => setView(v.key)}
+                                   className={`flex-1 min-h-[44px] rounded-xl text-xs font-bold transition ${view === v.key ? 'bg-sky text-white' : 'text-slate-500'}`}
+                               >
+                                   {v.label}
+                               </button>
+                           ))}
+                       </div>
+                   )}
+
+                   {rekapAktif && <RekapUpacara upacaraList={upacaraList} />}
+
+                   {!rekapAktif && (
+                   <React.Fragment>
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky" />
@@ -342,9 +521,15 @@
                        </div>
                    )}
 
-                   <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{isOsis ? 'Riwayat Catatan Saya' : 'Semua Catatan'} ({upacaraList.length})</h3>
+                   {/* Daftar pendek di bawah form = konfirmasi langsung bahwa
+                       catatan barusan masuk, tanpa harus pindah ke Rekap.
+                       Daftar lengkap + filter ada di Rekap, jadi di sini cukup
+                       10 terbaru. (Judul lama "Riwayat Catatan Saya" sudah tidak
+                       tepat: OSIS sekarang menerima seluruh rekap, bukan hanya
+                       catatannya sendiri.) */}
+                   <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Catatan Terbaru</h3>
                    <div className="space-y-2.5">
-                       {upacaraList.slice(0, 50).map((u, idx) => {
+                       {upacaraList.slice(0, 10).map((u, idx) => {
                            const dt = parseTimestamp(u.timestamp);
                            return (
                                <RowCard key={idx} className="space-y-1">
@@ -366,6 +551,8 @@
                        })}
                        {upacaraList.length === 0 && <EmptyState emoji="🚩" text="Belum ada catatan pelanggaran upacara." />}
                    </div>
+                   </React.Fragment>
+                   )}
                </div>
            );
        }
