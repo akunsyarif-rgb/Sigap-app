@@ -215,6 +215,10 @@
                                        <span>{p.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span className="truncate">{p.sanksi}</span>
                                    </div>
+                                   {/* Catatan tambahan sempat tersimpan ke sheet tapi tidak
+                                       pernah dirender di sini — guru yang mengetiknya jadi
+                                       mengira catatannya hilang. Ikut pola BimbinganTab. */}
+                                   {p.catatan && <div className="text-[11px] text-slate-600 break-words">{p.catatan}</div>}
                                </RowCard>
                            );
                        })}
@@ -340,6 +344,10 @@
                                        <span>{u.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                                        <span>{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                    </div>
+                                   {/* Sama seperti di PelanggaranTab: catatan tambahan ikut
+                                       tersimpan ke sheet (kolom Catatan) tapi tidak pernah
+                                       ditampilkan, jadi terlihat seperti hilang. */}
+                                   {u.catatan && <div className="text-[11px] text-slate-600 break-words">{u.catatan}</div>}
                                    {!isOsis && <div className="text-[10px] text-slate-500">Dicatat oleh: {u.logged_by}</div>}
                                </RowCard>
                            );
