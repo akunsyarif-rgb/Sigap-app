@@ -890,7 +890,7 @@ function doGet(e) {
     return jsonOut({ status: 'success', tindakLanjut: tindakLanjut });
   }
 
-  // ---- Pelanggaran Upacara — OSIS cuma lihat punya sendiri, BK/Admin lihat semua ----
+  // ---- Pelanggaran Upacara ----
   // Siapa boleh apa di Rekap Pelanggaran Upacara — ditegakkan DI SINI, bukan
   // sekadar menyembunyikan menu di frontend:
   // - admin & BK/Kesiswaan : seluruh sekolah
