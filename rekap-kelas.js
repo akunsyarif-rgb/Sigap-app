@@ -9,7 +9,7 @@
 // non-wali-kelas tidak pernah sampai ke komponen ini (digating di app.js).
 // Surat sengaja TIDAK dimasukkan di sini — beda kebutuhan, lihat diskusi Surat.
 
-       function RekapKelasTab({ students, allLogs, pelanggaranList, waliKelasMap, isPrivileged, myWaliKelas }) {
+       function RekapKelasTab({ students, allLogs, pelanggaranList, upacaraList, waliKelasMap, isPrivileged, myWaliKelas }) {
            const [period, setPeriod] = useState('minggu-ini');
            const [expandedClass, setExpandedClass] = useState(isPrivileged ? null : myWaliKelas);
 
@@ -30,6 +30,13 @@
 
            const lateInPeriod = allLogs.filter(l => passesPeriod(parseTimestamp(l.timestamp)));
            const pelanggaranInPeriod = pelanggaranList.filter(p => passesPeriod(parseTimestamp(p.timestamp)));
+           // Upacara memakai SUMBER DATA YANG SAMA dengan menu Upacara
+           // (upacaraList dari getPelanggaranUpacara) — bukan rekap kedua.
+           // Untuk wali kelas, server sudah membatasi isinya ke kelasnya
+           // sendiri, jadi wali kelas tidak perlu membuka menu Upacara cuma
+           // untuk tahu kondisi anaknya.
+           const upacaraSemua = Array.isArray(upacaraList) ? upacaraList : [];
+           const upacaraInPeriod = upacaraSemua.filter(u => passesPeriod(parseTimestamp(u.timestamp)));
 
            // normalizeClass/sameClass (helpers.js): nama kelas diketik manual di
            // beberapa tempat, jadi dicocokkan toleran spasi/huruf besar-kecil,
@@ -47,10 +54,12 @@
                const jumlahSiswa = students.filter(s => sameClass(s.class, kelas)).length;
                const lateKelas = lateInPeriod.filter(l => sameClass(l.class, kelas));
                const pelanggaranKelas = pelanggaranInPeriod.filter(p => sameClass(p.class, kelas));
+               const upacaraKelas = upacaraInPeriod.filter(u => sameClass(u.class, kelas));
 
                const bermasalah = {};
                lateKelas.forEach(l => { bermasalah[l.nisn] = bermasalah[l.nisn] || { nisn: l.nisn, name: l.name }; });
                pelanggaranKelas.forEach(p => { bermasalah[p.nisn] = bermasalah[p.nisn] || { nisn: p.nisn, name: p.name }; });
+               upacaraKelas.forEach(u => { bermasalah[u.nisn] = bermasalah[u.nisn] || { nisn: u.nisn, name: u.name }; });
                const daftarSiswa = Object.values(bermasalah).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
                // Dipisah per kategori (bukan digabung jadi 1 daftar polos) supaya
@@ -70,6 +79,7 @@
                };
                const siswaTerlambat = groupByStudent(lateKelas, 'type');
                const siswaPelanggaran = groupByStudent(pelanggaranKelas, 'jenis_pelanggaran');
+               const siswaUpacara = groupByStudent(upacaraKelas, 'jenis_pelanggaran');
 
                return {
                    kelas,
@@ -77,9 +87,11 @@
                    jumlahSiswa,
                    jumlahTerlambat: lateKelas.length,
                    jumlahPelanggaran: pelanggaranKelas.length,
+                   jumlahUpacara: upacaraKelas.length,
                    daftarSiswa,
                    siswaTerlambat,
                    siswaPelanggaran,
+                   siswaUpacara,
                };
            });
 
@@ -108,7 +120,7 @@
                                            <span className="text-[9px] bg-crimson/10 text-crimson px-2 py-0.5 rounded-full font-bold flex-shrink-0">{c.daftarSiswa.length} perlu perhatian</span>
                                        )}
                                    </div>
-                                   <div className="grid grid-cols-2 gap-2">
+                                   <div className="grid grid-cols-3 gap-2">
                                        <div className="text-center bg-crimson/10 rounded-xl py-1.5">
                                            <div className="text-sm font-extrabold text-crimson">{c.jumlahTerlambat}</div>
                                            <div className="text-[8px] text-crimson font-bold uppercase">Terlambat</div>
@@ -116,6 +128,10 @@
                                        <div className="text-center bg-amber-50 rounded-xl py-1.5">
                                            <div className="text-sm font-extrabold text-amber-600">{c.jumlahPelanggaran}</div>
                                            <div className="text-[8px] text-amber-600 font-bold uppercase">Pelanggaran</div>
+                                       </div>
+                                       <div className="text-center bg-sky-dim/10 rounded-xl py-1.5">
+                                           <div className="text-sm font-extrabold text-sky-dim">{c.jumlahUpacara}</div>
+                                           <div className="text-[8px] text-sky-dim font-bold uppercase">Upacara</div>
                                        </div>
                                    </div>
                                </RowCard>
@@ -147,6 +163,20 @@
                                                </div>
                                            )) : (
                                                <div className="text-[11px] text-slate-500">Tidak ada catatan pelanggaran di periode ini.</div>
+                                           )}
+                                       </div>
+                                       <div className="space-y-1.5">
+                                           <div className="text-[10px] text-sky-dim font-semibold uppercase tracking-wide">Upacara — {c.kelas}</div>
+                                           {c.siswaUpacara.length > 0 ? c.siswaUpacara.map((s, i) => (
+                                               <div key={i} className="text-[11px] text-slate-700 bg-sky-dim/5 rounded-lg px-2.5 py-1.5">
+                                                   <div className="flex items-center justify-between font-medium">
+                                                       <span>{s.name}</span>
+                                                       <span className="text-sky-dim font-bold flex-shrink-0 ml-2">{s.count}x</span>
+                                                   </div>
+                                                   {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
+                                               </div>
+                                           )) : (
+                                               <div className="text-[11px] text-slate-500">Tidak ada catatan upacara di periode ini.</div>
                                            )}
                                        </div>
                                    </div>

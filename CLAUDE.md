@@ -130,6 +130,26 @@ seconds, then yanked it away when the first API response came back `Sesi
 berakhir` — exactly what users reported as "the name disappears by itself".
 Don't remove the stamp.
 
+### Pelanggaran Upacara: who sees what
+
+`getPelanggaranUpacara` is the single source for both the Upacara tab's Rekap
+view and the Upacara category in Rekap Kelas — there is no second rekap system.
+Authorization is server-side in `Code.gs`, not just hidden menus:
+
+- admin / bk_kesiswaan → whole school
+- **osis → whole school** (was own-records-only; widened deliberately so OSIS
+  can use Rekap as a shared reading tool). OSIS remains locked out of every
+  other discipline category — `getLogs`/`getSurat`/`getPelanggaran`/
+  `getTindakLanjut` reject `isOsisRole` explicitly, `getBimbingan` allowlists
+  `isBkRole`. Keep it that way.
+- guru who is a wali kelas → their class only (filtered by `sameClass`)
+- plain guru → `Unauthorized`
+
+Rekap lives *inside* the existing Upacara menu as a Catat/Rekap switch — no new
+BottomNav entry. The data is lazy-loaded under the `'upacara'` key in `app.js`
+(`loadOnce`), shared by the `upacara` and `rekap` tabs so opening both doesn't
+fetch twice.
+
 Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
 `Pelanggaran`, `Surat_Masuk`, `Audit_Log`, `Error_Log`. Column positions are
 significant and accessed by index (e.g. `Master_Guru` col H/index 7 = salt) —

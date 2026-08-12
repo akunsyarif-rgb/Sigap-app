@@ -138,8 +138,9 @@ test('Upacara: ketik manual -> payload memuat teks custom, bukan "Lainnya"', () 
   let sent = null;
   const props = { students: [student], upacaraList: [], onAddUpacara: (p) => { sent = p; }, isOsis: true };
 
-  // selectedStudent (state #2) diisi supaya modal terbuka.
-  stateOverrides = [undefined, student];
+  // UpacaraTab: view(0), searchQuery(1), selectedStudent(2) — isi index 2
+  // supaya modal terbuka.
+  stateOverrides = [undefined, undefined, student];
   let tree = rerender('UpacaraTab', props);
 
   textInputWithPlaceholder(tree, 'Atau ketik manual...').props.onChange({ target: { value: CUSTOM } });
@@ -153,7 +154,7 @@ test('Upacara: memilih preset SETELAH ketik manual -> preset yang terkirim DAN k
   let sent = null;
   const props = { students: [student], upacaraList: [], onAddUpacara: (p) => { sent = p; }, isOsis: true };
 
-  stateOverrides = [undefined, student];
+  stateOverrides = [undefined, undefined, student];
   let tree = rerender('UpacaraTab', props);
 
   textInputWithPlaceholder(tree, 'Atau ketik manual...').props.onChange({ target: { value: CUSTOM } });
@@ -173,7 +174,7 @@ test('Upacara: memilih preset SETELAH ketik manual -> preset yang terkirim DAN k
 test('Upacara: preset biasa tetap bekerja', () => {
   let sent = null;
   const props = { students: [student], upacaraList: [], onAddUpacara: (p) => { sent = p; }, isOsis: true };
-  stateOverrides = [undefined, student];
+  stateOverrides = [undefined, undefined, student];
   let tree = rerender('UpacaraTab', props);
   buttonWithText(tree, 'Atribut Tidak Lengkap').props.onClick();
   tree = rerender('UpacaraTab', props);

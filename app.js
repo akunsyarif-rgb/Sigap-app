@@ -284,13 +284,26 @@
            // ditandai di loadedTabs supaya pindah-pindah tab tidak menarik
            // ulang data yang sudah ada (ref, bukan state: harus terbaca
            // seketika, bukan di render berikutnya).
+           // Penanda dipasang per DATA, bukan per tab: data upacara dipakai dua
+           // tab (menu Upacara dan kategori Upacara di Rekap Kelas), jadi kalau
+           // penandanya per-tab, membuka keduanya akan menarik data yang sama
+           // dua kali.
+           const loadOnce = (key, fn) => {
+               if (loadedTabs.current[key]) return;
+               loadedTabs.current[key] = true;
+               fn();
+           };
            const ensureTabData = (tab) => {
-               if (!tab || loadedTabs.current[tab]) return;
-               loadedTabs.current[tab] = true;
-               if (tab === 'kelola') fetchTeachers();
-               else if (tab === 'bimbingan') fetchBimbingan();
-               else if (tab === 'auditlog') fetchAuditLog();
-               else if (tab === 'upacara') fetchUpacara();
+               if (!tab) return;
+               if (tab === 'kelola') loadOnce('teachers', fetchTeachers);
+               else if (tab === 'bimbingan') loadOnce('bimbingan', fetchBimbingan);
+               else if (tab === 'auditlog') loadOnce('auditlog', fetchAuditLog);
+               else if (tab === 'upacara') loadOnce('upacara', fetchUpacara);
+               // Rekap Kelas butuh data upacara untuk kategori Upacara-nya.
+               // Server membatasi isinya sendiri (wali kelas = kelasnya saja),
+               // jadi guru biasa non-wali-kelas tidak pernah sampai ke sini
+               // karena menu 'rekap' memang tidak muncul untuk mereka.
+               else if (tab === 'rekap') loadOnce('upacara', fetchUpacara);
            };
 
            useEffect(() => { ensureTabData(activeTab); }, [activeTab]);
@@ -688,7 +701,7 @@
                                )}
                                {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
                                {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
-                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
+                                   <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
                                    <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} onDeleteSurat={handleDeleteSurat} loading={loadingTeacherAction} />
@@ -703,7 +716,7 @@
                                    <BimbinganTab bimbinganList={bimbinganList} />
                                )}
                                {activeTab === 'upacara' && effectiveMenus.includes('upacara') && (
-                                   <UpacaraTab students={students} upacaraList={upacaraList} onAddUpacara={handleAddUpacara} isOsis={roleKey === 'osis'} />
+                                   <UpacaraTab students={students} upacaraList={upacaraList} onAddUpacara={handleAddUpacara} isOsis={roleKey === 'osis'} canSeeRekap={roleKey === 'admin' || roleKey === 'bk_kesiswaan' || roleKey === 'osis'} />
                                )}
                            </div>
 
