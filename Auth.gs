@@ -89,6 +89,51 @@ function buildSessionUser(row) {
   };
 }
 
+// ===== OTORISASI SEGAR (Sprint 2A) =====
+// Sesi membuktikan IDENTITAS, bukan HAK AKSES.
+//
+// Sesi SIGAP hidup 6 jam (batas keras CacheService, lihat createSession) dan
+// isinya adalah snapshot Master_Guru pada detik login. Artinya, sebelum ini:
+// admin menonaktifkan akun jam 07.00 -> orang itu masih bisa menulis data
+// sampai jam 13.00; admin menurunkan role dari admin ke guru -> hak admin
+// masih menempel sampai sesinya habis. Yang paling berbahaya justru kasus
+// pertama: menonaktifkan akun adalah tindakan yang dipakai admin ketika ada
+// masalah SEKARANG, dan pada saat itulah tindakan tersebut tidak berefek.
+//
+// Karena itu, untuk aksi sensitif, id dari sesi dipakai untuk membaca ULANG
+// baris guru di Master_Guru: status & role diambil dari sheet, bukan dari
+// sesi. Sheet dibaca langsung tanpa cache baru — Master_Guru cuma puluhan
+// baris, dan untuk aksi tulis (kecepatan manusia mengisi form) satu panggilan
+// Sheets tambahan tidak terasa. Correctness di atas performance di sini.
+//
+// Return { ok: true, user } atau { ok: false, reason } dengan reason:
+//   'session'  -> token tidak ada/kedaluwarsa
+//   'gone'     -> akun sudah tidak ada di Master_Guru (dihapus manual)
+//   'disabled' -> akun dinonaktifkan admin SETELAH sesi ini dibuat
+function resolveAuthorizedUser(ss, sessionToken) {
+  var sessionUser = getSessionUser(sessionToken);
+  if (!sessionUser) return { ok: false, reason: 'session' };
+  var sheet = ss.getSheetByName('Master_Guru');
+  var rows = sheet.getDataRange().getValues();
+  var found = findTeacherRowById(rows, sessionUser.id);
+  if (!found) return { ok: false, reason: 'gone' };
+  if (isTeacherRowDisabled(found.row)) return { ok: false, reason: 'disabled' };
+  // Objek user dibangun ulang dari BARIS SHEET, bukan dari isi sesi — role,
+  // jabatan, nama, dan kelas wali otomatis ikut versi terbaru.
+  return { ok: true, user: buildSessionUser(found.row) };
+}
+
+// Pesan penolakan otorisasi. 'session' memakai kalimat "Sesi berakhir" yang
+// sudah dikenali checkSession() di app.js (frontend langsung memulangkan
+// pengguna ke layar login). Dua reason lainnya SENGAJA memakai kalimat lain:
+// akun dinonaktifkan bukan sesi kedaluwarsa, dan guru berhak tahu bedanya
+// supaya tidak mencoba login berulang kali dengan sia-sia.
+function authErrorMessage(reason) {
+  if (reason === 'disabled') return 'Akun Anda sudah dinonaktifkan admin. Hubungi admin.';
+  if (reason === 'gone') return 'Akun Anda tidak ditemukan lagi. Hubungi admin.';
+  return 'Sesi berakhir, silakan login ulang.';
+}
+
 function normalizeRole(role) {
   return String(role || '').toLowerCase().trim();
 }

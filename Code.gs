@@ -177,11 +177,18 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
-    // ---- Semua aksi di bawah ini WAJIB sesi valid ----
-    var sessionUser = getSessionUser(data.sessionToken);
-    if (!sessionUser) {
-      return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+    // ---- Semua aksi di bawah ini WAJIB sesi valid DAN akun yang masih aktif ----
+    // SEMUA aksi di doPost adalah aksi tulis, jadi semuanya lewat otorisasi
+    // segar: sesi cuma dipakai untuk tahu SIAPA, sementara status aktif & role
+    // dibaca ulang dari Master_Guru (lihat resolveAuthorizedUser di Auth.gs).
+    // Ditaruh di SATU titik ini, bukan diulang di tiap handler, dengan alasan
+    // yang sama seperti gerbang rate-limit di bawah: aksi tulis baru yang
+    // ditambahkan nanti otomatis ikut terlindungi tanpa perlu diingat.
+    var auth = resolveAuthorizedUser(ss, data.sessionToken);
+    if (!auth.ok) {
+      return jsonOut({ status: 'error', message: authErrorMessage(auth.reason) });
     }
+    var sessionUser = auth.user;
 
     // ---- Rate-limit PER SESI untuk semua aksi tulis (baris 132 ke bawah,
     // semuanya action tulis — action baca ada di doGet, tidak lewat sini
@@ -716,6 +723,25 @@ function doGet(e) {
   var sessionUser = getSessionUser(e.parameter.sessionToken);
   if (!sessionUser) {
     return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+  }
+
+  // ---- Otorisasi segar untuk BACA yang sensitif (Sprint 2A) ----
+  // Aksi baca operasional harian (getStudents/getLogs/getTodayData/dst.) tetap
+  // memakai identitas dari sesi saja: dipanggil berkali-kali tiap kali guru
+  // membuka tab, dan isinya memang boleh dilihat semua guru — menambah satu
+  // pembacaan Master_Guru di sana cuma memperlambat tanpa menutup risiko nyata.
+  // Yang di bawah ini beda: isinya data pribadi siswa/akun/jejak audit yang
+  // batasnya ditentukan role & kelas wali, jadi role-nya WAJIB versi terbaru.
+  // getPelanggaran & getTindakLanjut ikut karena keduanya menyaring isi
+  // respons berdasarkan sessionUser.waliKelas — kalau seseorang dicopot dari
+  // wali kelas, dia harus langsung berhenti menerima data kelas itu.
+  var SENSITIVE_GET_ACTIONS = ['getTeachers', 'getAuditLog', 'getBimbingan', 'getTindakLanjut', 'getPelanggaran'];
+  if (SENSITIVE_GET_ACTIONS.indexOf(action) !== -1) {
+    var getAuth = resolveAuthorizedUser(ss, e.parameter.sessionToken);
+    if (!getAuth.ok) {
+      return jsonOut({ status: 'error', message: authErrorMessage(getAuth.reason) });
+    }
+    sessionUser = getAuth.user;
   }
 
   // ---- Daftar siswa — semua role termasuk OSIS boleh (perlu untuk cari nama).
