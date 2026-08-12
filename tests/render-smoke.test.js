@@ -108,6 +108,10 @@ const teacher = { id: 'G01', name: 'Kartina', role: 'guru', jabatan: '', status:
 const jadwal = [{ hari: 'Senin', guruId: 'G01', guruName: 'Kartina' }];
 const waliKelasMap = [{ class: 'XI B', waliKelasName: 'Kartina', waliKelasId: 'G01' }];
 const user = { id: 'G01', name: 'Kartina', role: 'guru', jabatan: '', waliKelas: 'XI B' };
+// Bentuk data getLoginUsers: SENGAJA cuma id + nama (tidak ada role/jabatan/
+// hash) — kalau suatu saat field lain ikut terkirim, test ini tidak akan
+// menangkapnya, jadi jangan longgarkan bentuk ini tanpa alasan.
+const loginUsers = [{ id: 'G01', name: 'Kartina' }, { id: 'G02', name: 'Bahar' }];
 const tindakLanjutEntry = { timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', catatan: 'Sudah dipanggil', diajukanOleh: 'Kartina', status: 'menunggu', disetujuiOleh: '', tanggalDisetujui: '' };
 const manyLateLogs = [0, 10, 20].map((daysAgo) => ({ timestamp: new Date(Date.now() - daysAgo * 86400000).toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', type: 'Hujan', logged_by: 'Bu Kartina' }));
 
@@ -118,7 +122,17 @@ const cases = [
   ['DashboardTab (modal tindak lanjut terbuka)', { user, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: jadwal, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: false, isAdmin: false, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {} }, 'DashboardTab', [undefined, student]],
   ['RekapKelasTab (privileged)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: true, myWaliKelas: '' }, 'RekapKelasTab'],
   ['RekapKelasTab (wali kelas)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: false, myWaliKelas: 'XI B' }, 'RekapKelasTab'],
-  ['LoginScreen', { onLogin: () => {}, loading: false, error: '', password: '', setPassword: () => {} }],
+  // Layar login punya 4 keadaan yang semuanya harus bisa dirender: daftar nama
+  // masih dimuat, sudah siap, nama sudah terpilih (kolom PIN aktif), dan
+  // backend belum mengenal getLoginUsers sehingga turun ke form password lama.
+  // Keadaan terakhir itu jaring pengaman rollout (frontend & backend SIGAP
+  // di-deploy terpisah) — kalau sampai rusak, semua guru terkunci di luar.
+  ['LoginScreen (memuat daftar nama)', { onLogin: () => {}, loading: false, error: '', users: [], usersState: 'loading', selectedUserId: '', setSelectedUserId: () => {}, pin: '', setPin: () => {}, password: '', setPassword: () => {} }, 'LoginScreen'],
+  ['LoginScreen (daftar nama siap)', { onLogin: () => {}, loading: false, error: '', users: loginUsers, usersState: 'ready', selectedUserId: '', setSelectedUserId: () => {}, pin: '', setPin: () => {}, password: '', setPassword: () => {} }, 'LoginScreen'],
+  ['LoginScreen (nama terpilih)', { onLogin: () => {}, loading: false, error: '', users: loginUsers, usersState: 'ready', selectedUserId: 'G01', setSelectedUserId: () => {}, pin: '12', setPin: () => {}, password: '', setPassword: () => {} }, 'LoginScreen'],
+  ['LoginScreen (nama tersimpan sudah tidak ada di daftar)', { onLogin: () => {}, loading: false, error: '', users: loginUsers, usersState: 'ready', selectedUserId: 'G99', setSelectedUserId: () => {}, pin: '', setPin: () => {}, password: '', setPassword: () => {} }, 'LoginScreen'],
+  ['LoginScreen (backend lama, fallback password)', { onLogin: () => {}, loading: false, error: 'PIN salah!', users: [], usersState: 'unavailable', selectedUserId: '', setSelectedUserId: () => {}, pin: '', setPin: () => {}, password: 'rahasia', setPassword: () => {} }, 'LoginScreen'],
+  ['LoginScreen (pencarian nama diketik)', { onLogin: () => {}, loading: false, error: '', users: loginUsers, usersState: 'ready', selectedUserId: '', setSelectedUserId: () => {}, pin: '', setPin: () => {}, password: '', setPassword: () => {} }, 'LoginScreen', ['kar']],
   ['StatsTab', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], canExport: true, canViewRanking: true }],
   ['StatsTab (guru, no ranking)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], canExport: false, canViewRanking: false }, 'StatsTab'],
   ['LogTab (admin)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], initialCategory: 'terlambat', canManage: true, isAdmin: true, isBk: true, currentUserName: 'Kartina', onEditEntry: () => {}, onDeleteEntry: () => {} }, 'LogTab'],

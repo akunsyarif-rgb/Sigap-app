@@ -23,6 +23,20 @@
            const [loadingLogin, setLoadingLogin] = useState(false);
            const [loginError, setLoginError] = useState('');
 
+           // ---- Login Nama + PIN ----
+           // Nama terakhir yang berhasil login diingat di perangkat ini supaya
+           // guru piket yang memakai HP yang sama tiap pagi langsung sampai ke
+           // kolom PIN. Yang disimpan CUMA id akun — bukan PIN, bukan token.
+           const [loginUsers, setLoginUsers] = useState([]);
+           // 'loading' -> 'ready' (daftar nama didapat) atau 'unavailable'
+           // (backend belum mengenal getLoginUsers; LoginScreen otomatis turun
+           // ke form password lama, lihat komentar di sana).
+           const [loginUsersState, setLoginUsersState] = useState('loading');
+           const [selectedUserId, setSelectedUserId] = useState(() => {
+               try { return localStorage.getItem('sigap_last_user_id') || ''; } catch (e) { return ''; }
+           });
+           const [pinInput, setPinInput] = useState('');
+
            const [activeTab, setActiveTab] = useState(null);
            const [fontScale, setFontScale] = useState(() => {
                try { return parseFloat(localStorage.getItem('sigap_font_scale')) || 1; } catch (e) { return 1; }
@@ -163,6 +177,35 @@
                    .then(data => { if (data.status === 'success') setTindakLanjutList(data.tindakLanjut); });
            };
 
+           // Daftar nama untuk layar login — satu-satunya fetch yang jalan
+           // SEBELUM ada sesi (server sengaja mengizinkan aksi ini tanpa sesi,
+           // lihat getLoginUsers di Code.gs; isinya cuma id + nama akun aktif).
+           // Kalau gagal APA PUN sebabnya (backend versi lama, offline, respons
+           // aneh), state jadi 'unavailable' dan layar login turun ke form
+           // password lama — guru tidak boleh sampai terkunci di luar aplikasi
+           // hanya karena satu request tambahan gagal.
+           useEffect(() => {
+               if (user) return;
+               let cancelled = false;
+               fetch(`${API_URL}?action=getLoginUsers&token=${API_TOKEN}`)
+                   .then(res => res.json())
+                   .then(data => {
+                       if (cancelled) return;
+                       if (data && data.status === 'success' && Array.isArray(data.loginUsers) && data.loginUsers.length > 0) {
+                           setLoginUsers(data.loginUsers);
+                           setLoginUsersState('ready');
+                           // Nama yang diingat dari login sebelumnya bisa saja
+                           // sudah dinonaktifkan admin — jangan biarkan terpilih
+                           // ke akun yang tidak ada lagi di daftar.
+                           setSelectedUserId(prev => (prev && data.loginUsers.some(u => String(u.id) === String(prev)) ? prev : ''));
+                       } else {
+                           setLoginUsersState('unavailable');
+                       }
+                   })
+                   .catch(() => { if (!cancelled) setLoginUsersState('unavailable'); });
+               return () => { cancelled = true; };
+           }, [user]);
+
            useEffect(() => {
                if (user) {
                    setActiveTab(roleConfig.menus[0]);
@@ -204,20 +247,37 @@
                e.preventDefault();
                setLoadingLogin(true);
                setLoginError('');
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', password: passwordInput, token: API_TOKEN }) })
+               // Jalur baru (userId + pin) dipakai kalau daftar nama berhasil
+               // dimuat DAN nama sudah dipilih; selain itu kirim bentuk lama —
+               // server masih menerima keduanya selama masa transisi.
+               const useNamedLogin = loginUsersState === 'ready' && !!selectedUserId;
+               const payload = useNamedLogin
+                   ? { action: 'login', userId: selectedUserId, pin: pinInput, token: API_TOKEN }
+                   : { action: 'login', password: passwordInput, token: API_TOKEN };
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingLogin(false);
                        if (data.status === 'success') {
                            setUser(data.user);
                            setSessionToken(data.sessionToken);
+                           setPinInput('');
+                           setPasswordInput('');
                            try {
                                localStorage.setItem('sigap_session_token', data.sessionToken);
                                localStorage.setItem('sigap_user', JSON.stringify(data.user));
+                               if (data.user && data.user.id) localStorage.setItem('sigap_last_user_id', String(data.user.id));
                            } catch (e) {}
-                       } else setLoginError(data.message || 'Password salah!');
+                       } else {
+                           // Nama yang sudah dipilih SENGAJA dipertahankan —
+                           // yang salah PIN-nya, bukan namanya; memaksa guru
+                           // mencari namanya lagi tiap salah ketik itu hukuman
+                           // yang tidak ada gunanya.
+                           setPinInput('');
+                           setLoginError(data.message || 'PIN salah!');
+                       }
                    })
-                   .catch(() => { setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
+                   .catch(() => { setLoadingLogin(false); setLoginError('Koneksi gagal. Periksa jaringan, lalu coba lagi.'); });
            };
 
            const handleLogout = () => {
@@ -465,7 +525,13 @@
            return (
                <div style={{ zoom: fontScale }}>
                    {!user ? (
-                       <LoginScreen onLogin={handleLogin} loading={loadingLogin} error={loginError} password={passwordInput} setPassword={setPasswordInput} />
+                       <LoginScreen
+                           onLogin={handleLogin} loading={loadingLogin} error={loginError}
+                           users={loginUsers} usersState={loginUsersState}
+                           selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId}
+                           pin={pinInput} setPin={setPinInput}
+                           password={passwordInput} setPassword={setPasswordInput}
+                       />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
                            <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />

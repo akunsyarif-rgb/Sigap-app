@@ -16,6 +16,18 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     // ---- Login ----
+    // DUA JALUR yang hidup berdampingan (sengaja, jangan disederhanakan jadi
+    // satu sebelum rollout tuntas):
+    //   1. BARU  — data.userId + data.pin: identitas dipilih dulu di layar
+    //      login (dropdown nama), server lookup LANGSUNG ke baris itu.
+    //   2. LAMA  — data.password saja: server menjajal password ke semua baris.
+    // Jalur lama WAJIB dipertahankan selama masa transisi karena frontend &
+    // backend SIGAP di-deploy terpisah (Vercel otomatis, Apps Script manual —
+    // lihat CLAUDE.md): kalau backend baru sudah live sementara sebagian guru
+    // masih memegang index.html versi cache lama, jalur lama itulah yang bikin
+    // mereka tetap bisa masuk. Matikan lewat Script Property
+    // ALLOW_LEGACY_LOGIN='false' setelah semua guru dipastikan sudah pakai
+    // layar login baru (lihat isLegacyLoginEnabled di bawah).
     if (action === 'login') {
       // Cek lockout SEBELUM sentuh sheet sama sekali — lihat komentar
       // isLoginRateLimited() di Utils.gs kenapa ini global, bukan per-akun.
@@ -26,23 +38,77 @@ function doPost(e) {
       var sheet = ss.getSheetByName('Master_Guru');
       var rows = sheet.getDataRange().getValues();
 
+      // ---- Jalur BARU: Nama (userId) + PIN ----
+      if (data.userId) {
+        if (isAccountLoginRateLimited(data.userId)) {
+          return jsonOut({ status: 'error', message: 'Terlalu banyak percobaan PIN salah untuk akun ini. Coba lagi dalam 15 menit.' });
+        }
+        var found = findTeacherRowById(rows, data.userId);
+        // Akun tidak ada TETAP dihitung sebagai kegagalan (dan pesannya sama
+        // dengan PIN salah) — supaya endpoint ini tidak bisa dipakai menyisir
+        // ID akun mana yang valid tanpa batas.
+        if (!found) {
+          recordAccountLoginFailure(data.userId);
+          recordLoginFailure();
+          return jsonOut({ status: 'error', message: 'PIN salah. Pastikan nama yang dipilih sudah benar.' });
+        }
+        if (isTeacherRowDisabled(found.row)) {
+          return jsonOut({ status: 'error', message: 'Akun ini sudah dinonaktifkan. Hubungi admin.' });
+        }
+        var pinCheck = verifyPassword(String(data.pin == null ? '' : data.pin), String(found.row[GURU_COL.HASH]), String(found.row[GURU_COL.SALT] || ''));
+        if (!pinCheck || !pinCheck.matched) {
+          var accFail = recordAccountLoginFailure(data.userId);
+          recordLoginFailure();
+          if (accFail === ACCOUNT_LOGIN_MAX_FAILURES) {
+            logAudit({ name: 'System', id: '-' }, 'Login Terkunci (Akun)', 'Akun ' + data.userId + ' terkunci ' + (ACCOUNT_LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + accFail + ' percobaan gagal');
+          }
+          return jsonOut({ status: 'error', message: 'PIN salah. Pastikan nama yang dipilih sudah benar.' });
+        }
+        // Akun lama (belum pernah login sejak salt ditambahkan) tetap dimigrasi
+        // di sini juga — jalur mana pun yang dipakai, hasil akhirnya sama.
+        if (pinCheck.needsMigration) {
+          var pinSalt = generateSalt();
+          sheet.getRange(found.rowIndex, GURU_COL.HASH + 1).setValue(hashPasswordSalted(String(data.pin), pinSalt));
+          sheet.getRange(found.rowIndex, GURU_COL.SALT + 1).setValue(pinSalt);
+        }
+        clearAccountLoginFailures(data.userId);
+        var namedUser = buildSessionUser(found.row);
+        var namedToken = createSession(namedUser);
+        logAudit(namedUser, 'Login', 'Nama + PIN');
+        return jsonOut({ status: 'success', user: namedUser, sessionToken: namedToken });
+      }
+
+      // ---- Jalur LAMA: password saja (transisi) ----
+      if (!isLegacyLoginEnabled()) {
+        return jsonOut({ status: 'error', message: 'Silakan muat ulang halaman, lalu login dengan memilih nama Anda dan mengisi PIN.' });
+      }
+
       var loggedInUser = null;
       var isDisabled = false;
       var matchedRowIndex = -1;
       var needsMigration = false;
       for (var i = 1; i < rows.length; i++) {
+        // Akun yang kredensialnya sudah diset sebagai PIN (kolom I = 'pin')
+        // SENGAJA dilewati di jalur lama. Alasannya keamanan, bukan kerapian:
+        // PIN 4-6 digit aman kalau dicocokkan ke SATU akun yang identitasnya
+        // sudah dipilih (jalur baru), tapi berbahaya kalau dicocokkan ke SEMUA
+        // baris seperti di sini — tebakan "4271" akan cocok ke akun siapa pun
+        // yang kebetulan memakai PIN itu, dan penyerang langsung dapat sesi
+        // guru tersebut. Akun ber-PIN hanya boleh login lewat jalur Nama + PIN.
+        if (String(rows[i][GURU_COL.LOGIN_MODE] || '').toLowerCase().trim() === GURU_LOGIN_MODE_PIN) {
+          continue;
+        }
         // Kolom H (index 7) = Salt. Kosong = akun belum dimigrasi ke skema
         // hash baru (lihat verifyPassword di Auth.gs) — masih dicek lewat
         // jalur lama supaya guru yang sudah pernah set password tidak perlu
         // reset paksa.
-        var checkResult = verifyPassword(data.password, String(rows[i][2]), String(rows[i][7] || ''));
+        var checkResult = verifyPassword(data.password, String(rows[i][GURU_COL.HASH]), String(rows[i][GURU_COL.SALT] || ''));
         if (checkResult && checkResult.matched) {
-          if (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') {
+          if (isTeacherRowDisabled(rows[i])) {
             isDisabled = true;
             break;
           }
-          // Kolom G (index 6) = Kelas_Wali. Kosong kalau guru ini bukan wali kelas.
-          loggedInUser = { id: rows[i][0], name: rows[i][1], role: rows[i][3], jabatan: rows[i][4] || '', waliKelas: rows[i][6] || '' };
+          loggedInUser = buildSessionUser(rows[i]);
           matchedRowIndex = i;
           needsMigration = checkResult.needsMigration;
           break;
@@ -59,7 +125,10 @@ function doPost(e) {
           sheet.getRange(matchedRowIndex + 1, 8).setValue(migratedSalt);
         }
         var sessionToken = createSession(loggedInUser);
-        logAudit(loggedInUser, 'Login', '');
+        // Detail login sengaja mencatat JALUR yang dipakai — dari Audit Log
+        // admin bisa lihat kapan tidak ada lagi guru yang memakai jalur lama,
+        // yaitu momen aman untuk menyetel ALLOW_LEGACY_LOGIN='false'.
+        logAudit(loggedInUser, 'Login', 'Password (jalur lama)');
         return jsonOut({ status: 'success', user: loggedInUser, sessionToken: sessionToken });
       }
 
@@ -171,40 +240,61 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: 'ID sudah dipakai, gunakan ID lain' });
         }
       }
+      // Kredensial BARU wajib berbentuk PIN angka — akun lama tidak dipaksa
+      // ikut (lihat validatePin di Utils.gs). Divalidasi di SERVER, bukan cuma
+      // di form, karena aturan kredensial tidak boleh bergantung pada halaman
+      // mana yang kebetulan dibuka admin.
+      var newPinCheck = validatePin(data.newPassword);
+      if (!newPinCheck.ok) {
+        return jsonOut({ status: 'error', message: newPinCheck.message });
+      }
       var newSalt = generateSalt();
-      var hashed = hashPasswordSalted(data.newPassword, newSalt);
+      var hashed = hashPasswordSalted(String(data.newPassword), newSalt);
       // Kolom F (status) & G (Kelas_Wali) sengaja dikosongkan di sini (diisi
       // lewat aksi toggleStatus/updateWaliKelas terpisah) — harus tetap
       // ditulis eksplisit supaya salt di kolom H (index 8) jatuh di kolom
       // yang benar, appendRow tidak bisa "lompat" kolom.
-      sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '', '', '', newSalt]);
+      // Kolom I = Login_Mode 'pin': menandai akun ini HANYA boleh login lewat
+      // jalur Nama + PIN (lihat alasannya di loop jalur lama, doPost 'login').
+      ensureLoginModeHeader(sheet);
+      sheet.appendRow([data.newId, data.newName, hashed, data.newRole, data.newJabatan || '', '', '', newSalt, GURU_LOGIN_MODE_PIN]);
+      // Daftar nama di layar login ikut berubah — buang cache-nya supaya guru
+      // baru bisa langsung login tanpa menunggu TTL 5 menit habis.
+      CacheService.getScriptCache().remove('login_users');
       logAudit(sessionUser, 'Tambah Guru', data.newName + ' (' + data.newId + ', role: ' + data.newRole + ')');
       return jsonOut({ status: 'success' });
     }
 
-    // ---- Reset password (admin only) ----
+    // ---- Reset PIN (admin only) ----
+    // Nama aksinya tetap 'updatePassword' (bukan 'resetPin') — mengganti nama
+    // aksi akan memutus klien lama yang masih memegang index.html versi cache
+    // sebelumnya, dan tidak memberi manfaat apa pun ke pengguna.
     if (action === 'updatePassword') {
       if (!isAdminRole(sessionUser.role)) {
-        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah password' });
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah PIN' });
+      }
+      var resetPinCheck = validatePin(data.newPassword);
+      if (!resetPinCheck.ok) {
+        return jsonOut({ status: 'error', message: resetPinCheck.message });
       }
       var sheet = ss.getSheetByName('Master_Guru');
       var rows = sheet.getDataRange().getValues();
-      var found = false;
-      var targetName = '';
-      for (var i = 1; i < rows.length; i++) {
-        if (String(rows[i][0]) === String(data.targetId)) {
-          var resetSalt = generateSalt();
-          sheet.getRange(i + 1, 3).setValue(hashPasswordSalted(data.newPassword, resetSalt));
-          sheet.getRange(i + 1, 8).setValue(resetSalt);
-          targetName = rows[i][1];
-          found = true;
-          break;
-        }
-      }
+      var found = findTeacherRowById(rows, data.targetId);
       if (!found) {
         return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
       }
-      logAudit(sessionUser, 'Reset Password', targetName + ' (' + data.targetId + ')');
+      var resetSalt = generateSalt();
+      sheet.getRange(found.rowIndex, GURU_COL.HASH + 1).setValue(hashPasswordSalted(String(data.newPassword), resetSalt));
+      sheet.getRange(found.rowIndex, GURU_COL.SALT + 1).setValue(resetSalt);
+      // Sekali admin menyetel PIN, akun ini pindah permanen ke jalur Nama+PIN
+      // dan berhenti bisa dipakai lewat jalur password-only lama.
+      ensureLoginModeHeader(sheet);
+      sheet.getRange(found.rowIndex, GURU_COL.LOGIN_MODE + 1).setValue(GURU_LOGIN_MODE_PIN);
+      // PIN baru = percobaan gagal sebelumnya tidak lagi relevan; kalau tidak
+      // dinolkan, guru yang lupa PIN lalu minta reset masih harus menunggu
+      // sisa lockout meski PIN-nya sudah diganti admin.
+      clearAccountLoginFailures(data.targetId);
+      logAudit(sessionUser, 'Reset PIN', found.row[GURU_COL.NAMA] + ' (' + data.targetId + ')');
       return jsonOut({ status: 'success' });
     }
 
@@ -357,6 +447,9 @@ function doPost(e) {
       if (!found) {
         return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
       }
+      // Akun nonaktif tidak boleh tetap muncul di dropdown layar login (dan
+      // yang baru diaktifkan harus langsung muncul) — buang cache daftarnya.
+      CacheService.getScriptCache().remove('login_users');
       logAudit(sessionUser, newStatus === 'nonaktif' ? 'Nonaktifkan Akun' : 'Aktifkan Akun', targetName + ' (' + data.targetId + ')');
       return jsonOut({ status: 'success', newStatus: newStatus });
     }
@@ -589,6 +682,34 @@ function doGet(e) {
   // Status publik, tidak perlu sesi — dipakai untuk cek API hidup
   if (!action) {
     return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+  }
+
+  // ---- Daftar nama untuk layar login — SATU-SATUNYA aksi selain ping status
+  // yang tidak butuh sesi, karena memang dipanggil SEBELUM login ada.
+  // Yang dikirim SENGAJA cuma { id, name } akun AKTIF: tidak ada hash, salt,
+  // role, jabatan, maupun kelas wali. Nama guru bukan rahasia (tercetak di
+  // papan jadwal sekolah), tapi role & jabatan adalah peta "akun mana yang
+  // paling berharga diserang" — itu tidak boleh bocor ke layar pra-login.
+  // Akun nonaktif juga tidak ditampilkan: percuma dipilih (pasti ditolak) dan
+  // sekaligus tidak membocorkan daftar mantan pegawai.
+  // Cache 5 menit, sama seperti students_list, karena Master_Guru juga sering
+  // diedit langsung di Sheet tanpa lewat aplikasi. ----
+  if (action === 'getLoginUsers') {
+    var cachedLoginUsers = cache.get('login_users');
+    if (cachedLoginUsers) {
+      return ContentService.createTextOutput(cachedLoginUsers).setMimeType(ContentService.MimeType.JSON);
+    }
+    var guruSheet = ss.getSheetByName('Master_Guru');
+    var guruRows = guruSheet.getDataRange().getValues();
+    var loginUsers = [];
+    for (var gi = 1; gi < guruRows.length; gi++) {
+      if (!guruRows[gi][GURU_COL.ID] || isTeacherRowDisabled(guruRows[gi])) continue;
+      loginUsers.push({ id: guruRows[gi][GURU_COL.ID], name: guruRows[gi][GURU_COL.NAMA] });
+    }
+    loginUsers.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+    var loginUsersResult = JSON.stringify({ status: 'success', loginUsers: loginUsers });
+    cache.put('login_users', loginUsersResult, 300);
+    return ContentService.createTextOutput(loginUsersResult).setMimeType(ContentService.MimeType.JSON);
   }
 
   // Semua aksi GET lainnya WAJIB sesi valid

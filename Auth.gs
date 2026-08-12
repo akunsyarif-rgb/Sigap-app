@@ -44,6 +44,51 @@ function verifyPassword(inputPassword, storedHash, storedSalt) {
   return hashPasswordLegacy(inputPassword) === storedHash ? { matched: true, needsMigration: true } : null;
 }
 
+// ===== IDENTITAS AKUN (Master_Guru) =====
+// Posisi kolom Master_Guru dikumpulkan di satu tempat supaya index ajaib
+// (rows[i][7] dst.) tidak tersebar di banyak file. JANGAN mengubah angka di
+// sini tanpa memindahkan kolomnya di Sheet — data lama membaca posisi ini.
+// Kolom I (Login_Mode) BARU: diisi 'pin' begitu kredensial akun diset lewat
+// skema PIN (tambah guru / reset PIN). Baris lama nilainya kosong = masih
+// pakai password bebas warisan skema lama.
+var GURU_COL = { ID: 0, NAMA: 1, HASH: 2, ROLE: 3, JABATAN: 4, STATUS: 5, KELAS_WALI: 6, SALT: 7, LOGIN_MODE: 8 };
+var GURU_LOGIN_MODE_PIN = 'pin';
+
+// Cari baris guru LANGSUNG lewat ID akun — inti dari upgrade login Nama+PIN:
+// jalur lama harus menjajal verifyPassword() ke setiap baris sampai ketemu
+// (makin lambat & makin rawan makin banyak guru), jalur baru cukup sekali
+// lewat karena identitas akun sudah ditentukan di layar login.
+// Return { rowIndex (1-based, siap dipakai getRange), row } atau null.
+function findTeacherRowById(rows, userId) {
+  var target = String(userId == null ? '' : userId).trim().toLowerCase();
+  if (!target) return null;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][GURU_COL.ID]).trim().toLowerCase() === target) {
+      return { rowIndex: i + 1, row: rows[i] };
+    }
+  }
+  return null;
+}
+
+function isTeacherRowDisabled(row) {
+  return String(row[GURU_COL.STATUS]).toLowerCase().trim() === 'nonaktif';
+}
+
+// Bentuk objek user yang disimpan di sesi & dikirim ke client. SATU tempat,
+// dipakai jalur login lama maupun baru — kalau field baru ditambahkan di sini,
+// kedua jalur otomatis ikut konsisten.
+// CATATAN KEAMANAN: JANGAN pernah menambahkan hash password/PIN atau salt ke
+// objek ini — isinya dikirim utuh ke frontend dan disimpan di localStorage.
+function buildSessionUser(row) {
+  return {
+    id: row[GURU_COL.ID],
+    name: row[GURU_COL.NAMA],
+    role: row[GURU_COL.ROLE],
+    jabatan: row[GURU_COL.JABATAN] || '',
+    waliKelas: row[GURU_COL.KELAS_WALI] || '',
+  };
+}
+
 function normalizeRole(role) {
   return String(role || '').toLowerCase().trim();
 }

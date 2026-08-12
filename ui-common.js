@@ -159,7 +159,31 @@
            );
        }
 
-       function LoginScreen({ onLogin, loading, error, password, setPassword }) {
+       // Login = Nama guru (dipilih dari daftar) + PIN angka.
+       //
+       // Kenapa nama dipilih dulu, bukan diketik bebas: identitas akun jadi
+       // pasti SEBELUM kredensial dikirim, sehingga server bisa lookup satu
+       // baris (bukan menjajal PIN ke seluruh Master_Guru) dan bisa membatasi
+       // percobaan gagal PER AKUN. PIN 4-6 digit hanya aman dengan syarat itu.
+       //
+       // Komponen ini SENGAJA tanpa fetch sendiri — daftar nama dititipkan
+       // lewat props dari App (semua pengambilan data terpusat di app.js).
+       // usersState: 'loading' | 'ready' | 'unavailable'.
+       // 'unavailable' = backend belum mengenal aksi getLoginUsers (Apps Script
+       // belum di-deploy ulang — ingat frontend & backend SIGAP naik terpisah,
+       // lihat CLAUDE.md). Dalam keadaan itu layar ini otomatis turun ke form
+       // password lama supaya guru TIDAK pernah terkunci di luar aplikasi.
+       function LoginScreen({ onLogin, loading, error, users, usersState, selectedUserId, setSelectedUserId, pin, setPin, password, setPassword }) {
+           const [query, setQuery] = useState('');
+           const selectedUser = (users || []).find(u => String(u.id) === String(selectedUserId));
+           const legacyMode = usersState === 'unavailable';
+
+           // Batasi hasil ke 8 nama: daftar guru satu sekolah muat di layar HP
+           // hanya kalau dipotong, dan mengetik 1-2 huruf sudah cukup menyaring.
+           const filteredUsers = query.trim() === ''
+               ? (users || []).slice(0, 8)
+               : (users || []).filter(u => String(u.name).toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8);
+
            return (
                <div className="min-h-screen flex flex-col justify-center p-6 bg-slate-50">
                    <div className="w-full max-w-sm mx-auto">
@@ -176,21 +200,95 @@
                        </div>
 
                        <form onSubmit={onLogin} className="space-y-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                           <div>
-                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
-                               <input
-                                   type="password"
-                                   value={password}
-                                   onChange={(e) => setPassword(e.target.value)}
-                                   placeholder="Masukkan password..."
-                                   className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
-                                   required
-                               />
-                           </div>
+                           {legacyMode ? (
+                               <div>
+                                   <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
+                                   <input
+                                       type="password"
+                                       value={password}
+                                       onChange={(e) => setPassword(e.target.value)}
+                                       placeholder="Masukkan password..."
+                                       className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                                       required
+                                   />
+                               </div>
+                           ) : (
+                               <React.Fragment>
+                                   <div>
+                                       <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Nama Guru</label>
+                                       {selectedUser ? (
+                                           // Nama yang sudah terpilih tampil sebagai satu baris tenang
+                                           // (bukan dropdown terbuka) — guru yang sama memakai HP yang
+                                           // sama tiap pagi cuma perlu mengisi PIN, tanpa mencari lagi.
+                                           <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5">
+                                               <span className="text-sm font-bold text-slate-900 truncate">{selectedUser.name}</span>
+                                               <button
+                                                   type="button"
+                                                   onClick={() => { setSelectedUserId(''); setQuery(''); }}
+                                                   className="text-[11px] font-semibold text-sky-dim flex-shrink-0 px-2 py-1"
+                                               >
+                                                   Ganti
+                                               </button>
+                                           </div>
+                                       ) : (
+                                           <div>
+                                               <input
+                                                   type="text"
+                                                   value={query}
+                                                   onChange={(e) => setQuery(e.target.value)}
+                                                   placeholder={usersState === 'loading' ? 'Memuat daftar nama...' : 'Ketik nama Anda...'}
+                                                   disabled={usersState === 'loading'}
+                                                   className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                                               />
+                                               {usersState === 'ready' && (
+                                                   <div className="mt-2 border border-slate-200 rounded-2xl overflow-hidden max-h-52 overflow-y-auto">
+                                                       {filteredUsers.length > 0 ? filteredUsers.map(u => (
+                                                           <button
+                                                               key={u.id}
+                                                               type="button"
+                                                               onClick={() => { setSelectedUserId(String(u.id)); setQuery(''); }}
+                                                               className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-800 border-b border-slate-200/60 last:border-b-0 active:bg-slate-100"
+                                                           >
+                                                               {u.name}
+                                                           </button>
+                                                       )) : (
+                                                           <div className="px-4 py-3 text-xs text-slate-500 text-center">Nama tidak ditemukan</div>
+                                                       )}
+                                                   </div>
+                                               )}
+                                           </div>
+                                       )}
+                                   </div>
+
+                                   <div>
+                                       <label className="text-xs text-slate-500 font-semibold mb-1.5 block">PIN</label>
+                                       {/* inputMode numeric = keypad angka langsung terbuka di HP,
+                                           type password = PIN tidak terbaca orang di sebelah saat
+                                           guru mengetik di gerbang. */}
+                                       <input
+                                           type="password"
+                                           inputMode="numeric"
+                                           pattern="[0-9]*"
+                                           autoComplete="off"
+                                           maxLength={6}
+                                           value={pin}
+                                           onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+                                           placeholder="••••"
+                                           disabled={!selectedUser}
+                                           className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-lg tracking-[0.5em] text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition disabled:opacity-50"
+                                           required
+                                       />
+                                   </div>
+                               </React.Fragment>
+                           )}
+
                            {error && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2 rounded-lg">{error}</div>}
-                           <Button type="submit" disabled={loading} className="w-full shadow-[0_4px_14px_0_rgba(46,134,216,0.4)]">
+                           <Button type="submit" disabled={loading || (!legacyMode && !selectedUser)} className="w-full shadow-[0_4px_14px_0_rgba(46,134,216,0.4)]">
                                {loading ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
                            </Button>
+                           {!legacyMode && (
+                               <p className="text-[10px] text-slate-500 text-center leading-relaxed">Lupa PIN? Hubungi admin untuk mereset.</p>
+                           )}
                        </form>
                    </div>
                </div>

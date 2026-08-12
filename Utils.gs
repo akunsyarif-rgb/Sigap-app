@@ -87,12 +87,40 @@ function getOrCreateSheet(ss, name, headers) {
 // nilainya) tapi tidak lagi ditulis/dibaca UI — lihat catatan di addSurat
 // (Code.gs) soal kenapa kolomnya tidak dihapus dari struktur baris.
 
-// ===== RATE LIMIT LOGIN =====
-// Login SIGAP cuma minta password, tanpa username (lihat LoginScreen di
-// ui-common.js) — server mencocokkan password yang dikirim ke SEMUA baris
-// Master_Guru sampai ketemu. Karena itu, saat password SALAH, server belum
-// tahu itu menyasar akun siapa — rate-limit di sini scoped GLOBAL (semua
-// user sekaligus), bukan per-akun.
+// Sheet Master_Guru sudah ada sejak lama dengan 8 kolom (A-H) — kolom I
+// (Login_Mode) baru ditambahkan bersama login Nama + PIN. Judul kolomnya
+// ditulis sekali saat pertama kali dibutuhkan, bukan lewat migrasi manual di
+// Sheet, supaya admin tidak perlu menyiapkan apa pun sebelum memakai versi
+// baru. Baris data lama dibiarkan kosong di kolom ini = masih skema password
+// lama, dan itu memang perilaku yang diinginkan (lihat doPost 'login').
+function ensureLoginModeHeader(sheet) {
+  var cell = sheet.getRange(1, 9);
+  if (!String(cell.getValue() || '').trim()) {
+    cell.setValue('Login_Mode');
+  }
+}
+
+// ===== SAKELAR JALUR LOGIN LAMA =====
+// Jalur login lama (password saja, tanpa memilih nama) tetap hidup selama masa
+// transisi — lihat penjelasan lengkapnya di doPost 'login' (Code.gs). Default
+// AKTIF supaya menaikkan backend baru TIDAK pernah mengunci siapa pun keluar;
+// admin mematikannya belakangan lewat Script Property ALLOW_LEGACY_LOGIN
+// diisi 'false' (Apps Script > Project Settings > Script Properties), tanpa
+// perlu deploy ulang kode.
+function isLegacyLoginEnabled() {
+  var flag = PropertiesService.getScriptProperties().getProperty('ALLOW_LEGACY_LOGIN');
+  return String(flag == null ? 'true' : flag).toLowerCase().trim() !== 'false';
+}
+
+// ===== RATE LIMIT LOGIN (GLOBAL — jalur lama password-only) =====
+// Jalur login LAMA cuma minta password, tanpa identitas — server mencocokkan
+// password yang dikirim ke SEMUA baris Master_Guru sampai ketemu. Karena itu,
+// saat password SALAH, server belum tahu itu menyasar akun siapa — rate-limit
+// di sini scoped GLOBAL (semua user sekaligus), bukan per-akun.
+// Jalur login BARU (Nama + PIN) tahu persis akun mana yang ditarget, jadi
+// punya limiter PER-AKUN sendiri di bawah — tapi kegagalannya TETAP ikut
+// menambah counter global ini juga, supaya penyerang tidak bisa menghindari
+// pembatasan cuma dengan berpindah-pindah akun tiap 5 percobaan.
 // Fixed window (bukan sliding, bukan extend-on-write): counter dikunci ke
 // blok waktu LOGIN_RATE_WINDOW_MS yang tetap (mis. semua request 10:00:00-
 // 10:04:59 pakai key yang sama), lalu reset otomatis begitu masuk blok
@@ -121,6 +149,86 @@ function recordLoginFailure() {
   // sampai akhir window, baru dibuang cache-nya.
   cache.put(key, String(count), Math.ceil(LOGIN_RATE_WINDOW_MS / 1000) + 30);
   return count;
+}
+
+// ===== RATE LIMIT LOGIN PER-AKUN (jalur baru Nama + PIN) =====
+// Begitu login menyertakan identitas akun (userId dari dropdown nama), server
+// tahu percobaan gagal itu menyasar SIAPA — jadi bisa dibatasi per-akun, jauh
+// lebih tajam daripada limiter global: brute-force satu akun berhenti setelah
+// 5 percobaan tanpa mengganggu guru lain yang sedang login normal.
+// Window sengaja lebih panjang (15 menit) dan batasnya lebih kecil (5) daripada
+// limiter global, karena PIN 4-6 digit ruang tebakannya jauh lebih kecil
+// daripada password bebas: 5 percobaan / 15 menit = maksimal 480 tebakan/hari,
+// masih 20+ tahun untuk menyisir 10.000 kombinasi PIN 4 digit.
+// Fixed window (bukan sliding), pola sama seperti dua limiter lainnya di file
+// ini, supaya typo yang tersebar sepanjang hari tidak menumpuk jadi lockout.
+var ACCOUNT_LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 menit per window
+var ACCOUNT_LOGIN_MAX_FAILURES = 5; // percobaan PIN salah per akun per window
+
+function accountLoginKey(userId) {
+  // userId dipakai apa adanya sebagai bagian key (sudah dinormalkan pemanggil)
+  // — bukan rahasia (nama guru tampil di dropdown login), jadi tidak perlu
+  // di-hash seperti sessionToken di checkWriteRateLimit().
+  return 'login_fail_acc_' + String(userId).toLowerCase().trim() + '_' + Math.floor(Date.now() / ACCOUNT_LOGIN_RATE_WINDOW_MS);
+}
+
+function isAccountLoginRateLimited(userId) {
+  if (!userId) return false;
+  var raw = CacheService.getScriptCache().get(accountLoginKey(userId));
+  return (raw ? parseInt(raw, 10) : 0) >= ACCOUNT_LOGIN_MAX_FAILURES;
+}
+
+// Return jumlah kegagalan akun ini SETELAH ditambah (dipakai pemanggil untuk
+// mencatat momen lockout ke Audit Log sekali saja, bukan tiap percobaan).
+function recordAccountLoginFailure(userId) {
+  var cache = CacheService.getScriptCache();
+  var key = accountLoginKey(userId);
+  var raw = cache.get(key);
+  var count = (raw ? parseInt(raw, 10) : 0) + 1;
+  cache.put(key, String(count), Math.ceil(ACCOUNT_LOGIN_RATE_WINDOW_MS / 1000) + 30);
+  return count;
+}
+
+// Login berhasil = bukti pemiliknya sendiri yang sedang mencoba (bukan
+// penyerang), jadi hitungan gagal akun ini dinolkan — supaya guru yang tadi
+// salah ketik 3x lalu berhasil tidak menyisakan "sisa jatah" 2 percobaan saja.
+function clearAccountLoginFailures(userId) {
+  if (!userId) return;
+  CacheService.getScriptCache().remove(accountLoginKey(userId));
+}
+
+// ===== VALIDASI PIN =====
+// PIN dipakai untuk kredensial BARU (tambah guru & reset PIN oleh admin).
+// Kredensial LAMA (password bebas) tidak dipaksa berubah — akun lama tetap
+// bisa login lewat jalur Nama + PIN dengan password lamanya sampai admin
+// mereset PIN-nya. Lihat catatan migrasi di doPost 'login' (Code.gs).
+// Aturan: 4-6 digit angka, tidak boleh semua digit sama (1111) dan tidak
+// boleh berurutan (1234/4321) — dua pola itu yang paling sering ditebak
+// pertama kali, dan tidak menambah beban ingat apa pun bagi guru.
+var PIN_MIN_LENGTH = 4;
+var PIN_MAX_LENGTH = 6;
+
+function validatePin(pin) {
+  var value = String(pin == null ? '' : pin).trim();
+  if (!/^[0-9]+$/.test(value)) {
+    return { ok: false, message: 'PIN harus berupa angka saja.' };
+  }
+  if (value.length < PIN_MIN_LENGTH || value.length > PIN_MAX_LENGTH) {
+    return { ok: false, message: 'PIN harus ' + PIN_MIN_LENGTH + '-' + PIN_MAX_LENGTH + ' digit.' };
+  }
+  if (/^(.)\1+$/.test(value)) {
+    return { ok: false, message: 'PIN terlalu mudah ditebak (angka sama semua).' };
+  }
+  var ascending = true, descending = true;
+  for (var i = 1; i < value.length; i++) {
+    var diff = value.charCodeAt(i) - value.charCodeAt(i - 1);
+    if (diff !== 1) ascending = false;
+    if (diff !== -1) descending = false;
+  }
+  if (ascending || descending) {
+    return { ok: false, message: 'PIN terlalu mudah ditebak (angka berurutan).' };
+  }
+  return { ok: true, message: '' };
 }
 
 // ===== RATE LIMIT AKSI TULIS PER SESI =====

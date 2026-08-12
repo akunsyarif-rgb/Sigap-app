@@ -1,5 +1,5 @@
 // ===== admin.js =====
-// Panel Kelola Guru (khusus Admin): tambah guru baru, reset password, ubah
+// Panel Kelola Guru (khusus Admin): tambah guru baru, reset PIN, ubah
 // jabatan tampilan. Juga berisi AuditLogTab (khusus Admin/BK-Kesiswaan).
 
        // Dipakai bareng oleh dropdown "Tambah Guru Baru" dan modal "Ubah Role" —
@@ -95,11 +95,15 @@
                });
            };
 
+           // Modal HANYA ditutup kalau server konfirmasi sukses — server bisa
+           // menolak PIN yang tidak memenuhi aturan (lihat validatePin di
+           // Utils.gs), dan kalau modal terlanjur tertutup, admin cuma melihat
+           // pesan merah sekilas tanpa tahu isian mana yang harus diperbaiki.
            const submitReset = () => {
                if (!resetPassword.trim() || !resetTarget) return;
                onUpdatePassword({ targetId: resetTarget.id, newPassword: resetPassword.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   setResetTarget(null); setResetPassword('');
+                   if (ok) { setResetTarget(null); setResetPassword(''); }
                });
            };
 
@@ -245,7 +249,7 @@
                                                <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
                                                <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                                <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
-                                               <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
+                                               <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">PIN</button>
                                                <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                                    {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
                                                </button>
@@ -342,7 +346,10 @@
                                <form onSubmit={submitAdd} className="space-y-3">
                                    <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
                                    <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama Lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
-                                   <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password Awal" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                                   {/* inputMode numeric + pattern angka = keypad angka langsung terbuka
+                                       di HP. Aturan PIN sebenarnya (4-6 digit, tidak berurutan) tetap
+                                       ditegakkan SERVER — atribut di sini cuma kenyamanan mengetik. */}
+                                   <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value.replace(/[^0-9]/g, ''))} placeholder="PIN Awal (4-6 angka)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
                                    <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                        {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                    </select>
@@ -360,11 +367,12 @@
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
                                <div className="text-center">
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Reset Password</h3>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Reset PIN</h3>
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{resetTarget.name}</div>
                                </div>
-                               <input type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitReset} className="w-full">Simpan Password Baru</Button>
+                               <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={resetPassword} onChange={(e) => setResetPassword(e.target.value.replace(/[^0-9]/g, ''))} placeholder="PIN baru (4-6 angka)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <p className="text-[10px] text-slate-500 leading-relaxed">Hindari angka sama semua (1111) atau berurutan (1234) — akan ditolak. Setelah PIN diset, guru ini login dengan memilih namanya lalu mengisi PIN.</p>
+                               <Button onClick={submitReset} className="w-full">Simpan PIN Baru</Button>
                                <Button onClick={() => { setResetTarget(null); setResetPassword(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>

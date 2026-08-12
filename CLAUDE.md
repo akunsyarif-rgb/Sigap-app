@@ -88,23 +88,51 @@ order does for anything not hoisted.
   both the legacy unsalted-lowercased SHA-256 scheme and the current salted
   scheme, with automatic migration on next successful login). Role helpers
   (`isAdminRole`, `isBkRole`, `isOsisRole`) normalize and check role strings.
+  Also owns the `Master_Guru` column map (`GURU_COL`), direct account lookup
+  (`findTeacherRowById`) and `buildSessionUser` — the single place that shapes
+  the user object sent to the client (**never add hash/salt to it**).
 - **`Utils.gs`** — cross-cutting helpers: `jsonOut`, `checkToken`, password
   hashing (`hashPasswordLegacy`/`hashPasswordSalted`), `sameClass` (tolerant
   class-name matching — mirrors `normalizeClass()` in `helpers.js`, keep both
   in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
   throws), `getRowsSince` (binary-search over timestamps to avoid scanning
-  full sheets), and **login rate limiting** (`isLoginRateLimited`/
-  `recordLoginFailure`): login is **password-only** (no username field — see
-  `LoginScreen` in `ui-common.js`), so the server matches a submitted password
-  against every row in `Master_Guru` until one hits. Because a failed attempt
-  can't be attributed to one account, the rate limiter is a **global, fixed
-  5-minute window** (not per-account, not sliding) capped at 15 failures.
+  full sheets), PIN rules (`validatePin` — 4-6 digits, rejects all-same and
+  sequential), and **login rate limiting** (see below).
+
+### Login: Nama + PIN (with a legacy password path still live)
+
+Two login paths coexist in `doPost 'login'` — **do not collapse them into one**
+until rollout is finished:
+
+1. **Current — `{ userId, pin }`**: the login screen fetches `getLoginUsers`
+   (the only non-ping GET that needs no session; returns `{id, name}` of
+   *active* accounts only — never role/jabatan/hash) and the guru picks their
+   name, so the server looks up exactly one row via `findTeacherRowById`.
+2. **Legacy — `{ password }`**: server tries the password against every
+   `Master_Guru` row. Kept alive **only** because frontend and backend deploy
+   separately (see above): a guru holding a cached old `index.html` would
+   otherwise be locked out. Turn it off with Script Property
+   `ALLOW_LEGACY_LOGIN='false'` once Audit Log shows no more
+   `Login / "Password (jalur lama)"` entries — no redeploy needed.
+
+Rows whose col I (`Login_Mode`) is `'pin'` are **skipped by the legacy path on
+purpose**: a 4-6 digit PIN is safe when checked against one chosen account, but
+matching it against every row would hand an attacker whichever account happens
+to share that PIN. Admin setting a PIN (`addTeacher`/`updatePassword`) is what
+marks the row.
+
+Rate limiting is two-layer: per-account (5 failures / 15 min, keyed by
+`userId`, cleared on success and on admin PIN reset) plus the pre-existing
+**global, fixed 5-minute window** capped at 15 failures, which named-path
+failures also increment so account-hopping can't bypass the limit.
 
 Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
-`Pelanggaran`, `Surat_Masuk`, `Audit_Log`, `Error_Log`. Column positions are
-significant and accessed by index (e.g. `Master_Guru` col H/index 7 = salt) —
-check existing row-index comments before touching sheet read/write code.
-`LockService` guards concurrent writes to shared sheets.
+`Pelanggaran`, `Surat_Masuk`, `Tindak_Lanjut`, `Audit_Log`, `Error_Log`. Column
+positions are significant and accessed by index — use the `GURU_COL` map in
+`Auth.gs` for `Master_Guru` (A=ID, B=Nama, C=hash, D=role, E=jabatan, F=status,
+G=Kelas_Wali, H=salt, **I=Login_Mode**) and check existing row-index comments
+before touching other sheet read/write code. `LockService` guards concurrent
+writes to shared sheets.
 
 ### Frontend: React with no bundler
 
