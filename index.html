@@ -74,20 +74,12 @@
        ::-webkit-scrollbar-track { background: transparent; }
        :focus-visible { outline: 2px solid #1F5278; outline-offset: 2px; }
        @media (prefers-reduced-motion: reduce) {
-           .animate-scanline, .animate-rise, .animate-pop, .animate-ping { animation: none !important; }
+           .animate-rise, .animate-pop, .animate-ping { animation: none !important; }
        }
-       @keyframes scanline { 0% { top: 8%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 92%; opacity: 0; } }
-       .animate-scanline { animation: scanline 2.2s ease-in-out infinite; }
        @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
        .animate-rise { animation: riseIn .28s ease-out; }
        @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
        .animate-pop { animation: popIn .18s ease-out; }
-       .print-report { display: none; }
-       @media print {
-           body * { visibility: hidden; }
-           .print-report, .print-report * { visibility: visible; }
-           .print-report { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; color: #000; }
-       }
    </style>
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen m-0">
@@ -106,7 +98,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 39;
+           var BUILD_VERSION = 40;
            var files = [
                'config.js',
                'helpers.js',

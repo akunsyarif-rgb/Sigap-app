@@ -15,10 +15,12 @@
        // Piket / Pemeliharaan Data), dipakai di layar hub KelolaTab supaya
        // daftar guru yang panjang (54+ guru di sekolah nyata) tidak lagi
        // memaksa scroll panjang untuk sampai ke Jadwal Piket / hapus data.
-       function KelolaHubCard({ emoji, title, subtitle, onClick }) {
+       function KelolaHubCard({ icon, title, subtitle, onClick }) {
            return (
                <button onClick={onClick} className="w-full bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3.5 text-left hover:border-sky-dim/40 hover:bg-sky-dim/5 transition">
-                   <div className="text-2xl flex-shrink-0">{emoji}</div>
+                   <div className="w-10 h-10 rounded-xl bg-navy/5 flex items-center justify-center flex-shrink-0">
+                       <Icon path={icon} className="h-5 w-5 text-navy" />
+                   </div>
                    <div className="min-w-0 flex-1">
                        <div className="text-sm font-display font-bold text-slate-900">{title}</div>
                        <div className="text-[11px] text-slate-500">{subtitle}</div>
@@ -248,9 +250,18 @@
                                </div>
                            )}
                            <div className="space-y-2.5">
-                               <KelolaHubCard emoji="👤" title="Kelola Guru" subtitle={`Akun, role & wali kelas • ${teachers.length} guru`} onClick={() => setView('guru')} />
-                               <KelolaHubCard emoji="📅" title="Jadwal Piket" subtitle="Atur guru piket harian" onClick={() => setView('jadwal')} />
-                               <KelolaHubCard emoji="🗄️" title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')} />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />}
+                                   title="Kelola Guru" subtitle={`Akun, role & wali kelas • ${teachers.length} guru`} onClick={() => setView('guru')}
+                               />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />}
+                                   title="Jadwal Piket" subtitle="Atur guru piket harian" onClick={() => setView('jadwal')}
+                               />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6.75 3.75h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5C21.75 4.254 21.246 3.75 20.625 3.75H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />}
+                                   title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')}
+                               />
                            </div>
                        </React.Fragment>
                    )}
@@ -327,7 +338,11 @@
                                                    {entries.map((j, i) => (
                                                        <span key={i} className="text-[10px] font-semibold bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
                                                            {guruName(j.guruId)}
-                                                           <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} className="text-crimson font-bold">×</button>
+                                                           {/* p-1 -m-1 (bukan padding besar) -- chip ini di flex-wrap
+                                                               berdempetan (gap-1.5 = 6px), jadi perluasan area tap
+                                                               dibatasi supaya tidak pernah tabrakan dengan chip
+                                                               sebelah walau saat wrap paling rapat. */}
+                                                           <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} aria-label={`Hapus ${guruName(j.guruId)} dari piket ${j.hari}`} className="text-crimson font-bold p-1 -m-1">×</button>
                                                        </span>
                                                    ))}
                                                </div>
@@ -398,7 +413,11 @@
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-3 animate-pop my-4">
                                <div className="flex items-center justify-between">
                                    <h3 className="text-sm font-display font-bold text-slate-800">Tambah Guru Baru</h3>
-                                   <button onClick={() => setShowAddGuru(false)} className="text-slate-400 text-xl leading-none">×</button>
+                                   {/* p-2.5 (bukan tanpa padding) -- baris judul modal ini punya
+                                       banyak ruang kosong di kanan, aman diperbesar ke >=44px tanpa
+                                       risiko tabrakan (beda dari tombol × di chip Jadwal Piket yang
+                                       berdesakan di baris flex-wrap). */}
+                                   <button onClick={() => setShowAddGuru(false)} aria-label="Tutup" className="text-slate-400 text-xl leading-none p-2.5 -m-2.5">×</button>
                                </div>
                                <form onSubmit={submitAdd} className="space-y-3">
                                    <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />

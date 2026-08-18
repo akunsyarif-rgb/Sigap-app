@@ -545,7 +545,7 @@
                        {period === 'custom' && customDate && (
                            <span className="px-3.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap bg-navy text-white flex items-center gap-1.5">
                                {new Date(customDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                               <button onClick={() => { setPeriod('semua'); setCustomDate(''); }} className="text-white/70 hover:text-white">×</button>
+                               <button onClick={() => { setPeriod('semua'); setCustomDate(''); }} aria-label="Batalkan tanggal kustom" className="text-white/70 hover:text-white p-1 -m-1">×</button>
                            </span>
                        )}
                    </ScrollFadeRow>
