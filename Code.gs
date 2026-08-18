@@ -310,6 +310,85 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
+    // ---- Perbaiki nama guru yang salah ketik (admin only) — kolom B di
+    // Master_Guru. Tidak menyentuh ID/password/role/dsb, murni ganti label
+    // nama. Guru berstatus nonaktif sekalipun tetap bisa diperbaiki namanya. ----
+    if (action === 'updateTeacherName') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa mengubah nama guru' });
+      }
+      var newName = String(data.newName || '').trim();
+      if (!newName) {
+        return jsonOut({ status: 'error', message: 'Nama tidak boleh kosong' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var oldName = '';
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          oldName = rows[i][1];
+          sheet.getRange(i + 1, 2).setValue(newName);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      // Nama dipakai di layar login & di getWaliKelasMap (Dashboard/Rekap
+      // Kelas kalau guru ini wali kelas) — buang keduanya biar langsung sinkron.
+      CacheService.getScriptCache().remove('login_users');
+      CacheService.getScriptCache().remove('wali_kelas_map');
+      logAudit(sessionUser, 'Ubah Nama Guru', oldName + ' -> ' + newName + ' (' + data.targetId + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Hapus akun guru permanen (admin only). Beda dari toggleTeacherStatus
+    // (nonaktifkan): ini benar-benar membuang barisnya dari Master_Guru — untuk
+    // entri yang salah ketik/duplikat dan belum punya riwayat berarti. Catatan
+    // lama (Log_Gerbang, Pelanggaran, dst.) menyimpan nama sebagai teks bebas
+    // saat kejadian dicatat, jadi TIDAK ikut rusak/hilang kalau baris gurunya
+    // dihapus belakangan. Yang sengaja DIBLOKIR: menghapus diri sendiri, dan
+    // menghapus guru yang masih berstatus wali kelas aktif (kelas itu akan
+    // diam-diam kehilangan wali kelas di getWaliKelasMap tanpa peringatan kalau
+    // dibiarkan) — admin harus lepas status wali kelasnya dulu lewat tombol
+    // "Wali Kelas" yang sudah ada. Jadwal Piket SENGAJA tidak diblokir: baris
+    // yang jadi yatim di sana sudah ditangani rapi oleh getJadwalPiket
+    // ('(guru tidak ditemukan)'), dan admin bisa hapus slot itu dari panel
+    // Jadwal Piket yang sama. ----
+    if (action === 'deleteTeacher') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus akun guru' });
+      }
+      if (String(data.targetId) === String(sessionUser.id)) {
+        return jsonOut({ status: 'error', message: 'Tidak bisa menghapus akun sendiri.' });
+      }
+      var sheet = ss.getSheetByName('Master_Guru');
+      var rows = sheet.getDataRange().getValues();
+      var found = false;
+      var targetName = '';
+      var targetRow = -1;
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.targetId)) {
+          targetName = rows[i][1];
+          if (rows[i][6]) {
+            return jsonOut({ status: 'error', message: 'Guru ini masih tercatat sebagai wali kelas ' + rows[i][6] + '. Lepas status wali kelasnya dulu lewat tombol "Wali Kelas" sebelum menghapus.' });
+          }
+          targetRow = i + 1;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
+      }
+      sheet.deleteRow(targetRow);
+      CacheService.getScriptCache().remove('login_users');
+      logAudit(sessionUser, 'Hapus Guru', targetName + ' (' + data.targetId + ')');
+      return jsonOut({ status: 'success' });
+    }
+
     // ---- Ajukan "sudah ditindaklanjuti" untuk siswa yang sering terlambat
     // (banner Perlu Perhatian di Dashboard) — admin/BK, atau wali kelas untuk
     // kelasnya sendiri. Status awal 'menunggu': BELUM langsung hilang dari
@@ -756,6 +835,10 @@ function doGet(e) {
       // Kolom G (index 6) = Kelas_Wali, dipakai panel Kelola untuk atur wali kelas.
       teachers.push({ id: rows[i][0], name: rows[i][1], role: rows[i][3], jabatan: rows[i][4] || '', status: (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') ? 'nonaktif' : 'aktif', kelasWali: rows[i][6] || '' });
     }
+    // Urut abjad (sama seperti getLoginUsers) — dipakai Daftar Guru & dropdown
+    // Jadwal Piket di panel Kelola, supaya sekolah dengan puluhan guru tidak
+    // perlu menyisir urutan baris Sheet yang acak.
+    teachers.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
     return jsonOut({ status: 'success', teachers: teachers });
   }
 

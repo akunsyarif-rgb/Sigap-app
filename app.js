@@ -430,7 +430,10 @@
                    .then(data => {
                        setLoadingTeacherAction(false);
                        if (data.status === 'success') {
-                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole, jabatan: payload.newJabatan || '', status: 'aktif', kelasWali: '' }]);
+                           // Server (getTeachers) sudah urut abjad — susun ulang di sini
+                           // juga supaya guru baru langsung muncul di posisi yang benar,
+                           // bukan nyempil di akhir daftar sampai refresh berikutnya.
+                           setTeachers(prev => [...prev, { id: payload.newId, name: payload.newName, role: payload.newRole, jabatan: payload.newJabatan || '', status: 'aktif', kelasWali: '' }].sort((a, b) => String(a.name).localeCompare(String(b.name))));
                            callback(true, '✓ Guru berhasil ditambahkan.');
                        } else callback(false, data.message || 'Gagal menambah guru.');
                    })
@@ -492,6 +495,33 @@
                            fetchWaliKelasMap();
                            callback(true, '✓ Kelas wali berhasil diubah.');
                        } else callback(false, data.message || 'Gagal mengubah kelas wali.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleUpdateTeacherName = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateTeacherName', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.map(t => t.id === payload.targetId ? { ...t, name: payload.newName } : t).sort((a, b) => String(a.name).localeCompare(String(b.name))));
+                           callback(true, '✓ Nama berhasil diubah.');
+                       } else callback(false, data.message || 'Gagal mengubah nama.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           // Hapus permanen — beda dari handleToggleStatus (nonaktifkan). Server
+           // yang menolak kalau target masih wali kelas aktif / akun sendiri,
+           // lihat komentar action 'deleteTeacher' di Code.gs.
+           const handleDeleteTeacher = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteTeacher', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setTeachers(prev => prev.filter(t => t.id !== payload.targetId));
+                           callback(true, '✓ Guru berhasil dihapus.');
+                       } else callback(false, data.message || 'Gagal menghapus guru.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
@@ -704,7 +734,7 @@
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onSetJadwalPiket={handleSetJadwalPiket} onDeleteSurat={handleDeleteSurat} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onDeleteSurat={handleDeleteSurat} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />

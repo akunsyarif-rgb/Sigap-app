@@ -43,7 +43,7 @@
            );
        }
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, onDeleteSurat, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onDeleteSurat, loading }) {
            // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
            // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
            // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
@@ -68,6 +68,10 @@
            const [roleInput, setRoleInput] = useState('guru');
            const [waliKelasTarget, setWaliKelasTarget] = useState(null);
            const [waliKelasInput, setWaliKelasInput] = useState('');
+           const [nameTarget, setNameTarget] = useState(null);
+           const [nameInput, setNameInput] = useState('');
+           const [confirmDeleteGuru, setConfirmDeleteGuru] = useState(null);
+           const [deletingGuru, setDeletingGuru] = useState(false);
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
            // Daftar Guru: satu-satunya list di SIGAP yang sebelumnya tidak punya
@@ -127,6 +131,24 @@
                });
            };
 
+           const submitName = () => {
+               if (!nameTarget || !nameInput.trim()) return;
+               onUpdateName({ targetId: nameTarget.id, newName: nameInput.trim() }, (ok, text) => {
+                   showMsg(ok, text);
+                   if (ok) { setNameTarget(null); setNameInput(''); }
+               });
+           };
+
+           const executeDeleteGuru = () => {
+               if (!confirmDeleteGuru) return;
+               setDeletingGuru(true);
+               onDeleteTeacher({ targetId: confirmDeleteGuru.id }, (ok, text) => {
+                   setDeletingGuru(false);
+                   showMsg(ok, text);
+                   setConfirmDeleteGuru(null);
+               });
+           };
+
            // ===== Jadwal Piket mingguan (pola tetap, tanpa pengecualian per
            // tanggal — Blueprint SIGAP v2 memilih ini supaya tetap sederhana) =====
            const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -134,12 +156,20 @@
            const [jadwalDirty, setJadwalDirty] = useState(false);
            const [pickHari, setPickHari] = useState('Senin');
            const [pickGuru, setPickGuru] = useState('');
+           const [pickGuruSearch, setPickGuruSearch] = useState('');
 
            useEffect(() => {
                if (!jadwalDirty) setJadwalDraft(jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
            }, [jadwalPiket]);
 
            const guruName = (id) => { const t = teachers.find(t => String(t.id) === String(id)); return t ? t.name : id; };
+
+           // teachers sudah diurut abjad dari server (getTeachers) — cari di sini
+           // cuma memfilter, tidak mengurutkan ulang, supaya listnya tetap abjad.
+           const activeTeachers = teachers.filter(t => t.status !== 'nonaktif');
+           const pickGuruOptions = pickGuruSearch.trim() === '' ? activeTeachers : activeTeachers.filter(t =>
+               t.name.toLowerCase().includes(pickGuruSearch.toLowerCase())
+           );
 
            const addJadwalEntry = () => {
                if (!pickGuru) return;
@@ -242,6 +272,7 @@
                                                </div>
                                            </div>
                                            <div className="flex gap-1.5 flex-wrap">
+                                               <button onClick={() => { setNameTarget(t); setNameInput(t.name || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Edit Nama</button>
                                                <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
                                                <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                                <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
@@ -249,6 +280,7 @@
                                                <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                                    {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
                                                </button>
+                                               <button onClick={() => setConfirmDeleteGuru(t)} className="text-[10px] font-semibold bg-crimson/10 border border-crimson/30 text-crimson px-2.5 py-1.5 rounded-lg">Hapus</button>
                                            </div>
                                        </div>
                                    ))}
@@ -290,13 +322,14 @@
                                    );
                                })}
 
-                               <div className="flex gap-2 pt-1">
+                               <input type="text" value={pickGuruSearch} onChange={(e) => { setPickGuruSearch(e.target.value); setPickGuru(''); }} placeholder="Cari nama guru untuk ditambahkan..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <div className="flex gap-2">
                                    <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                        {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
                                    </select>
                                    <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                       <option value="">Pilih guru...</option>
-                                       {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                       <option value="">{pickGuruOptions.length === 0 ? 'Tidak ada guru cocok' : 'Pilih guru...'}</option>
+                                       {pickGuruOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                    </select>
                                    <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
                                </div>
@@ -402,6 +435,21 @@
                        </div>
                    )}
 
+                   {nameTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Edit Nama</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{nameTarget.name}</div>
+                                   <div className="text-[10px] text-slate-500 mt-1">Perbaiki nama yang salah ketik. ID, password, role, dan riwayat tidak berubah.</div>
+                               </div>
+                               <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Nama lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <Button onClick={submitName} disabled={!nameInput.trim()} className="w-full">Simpan Nama</Button>
+                               <Button onClick={() => { setNameTarget(null); setNameInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
                    {waliKelasTarget && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
@@ -415,6 +463,22 @@
                                </select>
                                <Button onClick={submitWaliKelas} className="w-full">Simpan Wali Kelas</Button>
                                <Button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmDeleteGuru && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Akun Guru?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteGuru.name}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Akun ini akan dihapus permanen dan tidak bisa login lagi. Riwayat catatan yang sudah tersimpan tidak ikut terhapus. Kalau ini cuma nama yang salah ketik, gunakan "Edit Nama" saja, bukan Hapus.</p>
+                               </div>
+                               <Button onClick={executeDeleteGuru} disabled={deletingGuru} variant="danger" className="w-full">
+                                   {deletingGuru ? 'Menghapus...' : 'Ya, Hapus'}
+                               </Button>
+                               <Button onClick={() => setConfirmDeleteGuru(null)} variant="secondary" className="w-full" disabled={deletingGuru}>Batal</Button>
                            </div>
                        </div>
                    )}
