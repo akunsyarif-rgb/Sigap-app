@@ -156,6 +156,7 @@
            const [jadwalDirty, setJadwalDirty] = useState(false);
            const [pickHari, setPickHari] = useState('Senin');
            const [pickGuruSearch, setPickGuruSearch] = useState('');
+           const [confirmAddGuru, setConfirmAddGuru] = useState(null);
 
            useEffect(() => {
                if (!jadwalDirty) setJadwalDraft(jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
@@ -170,17 +171,28 @@
                t.name.toLowerCase().includes(pickGuruSearch.toLowerCase())
            );
 
-           // Tap nama langsung menambahkan (bukan pilih di <select> lalu tekan
-           // tombol Tambah terpisah) -- sebelumnya kotak cari cuma menyaring
-           // <select> yang tersembunyi di baliknya, jadi tampak seperti tidak
-           // berfungsi sama sekali saat nama di-tap. Satu tap = satu keputusan,
-           // sama seperti pola cari-lalu-pilih di tempat lain (Gerbang, dst.).
-           const addJadwalEntry = (guruId) => {
-               if (!guruId) return;
-               if (jadwalDraft.some(j => j.hari === pickHari && String(j.guruId) === String(guruId))) return;
-               setJadwalDraft(prev => [...prev, { hari: pickHari, guruId }]);
+           // Tap nama -> minta konfirmasi dulu (bukan langsung tambah) -- guru
+           // piket yang namanya mirip gampang ke-tap salah kalau langsung
+           // eksekusi. hari di-snapshot di sini (bukan baca ulang pickHari saat
+           // konfirmasi ditekan), sama seperti confirmDeleteSurat di bawah,
+           // supaya kalau dropdown hari sempat berubah selagi dialog terbuka,
+           // yang benar-benar ditambahkan tetap sesuai yang ditampilkan di dialog.
+           const requestAddJadwal = (guruId, guruName) => {
+               setConfirmAddGuru({ id: guruId, name: guruName, hari: pickHari });
+           };
+
+           const executeAddJadwal = () => {
+               if (!confirmAddGuru) return;
+               const { id, name, hari } = confirmAddGuru;
+               setConfirmAddGuru(null);
+               if (jadwalDraft.some(j => j.hari === hari && String(j.guruId) === String(id))) {
+                   showMsg(false, `${name} sudah ada di jadwal piket ${hari}.`);
+                   return;
+               }
+               setJadwalDraft(prev => [...prev, { hari, guruId: id }]);
                setJadwalDirty(true);
                setPickGuruSearch('');
+               showMsg(true, `✓ ${name} ditambahkan ke jadwal piket ${hari}.`);
            };
 
            const removeJadwalEntry = (hari, guruId) => {
@@ -343,7 +355,7 @@
                                            <div className="text-xs text-slate-500 px-3 py-2.5">Tidak ada guru cocok.</div>
                                        )}
                                        {pickGuruOptions.map(t => (
-                                           <button key={t.id} type="button" onClick={() => addJadwalEntry(t.id)} className="w-full text-left px-3 min-h-[48px] flex items-center text-xs font-semibold text-slate-700 active:bg-sky-dim/10 transition">
+                                           <button key={t.id} type="button" onClick={() => requestAddJadwal(t.id, t.name)} className="w-full text-left px-3 min-h-[48px] flex items-center text-xs font-semibold text-slate-700 active:bg-sky-dim/10 transition">
                                                {t.name}
                                            </button>
                                        ))}
@@ -495,6 +507,20 @@
                                    {deletingGuru ? 'Menghapus...' : 'Ya, Hapus'}
                                </Button>
                                <Button onClick={() => setConfirmDeleteGuru(null)} variant="secondary" className="w-full" disabled={deletingGuru}>Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmAddGuru && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Tambah Guru Piket?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmAddGuru.name}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Ditambahkan ke jadwal piket hari <b>{confirmAddGuru.hari}</b>.</p>
+                               </div>
+                               <Button onClick={executeAddJadwal} className="w-full">Ya, Tambahkan</Button>
+                               <Button onClick={() => setConfirmAddGuru(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}

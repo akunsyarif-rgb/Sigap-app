@@ -76,8 +76,11 @@
                    {searchQuery.trim() !== '' && (
                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
                            <div className="max-h-48 overflow-y-auto">
-                               {filtered.length > 0 ? filtered.map(s => (
-                                   <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 cursor-pointer">
+                               {/* key gabungan nisn+index -- lihat catatan yang sama di
+                                   gerbang.js: dua siswa tanpa NISN terisi akan tabrakan key
+                                   kalau cuma pakai s.nisn. */}
+                               {filtered.length > 0 ? filtered.map((s, i) => (
+                                   <div key={`${s.nisn}-${i}`} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 cursor-pointer">
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim">{s.class}</div>
@@ -475,8 +478,11 @@
                    {searchQuery.trim() !== '' && (
                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
                            <div className="max-h-48 overflow-y-auto">
-                               {filtered.length > 0 ? filtered.map(s => (
-                                   <div key={s.nisn} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 cursor-pointer">
+                               {/* key gabungan nisn+index -- lihat catatan yang sama di
+                                   gerbang.js: dua siswa tanpa NISN terisi akan tabrakan key
+                                   kalau cuma pakai s.nisn. */}
+                               {filtered.length > 0 ? filtered.map((s, i) => (
+                                   <div key={`${s.nisn}-${i}`} onClick={() => { setSelectedStudent(s); setSearchQuery(''); }} className="px-4 py-3 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 cursor-pointer">
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim">{s.class}</div>

@@ -146,11 +146,15 @@
                                Hasil ({filtered.length})
                            </div>
                            <div className="max-h-60 overflow-y-auto">
-                               {filtered.length > 0 ? filtered.map(s => (
-                                   <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
+                               {/* key gabungan nisn+index (bukan cuma s.nisn) -- Master_Siswa
+                                   bisa punya baris tanpa NISN terisi, dan dua siswa yang
+                                   sama-sama kosong NISN-nya akan tabrakan key kalau cuma
+                                   pakai s.nisn (React salah mengenali baris mana itu mana). */}
+                               {filtered.length > 0 ? filtered.map((s, i) => (
+                                   <div key={`${s.nisn}-${i}`} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
                                        <div className="min-w-0">
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
-                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn}</span></div>
+                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn || '(belum diisi)'}</span></div>
                                            <div className="text-[10px] text-slate-500 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
                                        </div>
                                        <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm flex-shrink-0 ml-2">Pilih</span>
@@ -207,7 +211,7 @@
                                    <div className="text-center">
                                        <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
                                        <div className="font-display text-xl font-extrabold text-slate-900">{pickerStudent.name}</div>
-                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-500 font-normal">| NISN: {pickerStudent.nisn}</span></div>
+                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-500 font-normal">| NISN: {pickerStudent.nisn || '(belum diisi)'}</span></div>
                                        <div className="text-[11px] text-slate-500 mt-1">👩‍🏫 {waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</div>
                                    </div>
 
