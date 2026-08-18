@@ -158,6 +158,11 @@ const cases = [
   ['PelanggaranTab (modal terbuka)', { students: [student], pelanggaranList: [pelanggaranEntry], onAddPelanggaran: () => {}, onAddBimbingan: () => {}, canSeeClassDetail: true, onGetPelanggaranCount: () => Promise.resolve(0), waliKelasMap }, 'PelanggaranTab', [undefined, student]],
   ['BimbinganTab', { bimbinganList: [{ timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', catatan: 'Perlu bimbingan', logged_by: 'Bu Kartina' }] }],
   ['UpacaraTab (osis)', { students: [student], upacaraList: [{ timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS' }], onAddUpacara: () => {}, isOsis: true }, 'UpacaraTab'],
+  ['Header', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }],
+  ['Header (menu ukuran tulisan terbuka)', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }, 'Header', [true]],
+  ['BottomNav (guru, 4 menu primer)', { menus: ['scan', 'dashboard', 'log', 'pelanggaran'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'scan', setActiveTab: () => {} }, 'BottomNav'],
+  ['BottomNav (admin, 6 menu primer + Lainnya)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], activeTab: 'stats', setActiveTab: () => {} }, 'BottomNav'],
+  ['BottomNav (panel Lainnya terbuka)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav', [true]],
 ];
 
 for (const [label, props, fnNameOverride, overrides] of cases) {

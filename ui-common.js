@@ -2,8 +2,13 @@
 // Komponen tampilan kecil yang dipakai berulang (Badge, kartu statistik,
 // grafik batang, dll), plus layar Login, Header, dan Bottom Navigation.
 
+       // tone="sky" satu-satunya yang dipakai (badge peran di Header, yang
+       // sekarang berlatar navy) -- makanya warnanya terang (putih di atas
+       // navy), bukan biru gelap seperti tone lain yang dipakai di latar
+       // terang. Kalau ada pemakai baru di latar terang nanti, tambah tone
+       // baru, jangan ubah "sky" lagi (lihat kontras yang sudah dihitung).
        function Badge({ children, tone = 'sky' }) {
-           const tones = { sky: 'bg-sky-dim/30 text-sky-dim border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300' };
+           const tones = { sky: 'bg-white/15 text-white border-white/35', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300' };
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
        }
 
@@ -133,10 +138,21 @@
            );
        }
 
-       function EmptyState({ emoji, text }) {
+       // icon (path SVG, opsional) ditambahkan berdampingan dengan emoji -- BUKAN
+       // pengganti -- supaya 11 pemanggil lama tetap jalan tanpa migrasi serentak
+       // (audit desain Fase 3: migrasi call site dilakukan bertahap/terpisah).
+       // Kirim salah satu: `icon` untuk line-art duotone navy/paper baru, atau
+       // `emoji` seperti sebelumnya kalau belum sempat dimigrasi.
+       function EmptyState({ emoji, icon, text }) {
            return (
                <div className="text-center py-16 bg-white/50 rounded-2xl border border-dashed border-slate-200">
-                   <div className="text-4xl mb-2">{emoji}</div>
+                   {icon ? (
+                       <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-navy/5 border border-navy/10 flex items-center justify-center">
+                           <Icon path={icon} className="h-7 w-7 text-navy/40" />
+                       </div>
+                   ) : (
+                       <div className="text-4xl mb-2">{emoji}</div>
+                   )}
                    <div className="text-slate-500 text-xs font-medium px-6">{text}</div>
                </div>
            );
@@ -346,14 +362,19 @@
        function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange }) {
            const [showMenu, setShowMenu] = useState(false);
            return (
-               <div className="fixed top-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
+               // bg-navy/95 (bukan opak) + backdrop-blur: pengecualian glassmorphism
+               // yang memang diizinkan audit desain untuk header sticky. Hanya WARNA
+               // yang berubah di sini -- padding/ukuran logo/struktur SAMA PERSIS
+               // dengan sebelumnya, supaya tinggi header (dan pt-20 di app.js:688
+               // yang bergantung padanya) tidak bergeser.
+               <div className="fixed top-0 inset-x-0 z-30 bg-navy/95 backdrop-blur-md border-b border-white/10">
                    <div className="max-w-2xl mx-auto px-4 pt-4 pb-2.5 flex items-center justify-between">
                        <div className="flex items-center space-x-3 min-w-0">
-                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-slate-300 flex-shrink-0" />
+                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-white/20 flex-shrink-0" />
                            <div className="min-w-0">
-                               <h1 className="font-display font-bold text-xs uppercase tracking-wider text-sky-dim truncate">SMAN 2 Tarakan</h1>
+                               <h1 className="font-display font-bold text-xs uppercase tracking-wider text-white truncate">SMAN 2 Tarakan</h1>
                                <div className="flex items-center gap-1.5 mt-0.5">
-                                   <span className="text-[10px] text-slate-500 truncate">{user.name}</span>
+                                   <span className="text-[10px] text-white/70 truncate">{user.name}</span>
                                    <Badge tone="sky">{roleLabel}</Badge>
                                </div>
                            </div>
@@ -407,22 +428,27 @@
                            </div>
                        </div>
                    )}
-                   <div className="bg-white/95 backdrop-blur-md border-t border-slate-200">
+                   <div className="bg-paper/95 backdrop-blur-md border-t border-slate-200">
                        <div className="max-w-2xl mx-auto flex justify-around py-3 px-2 pb-safe">
                            {primaryMenus.map((key) => {
                                const item = NAV_ITEMS[key];
                                const active = activeTab === key;
                                return (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-navy scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                        <Icon path={item.icon()} filled={active} className="h-6 w-6" />
                                        <span className="text-[10px] font-bold">{item.label}</span>
+                                       {/* Titik indikator selalu di-render (opacity di-toggle, bukan
+                                           conditional render) supaya tinggi tombol tidak melompat
+                                           saat pindah aktif/nonaktif. */}
+                                       <span className={`w-1 h-1 rounded-full bg-navy transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}></span>
                                    </button>
                                );
                            })}
                            {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-navy scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                    <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
                                    <span className="text-[10px] font-bold">Lainnya</span>
+                                   <span className={`w-1 h-1 rounded-full bg-navy transition-opacity ${isSecondaryActive || showMore ? 'opacity-100' : 'opacity-0'}`}></span>
                                </button>
                            )}
                        </div>

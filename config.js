@@ -22,8 +22,15 @@
        // bandingan/label buruk antar kelas yang dilihat sembarang guru.
        // (Blueprint SIGAP v2, section VII & IX)
        const ROLES = {
-           admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true, canViewRanking: true },
-           bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog'],          primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: true },
+           // primaryMenus admin/bk_kesiswaan sengaja lebih panjang (6, bukan 4
+           // seperti guru) -- audit desain: Statistik & Audit Log adalah menu inti
+           // buat peran ini, jangan tersembunyi di balik "Lainnya" 2 tap. Guru
+           // piket TETAP 4 (tidak disentuh) supaya alur harian yang sudah ringkas
+           // tidak ikut padat. Label "Pelanggaran"/"Statistik"/"Audit Log" akan
+           // wrap ke 2 baris di layar sempit kalau 6 ikon dirasa padat -- belum
+           // sempat dicek di HP asli, tolong tinjau tampilannya.
+           admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], canExport: true, canViewRanking: true },
+           bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog'],          primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], canExport: false, canViewRanking: true },
            // 'rekap' TIDAK dimasukkan di sini — akses ke Rekap Kelas untuk guru
            // ditentukan per-orang (cuma yang jadi wali kelas), ditambahkan secara
            // runtime di app.js (effectiveMenus), bukan berlaku untuk semua guru.
