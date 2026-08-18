@@ -268,15 +268,18 @@
                                    </div>
                                ) : (
                                    <React.Fragment>
-                                       <input
-                                           type="text"
-                                           value={query}
-                                           onChange={(e) => setQuery(e.target.value)}
-                                           onFocus={keepInView}
-                                           placeholder="🔍 Cari nama guru..."
-                                           autoComplete="off"
-                                           className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
-                                       />
+                                       <div className="relative">
+                                           <input
+                                               type="text"
+                                               value={query}
+                                               onChange={(e) => setQuery(e.target.value)}
+                                               onFocus={keepInView}
+                                               placeholder="Cari nama guru..."
+                                               autoComplete="off"
+                                               className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-4 pr-11 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                                           />
+                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
+                                       </div>
                                        {state === 'loading' && (
                                            <div className="text-[10px] text-slate-500 mt-1.5 px-1">Memuat daftar guru... Anda tetap bisa langsung mengisi password di bawah.</div>
                                        )}

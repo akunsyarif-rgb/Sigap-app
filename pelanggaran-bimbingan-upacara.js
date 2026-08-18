@@ -84,7 +84,10 @@
                                        <div>
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                            <div className="text-xs text-sky-dim">{s.class}</div>
-                                           <div className="text-[10px] text-slate-500 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
+                                           <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-2.5 w-2.5 flex-shrink-0" />
+                                               <span className="truncate">{waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</span>
+                                           </div>
                                        </div>
                                    </div>
                                )) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
@@ -118,7 +121,7 @@
                                })}
                            </div>
                        ) : (
-                           <EmptyState emoji="✅" text={canSeeClassDetail ? 'Belum ada pelanggaran tercatat hari ini.' : 'Anda belum mencatat pelanggaran hari ini.'} />
+                           <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />} text={canSeeClassDetail ? 'Belum ada pelanggaran tercatat hari ini.' : 'Anda belum mencatat pelanggaran hari ini.'} />
                        )}
                        <p className="text-[11px] text-slate-500 text-center pt-3">Untuk data kemarin/minggu/bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
                    </div>
@@ -130,13 +133,19 @@
                                    <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Catat Pelanggaran</h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{selectedStudent.name}</div>
                                    <div className="text-xs text-slate-500">{selectedStudent.class}</div>
-                                   <div className="text-[11px] text-slate-500 mt-1">👩‍🏫 {waliByClass[normalizeClass(selectedStudent.class)] || 'Belum ada wali kelas'}</div>
+                                   <div className="flex items-center justify-center gap-1 text-[11px] text-slate-500 mt-1">
+                                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-3 w-3 flex-shrink-0" />
+                                       <span>{waliByClass[normalizeClass(selectedStudent.class)] || 'Belum ada wali kelas'}</span>
+                                   </div>
                                </div>
 
                                {canSeeClassDetail ? (
                                    studentHistory.length > 0 && (
                                        <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
-                                           <div className="text-[10px] text-crimson font-bold uppercase tracking-wide">⚠ Sudah {studentHistory.length}x tercatat sebelumnya</div>
+                                           <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
+                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
+                                               <span>Sudah {studentHistory.length}x tercatat sebelumnya</span>
+                                           </div>
                                            {studentHistory.slice(0, 3).map((h, i) => {
                                                const hDt = parseTimestamp(h.timestamp);
                                                return <div key={i} className="text-[11px] text-slate-600">{h.jenis_pelanggaran} — {hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} ({h.sanksi})</div>;
@@ -148,7 +157,10 @@
                                    // isinya — lihat getPelanggaranCountForStudent di Code.gs.
                                    otherTotalCount > 0 && (
                                        <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3">
-                                           <div className="text-[10px] text-crimson font-bold uppercase tracking-wide">⚠ Sudah {otherTotalCount}x tercatat sebelumnya (oleh guru mana pun)</div>
+                                           <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
+                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
+                                               <span>Sudah {otherTotalCount}x tercatat sebelumnya (oleh guru mana pun)</span>
+                                           </div>
                                        </div>
                                    )
                                )}
@@ -230,7 +242,7 @@
                            );
                        })}
                        {pelanggaranList.length === 0 && (
-                           <EmptyState emoji="📋" text={canSeeClassDetail ? 'Belum ada catatan pelanggaran.' : 'Anda belum pernah mencatat pelanggaran.'} />
+                           <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />} text={canSeeClassDetail ? 'Belum ada catatan pelanggaran.' : 'Anda belum pernah mencatat pelanggaran.'} />
                        )}
                    </div>
                </div>
@@ -259,7 +271,7 @@
                                </RowCard>
                            );
                        })}
-                       {bimbinganList.length === 0 && <EmptyState emoji="🤝" text="Belum ada catatan bimbingan khusus." />}
+                       {bimbinganList.length === 0 && <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />} text="Belum ada catatan bimbingan khusus." />}
                    </div>
                </div>
            );
@@ -371,7 +383,7 @@
                                ))}
                            </div>
                        ))}
-                       {sorted.length === 0 && <EmptyState emoji="🚩" text="Tidak ada pelanggaran upacara di filter ini." />}
+                       {sorted.length === 0 && <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />} text="Tidak ada pelanggaran upacara di filter ini." />}
                    </div>
 
                    {showFilter && (
@@ -551,7 +563,7 @@
                                </RowCard>
                            );
                        })}
-                       {upacaraList.length === 0 && <EmptyState emoji="🚩" text="Belum ada catatan pelanggaran upacara." />}
+                       {upacaraList.length === 0 && <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />} text="Belum ada catatan pelanggaran upacara." />}
                    </div>
                    </React.Fragment>
                    )}

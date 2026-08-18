@@ -165,7 +165,10 @@
                            {piketHariIni.length > 0 && (
                                <div>
                                    <button onClick={() => setShowPiketList(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
-                                       <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">👮 Guru Piket Hari Ini ({hariIni}) — {piketHariIni.length} orang</div>
+                                       <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-3 w-3 flex-shrink-0" />
+                                           <span>Guru Piket Hari Ini ({hariIni}) — {piketHariIni.length} orang</span>
+                                       </div>
                                        <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d={showPiketList ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />} className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                                    </button>
                                    {showPiketList && (
@@ -180,7 +183,10 @@
                            )}
                            {waliKelas && (
                                <div className={piketHariIni.length > 0 ? 'pt-2 border-t border-slate-200/70' : ''}>
-                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">👨‍🏫 Wali Kelas {waliKelas}</div>
+                                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-3 w-3 flex-shrink-0" />
+                                       <span>Wali Kelas {waliKelas}</span>
+                                   </div>
                                </div>
                            )}
                        </div>
@@ -200,7 +206,10 @@
                        wali kelas. Laporan tertulis saja (jenis + keterangan), tidak
                        ada lampiran foto — lihat catatan di Utils.gs. */}
                    <Card className="space-y-2.5">
-                       <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">📄 Surat Hari Ini ({todaySurat.length})</h3>
+                       <h3 className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />} className="h-3 w-3 flex-shrink-0" />
+                           <span>Surat Hari Ini ({todaySurat.length})</span>
+                       </h3>
                        {todaySurat.length > 0 ? (
                            <div className="space-y-2">
                                {[...todaySurat].sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp)).map((s, idx) => (
@@ -301,7 +310,7 @@
                            {combinedFeed.map((item, idx) => <FeedItem key={idx} item={item} />)}
                        </div>
                    ) : (
-                       <EmptyState emoji="🏆" text="Belum ada aktivitas tercatat hari ini." />
+                       <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />} text="Belum ada aktivitas tercatat hari ini." />
                    )}
 
                    <p className="text-[11px] text-slate-500 text-center pt-1">Untuk data kemarin, minggu, atau bulan lalu, buka menu <span className="font-semibold text-slate-500">Riwayat</span>.</p>
@@ -319,7 +328,7 @@
                                    {kelasPerwalian.daftarSiswa.length > 5 && <p className="text-[10px] text-slate-500">+{kelasPerwalian.daftarSiswa.length - 5} siswa lainnya</p>}
                                </div>
                            ) : (
-                               <div className="text-xs text-slate-500">Belum ada siswa bermasalah minggu ini. 🎉</div>
+                               <div className="text-xs text-slate-500">Belum ada siswa bermasalah minggu ini.</div>
                            )}
                            {/* Surat masuk atas nama kelas perwalian ini saja — beda dari
                                kartu "Surat Hari Ini" di atas yang semua kelas, ini
@@ -664,7 +673,7 @@
                            })}
                        </div>
                    ) : (
-                       <EmptyState emoji="🔍" text={`Tidak ada catatan ${activeCat.label.toLowerCase()} yang cocok.`} />
+                       <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} text={`Tidak ada catatan ${activeCat.label.toLowerCase()} yang cocok.`} />
                    )}
 
                    {manageTarget && (
