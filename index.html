@@ -2,11 +2,15 @@
 <html lang="id">
 <head>
    <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
    <title>SIGAP - SMAN 2 Tarakan</title>
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+   <!-- Fraunces (judul/angka besar) + Work Sans (UI/isi). Work Sans memuat
+        500 juga (bukan cuma 400/600/700) karena font-extrabold (800) dipakai
+        di beberapa angka statistik kecil di luar elemen font-display — lihat
+        audit desain; menghapusnya akan mengubah tampilan tanpa menyentuh JSX. -->
+   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=Work+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
    <!-- Build produksi (development.js sebelumnya): lebih kecil & tanpa
         console warning ala-dev yang tidak relevan buat end user. Tetap
         pin ke tag mayor "@18"/"@7" (bukan angka patch persis) supaya unpkg
@@ -17,29 +21,61 @@
    <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
    <script src="https://cdn.tailwindcss.com"></script>
    <script>
+       // Palet "Modern Academic Utility" (audit desain Ags 2026). navy/sky/
+       // crimson tetap nama token lama (dipakai ratusan kali di *.js sebagai
+       // bg-sky-dim, text-crimson, dst.) — hanya nilai hex-nya yang diganti,
+       // supaya efeknya langsung terasa tanpa menyentuh satu pun file JSX.
+       // slate & amber JUGA di-override (bukan token baru) karena mayoritas
+       // teks/border di app ini sebenarnya pakai warna Tailwind bawaan itu,
+       // bukan token custom "ink" — override ini yang membuat latar jadi
+       // "paper" hangat & teks jadi "ink" tanpa mengubah JSX. Semua rasio
+       // kontras di bawah sudah dihitung terhadap latar paper (#F7F3EC),
+       // bukan cuma putih — lihat catatan per baris.
        tailwind.config = {
            theme: {
                extend: {
                    fontFamily: {
-                       sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-                       display: ['Sora', 'sans-serif'],
+                       sans: ['"Work Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                       display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
                    },
                    colors: {
-                       navy: { DEFAULT: '#0B2A55', light: '#123B72', dark: '#071A38' },
-                       sky: { DEFAULT: '#2E86D8', light: '#6FB3EA', dim: '#1D5C93' },
-                       crimson: { DEFAULT: '#E0473C', dim: '#B93A31' },
-                       ink: { 950: '#0A0D12', 900: '#10141B', 850: '#161B24', 800: '#1C222D', 700: '#262E3B', 600: '#3A4453' },
+                       navy: { DEFAULT: '#1B2A41', light: '#22344F', dark: '#101826' },
+                       sky: { DEFAULT: '#2C6E9B', light: '#5C93B8', dim: '#1F5278' },
+                       crimson: { DEFAULT: '#B93A31', dim: '#9E2F28' },
+                       moss: { DEFAULT: '#4F6136', dim: '#3E4C2A' },
+                       paper: { DEFAULT: '#F7F3EC', 200: '#EDE6DA' },
+                       ink: { 950: '#141310', 900: '#221F19', 850: '#2B2B2B', 800: '#3A3529', 700: '#4A4438', 600: '#5A5A5A' },
+                       // slate-* dipakai ratusan kali (bg-slate-100 latar halaman,
+                       // text-slate-500/900 teks, border-slate-200/300) — override
+                       // seluruh skala jadi krem/ink hangat, urutan gelap-terang
+                       // dipertahankan sama seperti Tailwind asli.
+                       slate: {
+                           50: '#FBF9F5', 100: '#F7F3EC', 200: '#EDE6DA', 300: '#DCD2C0',
+                           400: '#948870', 500: '#5C5548', 600: '#4A4438', 700: '#3A3529',
+                           800: '#2B2B2B', 900: '#221F19',
+                       },
+                       // hanya shade yang benar-benar dipakai (50/100/200 latar
+                       // pelanggaran, 600/700 teks) digelapkan supaya kontras
+                       // AA di atas paper; shade lain tetap Tailwind default.
+                       amber: {
+                           50: '#FBF2E2', 100: '#F5E6C8', 200: '#EAD3A0',
+                           600: '#93611A', 700: '#8A5A12',
+                       },
                    },
                }
            }
        }
    </script>
    <style>
-       * { font-family: 'Plus Jakarta Sans', sans-serif; }
-       .font-display { font-family: 'Sora', sans-serif; }
+       * { font-family: 'Work Sans', ui-sans-serif, system-ui, sans-serif; }
+       .font-display { font-family: 'Fraunces', ui-serif, Georgia, serif; }
        ::-webkit-scrollbar { width: 4px; height: 4px; }
-       ::-webkit-scrollbar-thumb { background: #262E3B; border-radius: 4px; }
+       ::-webkit-scrollbar-thumb { background: #4A4438; border-radius: 4px; }
        ::-webkit-scrollbar-track { background: transparent; }
+       :focus-visible { outline: 2px solid #1F5278; outline-offset: 2px; }
+       @media (prefers-reduced-motion: reduce) {
+           .animate-scanline, .animate-rise, .animate-pop, .animate-ping { animation: none !important; }
+       }
        @keyframes scanline { 0% { top: 8%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 92%; opacity: 0; } }
        .animate-scanline { animation: scanline 2.2s ease-in-out infinite; }
        @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -70,7 +106,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 28;
+           var BUILD_VERSION = 29;
            var files = [
                'config.js',
                'helpers.js',
