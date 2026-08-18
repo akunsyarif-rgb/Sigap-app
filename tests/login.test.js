@@ -232,12 +232,12 @@ test('LoginScreen: getLoginUsers gagal → fallback legacy + pesan + tombol coba
   let retried = 0;
   const tree = render('LoginScreen', { ...baseProps, usersState: 'error', onRetryUsers: () => { retried++; } });
 
-  assert.equal(inputsOfType(tree, 'password').length, 1, 'login PIN-saja harus tetap tersedia');
+  assert.equal(inputsOfType(tree, 'password').length, 1, 'login password-saja harus tetap tersedia');
   assert.notEqual(submitButton(tree).props.disabled, true);
 
   const text = allText(tree);
   assert.match(text, /gagal dimuat/i, 'kegagalan harus diberi tahu, tidak diam-diam');
-  assert.match(text, /PIN saja tetap bisa/i);
+  assert.match(text, /password saja tetap bisa/i);
 
   const retryBtn = findAll(tree, (n) => n.type === 'button' && /Coba lagi/.test(allText(n)))[0];
   assert.ok(retryBtn, 'harus ada tombol "Coba lagi"');
@@ -283,9 +283,15 @@ test('LoginScreen: memilih guru mengirim {id,name} lalu menutup daftar hasil', (
   assert.match(allText(after), /Ganti/, 'harus bisa mengganti pilihan');
 });
 
-test('LoginScreen: PIN memakai keyboard angka & tap target hasil pencarian nyaman', () => {
+// Bawaan papan ketik = HURUF: yang dibagikan admin ke guru adalah password
+// (boleh berhuruf), bukan PIN angka. Numpad tetap bisa dipilih lewat sakelar
+// ABC/123 — sakelar itu dua tombol, yang aktif tersorot, supaya tidak terbaca
+// sebagai keterangan mode yang sedang berjalan (bug yang dilaporkan guru).
+test('LoginScreen: password memakai keyboard huruf & tap target hasil pencarian nyaman', () => {
   const tree = render('LoginScreen', { ...baseProps, usersState: 'ready', users: USERS }, ['ka']);
-  assert.equal(inputsOfType(tree, 'password')[0].props.inputMode, 'numeric');
+  assert.equal(inputsOfType(tree, 'password')[0].props.inputMode, 'text');
+  assert.match(inputsOfType(tree, 'password')[0].props.placeholder, /password/i, 'placeholder harus konsisten menyebut password');
+  assert.doesNotMatch(allText(tree), /PIN/, 'layar login tidak lagi menyebut PIN sama sekali');
 
   const rows = findAll(tree, (n) => n.type === 'button' && n.props.type === 'button' && /Kartina|Kasman/.test(allText(n)));
   assert.ok(rows.length >= 2);
