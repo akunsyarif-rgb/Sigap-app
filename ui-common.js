@@ -24,7 +24,9 @@
                amber: 'bg-amber-50 border-amber-200',
                sky: 'bg-sky-dim/10 border-sky-dim/30',
            };
-           return <div className={`border rounded-2xl p-4 ${tones[tone]} ${className}`}>{children}</div>;
+           // shadow halus 0 1px 3px rgba(navy,.08) — audit desain (bukan shadow-lg/
+           // shadow-xl bawaan Tailwind, itu terlalu berat untuk kartu kecil berulang).
+           return <div className={`border rounded-2xl p-5 ${tones[tone]} ${className}`} style={{ boxShadow: '0 1px 3px rgba(27,42,65,0.08)' }}>{children}</div>;
        }
 
        // RowCard: satu baris dalam daftar berulang (log Riwayat, hasil
@@ -45,15 +47,18 @@
        // Gerbang). size="compact" untuk elemen kecil berulang (toggle pill,
        // tombol ikon) yang secara desain memang tidak perlu 44px.
        function Button({ children, onClick, variant = 'primary', size = 'normal', disabled = false, type = 'button', className = '' }) {
-           const base = 'font-bold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 inline-flex items-center justify-center gap-1.5';
+           // weight 600 (bukan 700) sesuai audit desain — py-3.5 (bukan py-3 persis
+           // seperti spec) DIPERTAHANKAN: itu yang menjaga tap-target tetap ≥44px
+           // di semua varian termasuk yang punya border-2, jangan diturunkan.
+           const base = 'font-semibold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 inline-flex items-center justify-center gap-1.5';
            const variants = {
                primary: 'bg-sky hover:bg-sky-light text-white shadow-sm',
                danger: 'bg-crimson hover:bg-crimson-dim text-white shadow-sm',
-               secondary: 'bg-transparent border-2 border-slate-300 text-slate-500 hover:text-slate-900 hover:border-slate-400',
+               secondary: 'bg-transparent border-2 border-navy/20 text-navy hover:border-navy/40 hover:bg-navy/5',
                ghost: 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300',
            };
            const sizes = {
-               normal: 'py-3.5 rounded-2xl text-sm',
+               normal: 'py-3.5 px-5 rounded-xl text-sm',
                compact: 'py-2 px-3 rounded-xl text-xs',
            };
            return (
@@ -66,7 +71,7 @@
        function StatCard({ value, label, accent = false }) {
            return (
                <Card tone={accent ? 'sky' : 'white'} className="text-center">
-                   <div className={`font-display text-3xl font-extrabold ${accent ? 'text-sky-dim' : 'text-slate-800'}`}>{value}</div>
+                   <div className={`font-display text-3xl font-semibold ${accent ? 'text-sky-dim' : 'text-slate-800'}`}>{value}</div>
                    <div className="text-[10px] text-slate-500 mt-1 font-semibold uppercase tracking-wide">{label}</div>
                </Card>
            );
