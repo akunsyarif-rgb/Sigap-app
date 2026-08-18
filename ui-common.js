@@ -199,13 +199,14 @@
        // usersState: 'loading' | 'ready' | 'error'
        function LoginScreen({ onLogin, loading, error, password, setPassword, users, usersState, onRetryUsers, selectedTeacher, setSelectedTeacher }) {
            const [query, setQuery] = useState('');
-           // Papan ketik HP dibuka sebagai keyboard HURUF, bukan numpad. Yang
-           // dibagikan admin ke guru di sekolah ini adalah PASSWORD (boleh
-           // mengandung huruf), bukan PIN angka — jadi numpad sebagai bawaan
-           // memaksa mayoritas guru menekan sakelar dulu setiap kali login.
-           // Yang password-nya kebetulan angka semua tetap bisa pindah ke
-           // numpad lewat sakelar ABC/123 di sebelah label.
-           const [numericPin, setNumericPin] = useState(false);
+           // Papan ketik HP dibuka sebagai keyboard HURUF (inputMode="text"),
+           // bukan numpad -- yang dibagikan admin ke guru di sekolah ini adalah
+           // PASSWORD (boleh mengandung huruf), bukan PIN angka. Sakelar
+           // ABC/123 yang dulu ada di sini untuk pindah ke numpad DIHAPUS atas
+           // permintaan eksplisit (bukan default -- lihat pagar CLAUDE.md soal
+           // sakelar ini): guru yang password-nya kebetulan angka semua tetap
+           // bisa mengetik lewat tombol angka bawaan di keyboard huruf standar
+           // (long-press atau tombol "123" di keyboard itu sendiri).
 
            const userList = Array.isArray(users) ? users : [];
            const state = usersState || 'loading';
@@ -306,38 +307,13 @@
                            </div>
 
                            <div>
-                               {/* Sakelar papan ketik = DUA tombol dengan yang aktif
-                                   tersorot, bukan satu tombol berisi pertanyaan
-                                   ("Ada huruf? ABC" / "Angka saja? 123"). Tombol tanya
-                                   itu adalah AKSI (pindah ke mode sebelah), tapi
-                                   posisinya persis di samping label bikin guru
-                                   membacanya sebagai KETERANGAN mode yang sedang aktif —
-                                   jadi terlihat bertentangan dengan placeholder di
-                                   bawahnya dan dilaporkan sebagai bug. Dua tombol
-                                   berdampingan tidak punya arah baca yang ambigu:
-                                   yang tersorot = yang sedang dipakai. */}
-                               <div className="flex items-center justify-between gap-2 mb-1.5">
-                                   <label className="text-xs text-slate-500 font-semibold">Password Petugas</label>
-                                   <div role="group" aria-label="Jenis papan ketik" className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
-                                       {[{ label: 'ABC', numeric: false }, { label: '123', numeric: true }].map(opt => (
-                                           <button
-                                               key={opt.label}
-                                               type="button"
-                                               onClick={() => setNumericPin(opt.numeric)}
-                                               aria-pressed={numericPin === opt.numeric}
-                                               className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition ${numericPin === opt.numeric ? 'bg-white text-sky-dim border border-slate-200 shadow-sm' : 'text-slate-500'}`}
-                                           >
-                                               {opt.label}
-                                           </button>
-                                       ))}
-                                   </div>
-                               </div>
+                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
                                <input
                                    type="password"
                                    value={password}
                                    onChange={(e) => setPassword(e.target.value)}
                                    onFocus={keepInView}
-                                   inputMode={numericPin ? 'numeric' : 'text'}
+                                   inputMode="text"
                                    autoComplete="current-password"
                                    placeholder="Masukkan password..."
                                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"

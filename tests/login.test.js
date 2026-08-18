@@ -284,9 +284,10 @@ test('LoginScreen: memilih guru mengirim {id,name} lalu menutup daftar hasil', (
 });
 
 // Bawaan papan ketik = HURUF: yang dibagikan admin ke guru adalah password
-// (boleh berhuruf), bukan PIN angka. Numpad tetap bisa dipilih lewat sakelar
-// ABC/123 — sakelar itu dua tombol, yang aktif tersorot, supaya tidak terbaca
-// sebagai keterangan mode yang sedang berjalan (bug yang dilaporkan guru).
+// (boleh berhuruf), bukan PIN angka. Sakelar ABC/123 yang dulu ada di sini
+// (dua tombol, yang aktif tersorot) sudah DIHAPUS atas permintaan eksplisit --
+// guru yang password-nya angka semua tetap bisa ketik lewat tombol angka
+// bawaan di keyboard huruf standar.
 test('LoginScreen: password memakai keyboard huruf & tap target hasil pencarian nyaman', () => {
   const tree = render('LoginScreen', { ...baseProps, usersState: 'ready', users: USERS }, ['ka']);
   assert.equal(inputsOfType(tree, 'password')[0].props.inputMode, 'text');
