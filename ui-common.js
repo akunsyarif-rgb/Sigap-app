@@ -359,8 +359,14 @@
        // ruang layar yang berharga bagi guru piket yang kerja satu tangan.
        // Prinsip "satu tangan, satu pandangan, satu keputusan": zona atas cuma
        // untuk identitas & pengaturan yang jarang disentuh.
-       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange }) {
+       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange, activeTab }) {
            const [showMenu, setShowMenu] = useState(false);
+           // Menu ini tumpang tindih z-index dengan BottomNav (z-40 > overlay
+           // penutup z-10 milik menu ini), jadi tap di BottomNav untuk pindah tab
+           // tidak pernah "kena" overlay-nya -- menu tetap terbuka nyangkut di atas
+           // tab baru sampai di-tap manual sekali lagi. Tutup otomatis begitu
+           // activeTab berubah, supaya pindah tab = menu ikut tertutup.
+           useEffect(() => { setShowMenu(false); }, [activeTab]);
            return (
                // bg-navy/95 (bukan opak) + backdrop-blur: pengecualian glassmorphism
                // yang memang diizinkan audit desain untuk header sticky. Hanya WARNA

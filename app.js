@@ -696,7 +696,7 @@
                        />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} />
+                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
 
                            {toast && (
                                <div className="fixed bottom-24 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">

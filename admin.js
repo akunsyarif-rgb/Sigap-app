@@ -155,7 +155,6 @@
            const [jadwalDraft, setJadwalDraft] = useState(() => jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
            const [jadwalDirty, setJadwalDirty] = useState(false);
            const [pickHari, setPickHari] = useState('Senin');
-           const [pickGuru, setPickGuru] = useState('');
            const [pickGuruSearch, setPickGuruSearch] = useState('');
 
            useEffect(() => {
@@ -171,12 +170,17 @@
                t.name.toLowerCase().includes(pickGuruSearch.toLowerCase())
            );
 
-           const addJadwalEntry = () => {
-               if (!pickGuru) return;
-               if (jadwalDraft.some(j => j.hari === pickHari && String(j.guruId) === String(pickGuru))) return;
-               setJadwalDraft(prev => [...prev, { hari: pickHari, guruId: pickGuru }]);
+           // Tap nama langsung menambahkan (bukan pilih di <select> lalu tekan
+           // tombol Tambah terpisah) -- sebelumnya kotak cari cuma menyaring
+           // <select> yang tersembunyi di baliknya, jadi tampak seperti tidak
+           // berfungsi sama sekali saat nama di-tap. Satu tap = satu keputusan,
+           // sama seperti pola cari-lalu-pilih di tempat lain (Gerbang, dst.).
+           const addJadwalEntry = (guruId) => {
+               if (!guruId) return;
+               if (jadwalDraft.some(j => j.hari === pickHari && String(j.guruId) === String(guruId))) return;
+               setJadwalDraft(prev => [...prev, { hari: pickHari, guruId }]);
                setJadwalDirty(true);
-               setPickGuru('');
+               setPickGuruSearch('');
            };
 
            const removeJadwalEntry = (hari, guruId) => {
@@ -322,17 +326,29 @@
                                    );
                                })}
 
-                               <input type="text" value={pickGuruSearch} onChange={(e) => { setPickGuruSearch(e.target.value); setPickGuru(''); }} placeholder="Cari nama guru untuk ditambahkan..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <div className="flex gap-2">
+                               <div className="flex items-center gap-2">
+                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex-shrink-0">Tambah ke</label>
                                    <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                        {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
                                    </select>
-                                   <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                       <option value="">{pickGuruOptions.length === 0 ? 'Tidak ada guru cocok' : 'Pilih guru...'}</option>
-                                       {pickGuruOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                   </select>
-                                   <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
                                </div>
+                               <input type="text" value={pickGuruSearch} onChange={(e) => setPickGuruSearch(e.target.value)} placeholder="Cari nama guru untuk ditambahkan..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               {/* Tap NAMA langsung menambahkan -- bukan sekadar menyaring
+                                   <select> tersembunyi seperti sebelumnya (dilaporkan sebagai
+                                   "klik nama tidak muncul apa-apa"). min-h-[48px] sama seperti
+                                   daftar guru di layar Login, untuk tap-target yang konsisten. */}
+                               {pickGuruSearch.trim() !== '' && (
+                                   <div className="bg-white border border-slate-300 rounded-xl divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                                       {pickGuruOptions.length === 0 && (
+                                           <div className="text-xs text-slate-500 px-3 py-2.5">Tidak ada guru cocok.</div>
+                                       )}
+                                       {pickGuruOptions.map(t => (
+                                           <button key={t.id} type="button" onClick={() => addJadwalEntry(t.id)} className="w-full text-left px-3 min-h-[48px] flex items-center text-xs font-semibold text-slate-700 active:bg-sky-dim/10 transition">
+                                               {t.name}
+                                           </button>
+                                       ))}
+                                   </div>
+                               )}
 
                                <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
                            </Card>
