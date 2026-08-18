@@ -23,7 +23,10 @@
 
                        {studentHistory.length >= 3 && (
                            <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
-                               <div className="text-[10px] text-crimson font-bold uppercase tracking-wide">⚠ Sudah {studentHistory.length}x terlambat — perlu tindak lanjut</div>
+                               <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
+                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
+                                   <span>Sudah {studentHistory.length}x terlambat — perlu tindak lanjut</span>
+                               </div>
                                {studentHistory.slice(0, 3).map((h, i) => {
                                    const hDt = parseTimestamp(h.timestamp);
                                    return <div key={i} className="text-[11px] text-slate-600">{h.type} — {hDt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</div>;
@@ -73,11 +76,9 @@
            const waliByClass = {};
            waliKelasMap.forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
-               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
-           );
+           // filterStudents (helpers.js) mengurutkan berdasarkan relevansi (posisi
+           // kecocokan paling awal menang) -- bukan cuma .filter() tanpa urutan.
+           const filtered = filterStudents(students, searchQuery);
 
            // Live Activity Log — gabungan Terlambat + Surat hari ini, terbaru dulu,
            // supaya guru piket lain langsung tahu siapa yang sudah dicatat (hindari input ganda).
@@ -148,12 +149,19 @@
                                Hasil ({filtered.length})
                            </div>
                            <div className="max-h-60 overflow-y-auto">
-                               {filtered.length > 0 ? filtered.map(s => (
-                                   <div key={s.nisn} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
+                               {/* key gabungan nisn+index (bukan cuma s.nisn) -- Master_Siswa
+                                   bisa punya baris tanpa NISN terisi, dan dua siswa yang
+                                   sama-sama kosong NISN-nya akan tabrakan key kalau cuma
+                                   pakai s.nisn (React salah mengenali baris mana itu mana). */}
+                               {filtered.length > 0 ? filtered.map((s, i) => (
+                                   <div key={`${s.nisn}-${i}`} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
                                        <div className="min-w-0">
                                            <div className="font-bold text-sm text-slate-900">{s.name}</div>
-                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn}</span></div>
-                                           <div className="text-[10px] text-slate-500 mt-0.5 truncate">👩‍🏫 {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</div>
+                                           <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn || '(belum diisi)'}</span></div>
+                                           <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-2.5 w-2.5 flex-shrink-0" />
+                                               <span className="truncate">{waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</span>
+                                           </div>
                                        </div>
                                        <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm flex-shrink-0 ml-2">Pilih</span>
                                    </div>
@@ -179,10 +187,14 @@
                                            <div className="w-px h-8 bg-slate-200 flex-shrink-0"></div>
                                            <div className="flex-1 min-w-0">
                                                <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-500 font-normal">({item.class})</span></div>
-                                               <div className="text-[9px] text-slate-500 truncate">👩‍🏫 {waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</div>
+                                               <div className="flex items-center gap-1 text-[9px] text-slate-500">
+                                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-2 w-2 flex-shrink-0" />
+                                                   <span className="truncate">{waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</span>
+                                               </div>
                                                <div className="text-[10px] mt-0.5 flex items-center justify-between gap-2">
-                                                   <span className={item._kind === 'terlambat' ? 'text-crimson font-semibold' : 'text-sky-dim font-semibold'}>
-                                                       {item._kind === 'terlambat' ? '⏰ Terlambat' : '📄 Surat'} — {item._kind === 'terlambat' ? item.type : item.jenis}
+                                                   <span className={`flex items-center gap-1 min-w-0 ${item._kind === 'terlambat' ? 'text-crimson font-semibold' : 'text-sky-dim font-semibold'}`}>
+                                                       <Icon path={item._kind === 'terlambat' ? <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />} className="h-2.5 w-2.5 flex-shrink-0" />
+                                                       <span className="truncate">{item._kind === 'terlambat' ? 'Terlambat' : 'Surat'} — {item._kind === 'terlambat' ? item.type : item.jenis}</span>
                                                    </span>
                                                    <span className="text-slate-500 truncate flex-shrink-0">oleh {item.logged_by}</span>
                                                </div>
@@ -191,7 +203,7 @@
                                    ))}
                                </div>
                            ) : (
-                               <EmptyState emoji="🌤️" text="Belum ada aktivitas tercatat hari ini." />
+                               <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />} text="Belum ada aktivitas tercatat hari ini." />
                            )}
                        </div>
                    )}
@@ -209,8 +221,11 @@
                                    <div className="text-center">
                                        <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
                                        <div className="font-display text-xl font-extrabold text-slate-900">{pickerStudent.name}</div>
-                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-500 font-normal">| NISN: {pickerStudent.nisn}</span></div>
-                                       <div className="text-[11px] text-slate-500 mt-1">👩‍🏫 {waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</div>
+                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickerStudent.class} <span className="text-slate-500 font-normal">| NISN: {pickerStudent.nisn || '(belum diisi)'}</span></div>
+                                       <div className="flex items-center justify-center gap-1 text-[11px] text-slate-500 mt-1">
+                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-3 w-3 flex-shrink-0" />
+                                           <span>{waliByClass[normalizeClass(pickerStudent.class)] || 'Belum ada wali kelas'}</span>
+                                       </div>
                                    </div>
 
                                    <div className="grid grid-cols-3 gap-2 text-center">
@@ -239,8 +254,9 @@
                                                    <div className="text-[10px] text-slate-500 mt-0.5">{parseTimestamp(lateToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {lateToday.logged_by}</div>
                                                </div>
                                            ) : (
-                                               <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition">
-                                                   ⏰ Catat Terlambat
+                                               <button onClick={() => { setPickerStudent(null); onSelectLate(pickerStudent); }} className="w-full bg-crimson/10 hover:bg-crimson/20 border border-crimson/30 text-crimson py-3.5 rounded-2xl font-bold text-sm transition inline-flex items-center justify-center gap-2">
+                                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />} className="h-4 w-4" />
+                                                   Catat Terlambat
                                                </button>
                                            )
                                        ) : (
@@ -250,8 +266,9 @@
                                                    <div className="text-[10px] text-slate-500 mt-0.5 truncate">{parseTimestamp(suratToday.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} oleh {suratToday.logged_by}</div>
                                                </div>
                                            ) : (
-                                               <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition">
-                                                   📄 Catat Surat
+                                               <button onClick={() => { setPickerStudent(null); setSuratStudent(pickerStudent); }} className="w-full bg-sky-dim/10 hover:bg-sky-dim/20 border border-sky-dim/30 text-sky-dim py-3.5 rounded-2xl font-bold text-sm transition inline-flex items-center justify-center gap-2">
+                                                   <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />} className="h-4 w-4" />
+                                                   Catat Surat
                                                </button>
                                            )
                                        )}

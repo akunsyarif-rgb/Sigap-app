@@ -88,6 +88,34 @@
            return hits.slice(0, max).map(h => ({ id: h.id, name: h.name }));
        }
 
+       // ===== Gerbang: pencarian siswa (Catat Terlambat / Catat Surat) =====
+       // Sama polanya seperti filterLoginUsers di atas -- diambil terpisah
+       // (murni, bisa diuji tanpa React) setelah laporan lapangan: ketik "Ter"
+       // memunculkan "Pretty Puteri" (cocok di tengah nama, "pu-TER-i") di
+       // atas "Terra De Langit Muslim" (cocok persis di awal nama), karena
+       // sebelumnya filter cuma pakai .filter() tanpa urutan relevansi sama
+       // sekali -- hasil tampil dalam urutan asal data siswa, bukan seberapa
+       // pas kecocokannya. Field yang cocok PALING AWAL (huruf ke berapa)
+       // yang menang, nama/kelas/NISN semua diperiksa lalu diambil posisi
+       // terbaik dari ketiganya.
+       function filterStudents(students, query) {
+           const list = Array.isArray(students) ? students : [];
+           const q = String(query == null ? '' : query).trim().toLowerCase();
+           if (!q) return [];
+           const hits = [];
+           for (const s of list) {
+               if (!s || !s.name) continue;
+               const name = String(s.name);
+               const cls = String(s.class || '');
+               const nisn = s.nisn == null ? '' : String(s.nisn);
+               const positions = [name.toLowerCase().indexOf(q), cls.toLowerCase().indexOf(q), nisn.indexOf(q)].filter(p => p !== -1);
+               if (positions.length === 0) continue;
+               hits.push({ student: s, pos: Math.min(...positions) });
+           }
+           hits.sort((a, b) => (a.pos - b.pos) || (a.student.name < b.student.name ? -1 : a.student.name > b.student.name ? 1 : 0));
+           return hits.map(h => h.student);
+       }
+
        // Body request login. teacherId hanya ikut kalau guru benar-benar
        // memilih namanya; kalau tidak, dikirim tanpa teacherId sehingga
        // server jatuh ke jalur legacy (cocokkan password ke semua akun).

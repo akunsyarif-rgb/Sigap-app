@@ -284,9 +284,10 @@ test('LoginScreen: memilih guru mengirim {id,name} lalu menutup daftar hasil', (
 });
 
 // Bawaan papan ketik = HURUF: yang dibagikan admin ke guru adalah password
-// (boleh berhuruf), bukan PIN angka. Numpad tetap bisa dipilih lewat sakelar
-// ABC/123 — sakelar itu dua tombol, yang aktif tersorot, supaya tidak terbaca
-// sebagai keterangan mode yang sedang berjalan (bug yang dilaporkan guru).
+// (boleh berhuruf), bukan PIN angka. Sakelar ABC/123 yang dulu ada di sini
+// (dua tombol, yang aktif tersorot) sudah DIHAPUS atas permintaan eksplisit --
+// guru yang password-nya angka semua tetap bisa ketik lewat tombol angka
+// bawaan di keyboard huruf standar.
 test('LoginScreen: password memakai keyboard huruf & tap target hasil pencarian nyaman', () => {
   const tree = render('LoginScreen', { ...baseProps, usersState: 'ready', users: USERS }, ['ka']);
   assert.equal(inputsOfType(tree, 'password')[0].props.inputMode, 'text');
@@ -329,6 +330,32 @@ test('filterLoginUsers: case-insensitive, hanya {id,name}, aman untuk input aneh
   const many = Array.from({ length: 30 }, (_, i) => ({ id: 'G' + i, name: 'Guru ' + i }));
   assert.equal(filterLoginUsers(many, 'guru').length, 8);
   assert.equal(filterLoginUsers(many, 'guru', 3).length, 3);
+});
+
+// ---- filterStudents murni (Gerbang/Pelanggaran/Upacara) ----
+// Laporan lapangan: ketik "Ter" memunculkan "Pretty Puteri" (cocok di
+// tengah, "pu-TER-i") di ATAS "Terra De Langit Muslim" (cocok di awal
+// nama) -- karena sebelumnya cuma .filter() tanpa urutan relevansi.
+test('filterStudents: kecocokan paling awal menang, nama/kelas/NISN semua diperiksa', () => {
+  const filterStudents = get('filterStudents');
+
+  const students = [
+    { nisn: '1', name: 'Pretty Puteri', class: 'XI A' },
+    { nisn: '2', name: 'Terra De Langit Muslim', class: 'XI G' },
+  ];
+  eq(filterStudents(students, 'Ter').map((s) => s.name), ['Terra De Langit Muslim', 'Pretty Puteri']);
+
+  // Cocok di kelas/NISN tetap ikut, diurut sama-sama berdasar posisi.
+  const mixed = [
+    { nisn: '100', name: 'Rahma', class: 'XI B' },
+    { nisn: '200', name: 'Zahra', class: 'X A1' },
+  ];
+  eq(filterStudents(mixed, 'a1').map((s) => s.name), ['Zahra']);
+
+  eq(filterStudents([], 'apa saja'), []);
+  eq(filterStudents(students, ''), []);
+  eq(filterStudents(null, 'ter'), []);
+  eq(filterStudents(undefined, 'ter'), []);
 });
 
 // ---- 7: guru terpilih benar-benar terkirim sebagai teacherId ----

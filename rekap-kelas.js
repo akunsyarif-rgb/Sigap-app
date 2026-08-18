@@ -183,7 +183,7 @@
                                )}
                            </div>
                        ))}
-                       {classData.length === 0 && <EmptyState emoji="🏫" text="Belum ada data kelas." />}
+                       {classData.length === 0 && <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M4.5 21V9.75A2.25 2.25 0 016.75 7.5h10.5a2.25 2.25 0 012.25 2.25V21M4.5 21h15M4.5 21H3m16.5 0H21M9 7.5V6a2.25 2.25 0 012.25-2.25h1.5A2.25 2.25 0 0115 6v1.5m-6 3.75h.008v.008H9v-.008zm0 3h.008v.008H9v-.008zm3.75-3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm3.75-3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />} text="Belum ada data kelas." />}
                    </div>
                </div>
            );

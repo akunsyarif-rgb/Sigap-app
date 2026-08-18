@@ -22,6 +22,14 @@
        // bandingan/label buruk antar kelas yang dilihat sembarang guru.
        // (Blueprint SIGAP v2, section VII & IX)
        const ROLES = {
+           // primaryMenus admin/bk_kesiswaan sempat diperluas ke 6 item (audit
+           // desain, coba masukkan Statistik & Audit Log) TAPI dikembalikan ke 4
+           // -- di HP asli 6 ikon + tombol "Lainnya" (7 total) overflow horizontal,
+           // BottomNav jadi geser kiri-kanan dan tombol "Lainnya" (satu-satunya
+           // jalan ke menu Kelola) terdorong ke luar layar sehingga admin tidak
+           // bisa menjangkau Kelola sama sekali. Kalau mau menonjolkan
+           // Statistik/Audit Log lagi nanti, jangan lewat primaryMenus (ruang
+           // BottomNav sudah pas untuk 4+Lainnya) -- perlu pendekatan lain.
            admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true, canViewRanking: true },
            bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog'],          primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: true },
            // 'rekap' TIDAK dimasukkan di sini — akses ke Rekap Kelas untuk guru

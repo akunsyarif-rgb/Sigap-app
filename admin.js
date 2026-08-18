@@ -15,10 +15,12 @@
        // Piket / Pemeliharaan Data), dipakai di layar hub KelolaTab supaya
        // daftar guru yang panjang (54+ guru di sekolah nyata) tidak lagi
        // memaksa scroll panjang untuk sampai ke Jadwal Piket / hapus data.
-       function KelolaHubCard({ emoji, title, subtitle, onClick }) {
+       function KelolaHubCard({ icon, title, subtitle, onClick }) {
            return (
                <button onClick={onClick} className="w-full bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3.5 text-left hover:border-sky-dim/40 hover:bg-sky-dim/5 transition">
-                   <div className="text-2xl flex-shrink-0">{emoji}</div>
+                   <div className="w-10 h-10 rounded-xl bg-navy/5 flex items-center justify-center flex-shrink-0">
+                       <Icon path={icon} className="h-5 w-5 text-navy" />
+                   </div>
                    <div className="min-w-0 flex-1">
                        <div className="text-sm font-display font-bold text-slate-900">{title}</div>
                        <div className="text-[11px] text-slate-500">{subtitle}</div>
@@ -43,7 +45,7 @@
            );
        }
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onSetJadwalPiket, onDeleteSurat, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onDeleteSurat, loading }) {
            // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
            // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
            // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
@@ -68,6 +70,10 @@
            const [roleInput, setRoleInput] = useState('guru');
            const [waliKelasTarget, setWaliKelasTarget] = useState(null);
            const [waliKelasInput, setWaliKelasInput] = useState('');
+           const [nameTarget, setNameTarget] = useState(null);
+           const [nameInput, setNameInput] = useState('');
+           const [confirmDeleteGuru, setConfirmDeleteGuru] = useState(null);
+           const [deletingGuru, setDeletingGuru] = useState(false);
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
            // Daftar Guru: satu-satunya list di SIGAP yang sebelumnya tidak punya
@@ -127,13 +133,32 @@
                });
            };
 
+           const submitName = () => {
+               if (!nameTarget || !nameInput.trim()) return;
+               onUpdateName({ targetId: nameTarget.id, newName: nameInput.trim() }, (ok, text) => {
+                   showMsg(ok, text);
+                   if (ok) { setNameTarget(null); setNameInput(''); }
+               });
+           };
+
+           const executeDeleteGuru = () => {
+               if (!confirmDeleteGuru) return;
+               setDeletingGuru(true);
+               onDeleteTeacher({ targetId: confirmDeleteGuru.id }, (ok, text) => {
+                   setDeletingGuru(false);
+                   showMsg(ok, text);
+                   setConfirmDeleteGuru(null);
+               });
+           };
+
            // ===== Jadwal Piket mingguan (pola tetap, tanpa pengecualian per
            // tanggal — Blueprint SIGAP v2 memilih ini supaya tetap sederhana) =====
            const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
            const [jadwalDraft, setJadwalDraft] = useState(() => jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
            const [jadwalDirty, setJadwalDirty] = useState(false);
            const [pickHari, setPickHari] = useState('Senin');
-           const [pickGuru, setPickGuru] = useState('');
+           const [pickGuruSearch, setPickGuruSearch] = useState('');
+           const [confirmAddGuru, setConfirmAddGuru] = useState(null);
 
            useEffect(() => {
                if (!jadwalDirty) setJadwalDraft(jadwalPiket.map(j => ({ hari: j.hari, guruId: j.guruId })));
@@ -141,12 +166,35 @@
 
            const guruName = (id) => { const t = teachers.find(t => String(t.id) === String(id)); return t ? t.name : id; };
 
-           const addJadwalEntry = () => {
-               if (!pickGuru) return;
-               if (jadwalDraft.some(j => j.hari === pickHari && String(j.guruId) === String(pickGuru))) return;
-               setJadwalDraft(prev => [...prev, { hari: pickHari, guruId: pickGuru }]);
+           // teachers sudah diurut abjad dari server (getTeachers) — cari di sini
+           // cuma memfilter, tidak mengurutkan ulang, supaya listnya tetap abjad.
+           const activeTeachers = teachers.filter(t => t.status !== 'nonaktif');
+           const pickGuruOptions = pickGuruSearch.trim() === '' ? activeTeachers : activeTeachers.filter(t =>
+               t.name.toLowerCase().includes(pickGuruSearch.toLowerCase())
+           );
+
+           // Tap nama -> minta konfirmasi dulu (bukan langsung tambah) -- guru
+           // piket yang namanya mirip gampang ke-tap salah kalau langsung
+           // eksekusi. hari di-snapshot di sini (bukan baca ulang pickHari saat
+           // konfirmasi ditekan), sama seperti confirmDeleteSurat di bawah,
+           // supaya kalau dropdown hari sempat berubah selagi dialog terbuka,
+           // yang benar-benar ditambahkan tetap sesuai yang ditampilkan di dialog.
+           const requestAddJadwal = (guruId, guruName) => {
+               setConfirmAddGuru({ id: guruId, name: guruName, hari: pickHari });
+           };
+
+           const executeAddJadwal = () => {
+               if (!confirmAddGuru) return;
+               const { id, name, hari } = confirmAddGuru;
+               setConfirmAddGuru(null);
+               if (jadwalDraft.some(j => j.hari === hari && String(j.guruId) === String(id))) {
+                   showMsg(false, `${name} sudah ada di jadwal piket ${hari}.`);
+                   return;
+               }
+               setJadwalDraft(prev => [...prev, { hari, guruId: id }]);
                setJadwalDirty(true);
-               setPickGuru('');
+               setPickGuruSearch('');
+               showMsg(true, `✓ ${name} ditambahkan ke jadwal piket ${hari}.`);
            };
 
            const removeJadwalEntry = (hari, guruId) => {
@@ -202,9 +250,18 @@
                                </div>
                            )}
                            <div className="space-y-2.5">
-                               <KelolaHubCard emoji="👤" title="Kelola Guru" subtitle={`Akun, role & wali kelas • ${teachers.length} guru`} onClick={() => setView('guru')} />
-                               <KelolaHubCard emoji="📅" title="Jadwal Piket" subtitle="Atur guru piket harian" onClick={() => setView('jadwal')} />
-                               <KelolaHubCard emoji="🗄️" title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')} />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />}
+                                   title="Kelola Guru" subtitle={`Akun, role & wali kelas • ${teachers.length} guru`} onClick={() => setView('guru')}
+                               />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />}
+                                   title="Jadwal Piket" subtitle="Atur guru piket harian" onClick={() => setView('jadwal')}
+                               />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6.75 3.75h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5C21.75 4.254 21.246 3.75 20.625 3.75H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />}
+                                   title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')}
+                               />
                            </div>
                        </React.Fragment>
                    )}
@@ -242,6 +299,7 @@
                                                </div>
                                            </div>
                                            <div className="flex gap-1.5 flex-wrap">
+                                               <button onClick={() => { setNameTarget(t); setNameInput(t.name || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Edit Nama</button>
                                                <button onClick={() => { setRoleTarget(t); setRoleInput(String(t.role || 'guru').toLowerCase().trim()); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Role</button>
                                                <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                                <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
@@ -249,6 +307,7 @@
                                                <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                                    {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
                                                </button>
+                                               <button onClick={() => setConfirmDeleteGuru(t)} className="text-[10px] font-semibold bg-crimson/10 border border-crimson/30 text-crimson px-2.5 py-1.5 rounded-lg">Hapus</button>
                                            </div>
                                        </div>
                                    ))}
@@ -279,7 +338,11 @@
                                                    {entries.map((j, i) => (
                                                        <span key={i} className="text-[10px] font-semibold bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
                                                            {guruName(j.guruId)}
-                                                           <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} className="text-crimson font-bold">×</button>
+                                                           {/* p-1 -m-1 (bukan padding besar) -- chip ini di flex-wrap
+                                                               berdempetan (gap-1.5 = 6px), jadi perluasan area tap
+                                                               dibatasi supaya tidak pernah tabrakan dengan chip
+                                                               sebelah walau saat wrap paling rapat. */}
+                                                           <button onClick={() => removeJadwalEntry(j.hari, j.guruId)} aria-label={`Hapus ${guruName(j.guruId)} dari piket ${j.hari}`} className="text-crimson font-bold p-1 -m-1">×</button>
                                                        </span>
                                                    ))}
                                                </div>
@@ -290,16 +353,29 @@
                                    );
                                })}
 
-                               <div className="flex gap-2 pt-1">
+                               <div className="flex items-center gap-2">
+                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex-shrink-0">Tambah ke</label>
                                    <select value={pickHari} onChange={(e) => setPickHari(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                        {HARI_LIST.map(h => <option key={h} value={h}>{h}</option>)}
                                    </select>
-                                   <select value={pickGuru} onChange={(e) => setPickGuru(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky">
-                                       <option value="">Pilih guru...</option>
-                                       {teachers.filter(t => t.status !== 'nonaktif').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                   </select>
-                                   <Button onClick={addJadwalEntry} disabled={!pickGuru} variant="ghost" size="compact">Tambah</Button>
                                </div>
+                               <input type="text" value={pickGuruSearch} onChange={(e) => setPickGuruSearch(e.target.value)} placeholder="Cari nama guru untuk ditambahkan..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               {/* Tap NAMA langsung menambahkan -- bukan sekadar menyaring
+                                   <select> tersembunyi seperti sebelumnya (dilaporkan sebagai
+                                   "klik nama tidak muncul apa-apa"). min-h-[48px] sama seperti
+                                   daftar guru di layar Login, untuk tap-target yang konsisten. */}
+                               {pickGuruSearch.trim() !== '' && (
+                                   <div className="bg-white border border-slate-300 rounded-xl divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                                       {pickGuruOptions.length === 0 && (
+                                           <div className="text-xs text-slate-500 px-3 py-2.5">Tidak ada guru cocok.</div>
+                                       )}
+                                       {pickGuruOptions.map(t => (
+                                           <button key={t.id} type="button" onClick={() => requestAddJadwal(t.id, t.name)} className="w-full text-left px-3 min-h-[48px] flex items-center text-xs font-semibold text-slate-700 active:bg-sky-dim/10 transition">
+                                               {t.name}
+                                           </button>
+                                       ))}
+                                   </div>
+                               )}
 
                                <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
                            </Card>
@@ -337,7 +413,11 @@
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-3 animate-pop my-4">
                                <div className="flex items-center justify-between">
                                    <h3 className="text-sm font-display font-bold text-slate-800">Tambah Guru Baru</h3>
-                                   <button onClick={() => setShowAddGuru(false)} className="text-slate-400 text-xl leading-none">×</button>
+                                   {/* p-2.5 (bukan tanpa padding) -- baris judul modal ini punya
+                                       banyak ruang kosong di kanan, aman diperbesar ke >=44px tanpa
+                                       risiko tabrakan (beda dari tombol × di chip Jadwal Piket yang
+                                       berdesakan di baris flex-wrap). */}
+                                   <button onClick={() => setShowAddGuru(false)} aria-label="Tutup" className="text-slate-400 text-xl leading-none p-2.5 -m-2.5">×</button>
                                </div>
                                <form onSubmit={submitAdd} className="space-y-3">
                                    <input type="text" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="ID Guru (contoh: G21)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
@@ -402,6 +482,21 @@
                        </div>
                    )}
 
+                   {nameTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                           <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Edit Nama</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{nameTarget.name}</div>
+                                   <div className="text-[10px] text-slate-500 mt-1">Perbaiki nama yang salah ketik. ID, password, role, dan riwayat tidak berubah.</div>
+                               </div>
+                               <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Nama lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <Button onClick={submitName} disabled={!nameInput.trim()} className="w-full">Simpan Nama</Button>
+                               <Button onClick={() => { setNameTarget(null); setNameInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
                    {waliKelasTarget && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
@@ -415,6 +510,36 @@
                                </select>
                                <Button onClick={submitWaliKelas} className="w-full">Simpan Wali Kelas</Button>
                                <Button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmDeleteGuru && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Akun Guru?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteGuru.name}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Akun ini akan dihapus permanen dan tidak bisa login lagi. Riwayat catatan yang sudah tersimpan tidak ikut terhapus. Kalau ini cuma nama yang salah ketik, gunakan "Edit Nama" saja, bukan Hapus.</p>
+                               </div>
+                               <Button onClick={executeDeleteGuru} disabled={deletingGuru} variant="danger" className="w-full">
+                                   {deletingGuru ? 'Menghapus...' : 'Ya, Hapus'}
+                               </Button>
+                               <Button onClick={() => setConfirmDeleteGuru(null)} variant="secondary" className="w-full" disabled={deletingGuru}>Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmAddGuru && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Tambah Guru Piket?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmAddGuru.name}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Ditambahkan ke jadwal piket hari <b>{confirmAddGuru.hari}</b>.</p>
+                               </div>
+                               <Button onClick={executeAddJadwal} className="w-full">Ya, Tambahkan</Button>
+                               <Button onClick={() => setConfirmAddGuru(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -482,7 +607,7 @@
                            })}
                        </div>
                    ) : (
-                       <EmptyState emoji="🔍" text="Belum ada catatan audit." />
+                       <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} text="Belum ada catatan audit." />
                    )}
                </div>
            );

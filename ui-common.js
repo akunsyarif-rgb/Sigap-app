@@ -2,8 +2,13 @@
 // Komponen tampilan kecil yang dipakai berulang (Badge, kartu statistik,
 // grafik batang, dll), plus layar Login, Header, dan Bottom Navigation.
 
+       // tone="sky" satu-satunya yang dipakai (badge peran di Header, yang
+       // sekarang berlatar navy) -- makanya warnanya terang (putih di atas
+       // navy), bukan biru gelap seperti tone lain yang dipakai di latar
+       // terang. Kalau ada pemakai baru di latar terang nanti, tambah tone
+       // baru, jangan ubah "sky" lagi (lihat kontras yang sudah dihitung).
        function Badge({ children, tone = 'sky' }) {
-           const tones = { sky: 'bg-sky-dim/30 text-sky-dim border-sky-dim/60', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300' };
+           const tones = { sky: 'bg-white/15 text-white border-white/35', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300' };
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
        }
 
@@ -24,7 +29,9 @@
                amber: 'bg-amber-50 border-amber-200',
                sky: 'bg-sky-dim/10 border-sky-dim/30',
            };
-           return <div className={`border rounded-2xl p-4 ${tones[tone]} ${className}`}>{children}</div>;
+           // shadow halus 0 1px 3px rgba(navy,.08) — audit desain (bukan shadow-lg/
+           // shadow-xl bawaan Tailwind, itu terlalu berat untuk kartu kecil berulang).
+           return <div className={`border rounded-2xl p-5 ${tones[tone]} ${className}`} style={{ boxShadow: '0 1px 3px rgba(27,42,65,0.08)' }}>{children}</div>;
        }
 
        // RowCard: satu baris dalam daftar berulang (log Riwayat, hasil
@@ -45,15 +52,18 @@
        // Gerbang). size="compact" untuk elemen kecil berulang (toggle pill,
        // tombol ikon) yang secara desain memang tidak perlu 44px.
        function Button({ children, onClick, variant = 'primary', size = 'normal', disabled = false, type = 'button', className = '' }) {
-           const base = 'font-bold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 inline-flex items-center justify-center gap-1.5';
+           // weight 600 (bukan 700) sesuai audit desain — py-3.5 (bukan py-3 persis
+           // seperti spec) DIPERTAHANKAN: itu yang menjaga tap-target tetap ≥44px
+           // di semua varian termasuk yang punya border-2, jangan diturunkan.
+           const base = 'font-semibold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 inline-flex items-center justify-center gap-1.5';
            const variants = {
                primary: 'bg-sky hover:bg-sky-light text-white shadow-sm',
                danger: 'bg-crimson hover:bg-crimson-dim text-white shadow-sm',
-               secondary: 'bg-transparent border-2 border-slate-300 text-slate-500 hover:text-slate-900 hover:border-slate-400',
+               secondary: 'bg-transparent border-2 border-navy/20 text-navy hover:border-navy/40 hover:bg-navy/5',
                ghost: 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300',
            };
            const sizes = {
-               normal: 'py-3.5 rounded-2xl text-sm',
+               normal: 'py-3.5 px-5 rounded-xl text-sm',
                compact: 'py-2 px-3 rounded-xl text-xs',
            };
            return (
@@ -66,7 +76,7 @@
        function StatCard({ value, label, accent = false }) {
            return (
                <Card tone={accent ? 'sky' : 'white'} className="text-center">
-                   <div className={`font-display text-3xl font-extrabold ${accent ? 'text-sky-dim' : 'text-slate-800'}`}>{value}</div>
+                   <div className={`font-display text-3xl font-semibold ${accent ? 'text-sky-dim' : 'text-slate-800'}`}>{value}</div>
                    <div className="text-[10px] text-slate-500 mt-1 font-semibold uppercase tracking-wide">{label}</div>
                </Card>
            );
@@ -128,10 +138,21 @@
            );
        }
 
-       function EmptyState({ emoji, text }) {
+       // icon (path SVG, opsional) ditambahkan berdampingan dengan emoji -- BUKAN
+       // pengganti -- supaya 11 pemanggil lama tetap jalan tanpa migrasi serentak
+       // (audit desain Fase 3: migrasi call site dilakukan bertahap/terpisah).
+       // Kirim salah satu: `icon` untuk line-art duotone navy/paper baru, atau
+       // `emoji` seperti sebelumnya kalau belum sempat dimigrasi.
+       function EmptyState({ emoji, icon, text }) {
            return (
                <div className="text-center py-16 bg-white/50 rounded-2xl border border-dashed border-slate-200">
-                   <div className="text-4xl mb-2">{emoji}</div>
+                   {icon ? (
+                       <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-navy/5 border border-navy/10 flex items-center justify-center">
+                           <Icon path={icon} className="h-7 w-7 text-navy/40" />
+                       </div>
+                   ) : (
+                       <div className="text-4xl mb-2">{emoji}</div>
+                   )}
                    <div className="text-slate-500 text-xs font-medium px-6">{text}</div>
                </div>
            );
@@ -178,13 +199,14 @@
        // usersState: 'loading' | 'ready' | 'error'
        function LoginScreen({ onLogin, loading, error, password, setPassword, users, usersState, onRetryUsers, selectedTeacher, setSelectedTeacher }) {
            const [query, setQuery] = useState('');
-           // Papan ketik HP dibuka sebagai keyboard HURUF, bukan numpad. Yang
-           // dibagikan admin ke guru di sekolah ini adalah PASSWORD (boleh
-           // mengandung huruf), bukan PIN angka — jadi numpad sebagai bawaan
-           // memaksa mayoritas guru menekan sakelar dulu setiap kali login.
-           // Yang password-nya kebetulan angka semua tetap bisa pindah ke
-           // numpad lewat sakelar ABC/123 di sebelah label.
-           const [numericPin, setNumericPin] = useState(false);
+           // Papan ketik HP dibuka sebagai keyboard HURUF (inputMode="text"),
+           // bukan numpad -- yang dibagikan admin ke guru di sekolah ini adalah
+           // PASSWORD (boleh mengandung huruf), bukan PIN angka. Sakelar
+           // ABC/123 yang dulu ada di sini untuk pindah ke numpad DIHAPUS atas
+           // permintaan eksplisit (bukan default -- lihat pagar CLAUDE.md soal
+           // sakelar ini): guru yang password-nya kebetulan angka semua tetap
+           // bisa mengetik lewat tombol angka bawaan di keyboard huruf standar
+           // (long-press atau tombol "123" di keyboard itu sendiri).
 
            const userList = Array.isArray(users) ? users : [];
            const state = usersState || 'loading';
@@ -246,15 +268,18 @@
                                    </div>
                                ) : (
                                    <React.Fragment>
-                                       <input
-                                           type="text"
-                                           value={query}
-                                           onChange={(e) => setQuery(e.target.value)}
-                                           onFocus={keepInView}
-                                           placeholder="🔍 Cari nama guru..."
-                                           autoComplete="off"
-                                           className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
-                                       />
+                                       <div className="relative">
+                                           <input
+                                               type="text"
+                                               value={query}
+                                               onChange={(e) => setQuery(e.target.value)}
+                                               onFocus={keepInView}
+                                               placeholder="Cari nama guru..."
+                                               autoComplete="off"
+                                               className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-4 pr-11 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
+                                           />
+                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
+                                       </div>
                                        {state === 'loading' && (
                                            <div className="text-[10px] text-slate-500 mt-1.5 px-1">Memuat daftar guru... Anda tetap bisa langsung mengisi password di bawah.</div>
                                        )}
@@ -285,38 +310,13 @@
                            </div>
 
                            <div>
-                               {/* Sakelar papan ketik = DUA tombol dengan yang aktif
-                                   tersorot, bukan satu tombol berisi pertanyaan
-                                   ("Ada huruf? ABC" / "Angka saja? 123"). Tombol tanya
-                                   itu adalah AKSI (pindah ke mode sebelah), tapi
-                                   posisinya persis di samping label bikin guru
-                                   membacanya sebagai KETERANGAN mode yang sedang aktif —
-                                   jadi terlihat bertentangan dengan placeholder di
-                                   bawahnya dan dilaporkan sebagai bug. Dua tombol
-                                   berdampingan tidak punya arah baca yang ambigu:
-                                   yang tersorot = yang sedang dipakai. */}
-                               <div className="flex items-center justify-between gap-2 mb-1.5">
-                                   <label className="text-xs text-slate-500 font-semibold">Password Petugas</label>
-                                   <div role="group" aria-label="Jenis papan ketik" className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
-                                       {[{ label: 'ABC', numeric: false }, { label: '123', numeric: true }].map(opt => (
-                                           <button
-                                               key={opt.label}
-                                               type="button"
-                                               onClick={() => setNumericPin(opt.numeric)}
-                                               aria-pressed={numericPin === opt.numeric}
-                                               className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition ${numericPin === opt.numeric ? 'bg-white text-sky-dim border border-slate-200 shadow-sm' : 'text-slate-500'}`}
-                                           >
-                                               {opt.label}
-                                           </button>
-                                       ))}
-                                   </div>
-                               </div>
+                               <label className="text-xs text-slate-500 font-semibold mb-1.5 block">Password Petugas</label>
                                <input
                                    type="password"
                                    value={password}
                                    onChange={(e) => setPassword(e.target.value)}
                                    onFocus={keepInView}
-                                   inputMode={numericPin ? 'numeric' : 'text'}
+                                   inputMode="text"
                                    autoComplete="current-password"
                                    placeholder="Masukkan password..."
                                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
@@ -338,17 +338,28 @@
        // ruang layar yang berharga bagi guru piket yang kerja satu tangan.
        // Prinsip "satu tangan, satu pandangan, satu keputusan": zona atas cuma
        // untuk identitas & pengaturan yang jarang disentuh.
-       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange }) {
+       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange, activeTab }) {
            const [showMenu, setShowMenu] = useState(false);
+           // Menu ini tumpang tindih z-index dengan BottomNav (z-40 > overlay
+           // penutup z-10 milik menu ini), jadi tap di BottomNav untuk pindah tab
+           // tidak pernah "kena" overlay-nya -- menu tetap terbuka nyangkut di atas
+           // tab baru sampai di-tap manual sekali lagi. Tutup otomatis begitu
+           // activeTab berubah, supaya pindah tab = menu ikut tertutup.
+           useEffect(() => { setShowMenu(false); }, [activeTab]);
            return (
-               <div className="fixed top-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
+               // bg-navy/95 (bukan opak) + backdrop-blur: pengecualian glassmorphism
+               // yang memang diizinkan audit desain untuk header sticky. Hanya WARNA
+               // yang berubah di sini -- padding/ukuran logo/struktur SAMA PERSIS
+               // dengan sebelumnya, supaya tinggi header (dan pt-20 di app.js:688
+               // yang bergantung padanya) tidak bergeser.
+               <div className="fixed top-0 inset-x-0 z-30 bg-navy/95 backdrop-blur-md border-b border-white/10">
                    <div className="max-w-2xl mx-auto px-4 pt-4 pb-2.5 flex items-center justify-between">
                        <div className="flex items-center space-x-3 min-w-0">
-                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-slate-300 flex-shrink-0" />
+                           <img src="IMG_1966.jpeg" alt="Logo" className="w-9 h-9 object-contain rounded-xl bg-white p-1 border border-white/20 flex-shrink-0" />
                            <div className="min-w-0">
-                               <h1 className="font-display font-bold text-xs uppercase tracking-wider text-sky-dim truncate">SMAN 2 Tarakan</h1>
+                               <h1 className="font-display font-bold text-xs uppercase tracking-wider text-white truncate">SMAN 2 Tarakan</h1>
                                <div className="flex items-center gap-1.5 mt-0.5">
-                                   <span className="text-[10px] text-slate-500 truncate">{user.name}</span>
+                                   <span className="text-[10px] text-white/70 truncate">{user.name}</span>
                                    <Badge tone="sky">{roleLabel}</Badge>
                                </div>
                            </div>
@@ -369,7 +380,13 @@
                                            <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-600 transition">Aa−</button>
                                            <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-sm font-bold text-slate-600 transition">Aa+</button>
                                        </div>
-                                       <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2 rounded-lg transition">Keluar</button>
+                                       {/* border-t + mt-1.5 pt-1.5 (bukan langsung nempel di bawah
+                                           Aa+/Aa-) -- dilaporkan: menu ukuran tulisan terlalu dekat
+                                           dengan Keluar, gampang ke-tap keluar tanpa sengaja saat
+                                           mau atur ukuran huruf. */}
+                                       <div className="border-t border-slate-200 mt-1.5 pt-1.5">
+                                           <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2.5 rounded-lg transition">Keluar</button>
+                                       </div>
                                    </div>
                                </React.Fragment>
                            )}
@@ -402,20 +419,30 @@
                            </div>
                        </div>
                    )}
+                   {/* Dikembalikan ke gaya semula (bg-white/95, aktif = sky-dim, tanpa
+                       titik indikator) setelah laporan langsung dari HP asli: versi navy
+                       + 6 item primer (audit desain) bikin BottomNav admin/BK overflow
+                       horizontal, "Lainnya" (satu-satunya jalan ke menu Kelola) terdorong
+                       keluar layar. px-3 -> px-2 supaya 5 item (4 primer + Lainnya) lebih
+                       rapat dan tidak mepet di layar sempit. */}
                    <div className="bg-white/95 backdrop-blur-md border-t border-slate-200">
-                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-2 pb-safe">
+                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-1 pb-safe">
                            {primaryMenus.map((key) => {
                                const item = NAV_ITEMS[key];
                                const active = activeTab === key;
                                return (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                        <Icon path={item.icon()} filled={active} className="h-6 w-6" />
-                                       <span className="text-[10px] font-bold">{item.label}</span>
+                                       {/* break-words -- label seperti "Pelanggaran" satu kata tanpa
+                                           spasi, tidak bisa pindah baris secara alami; tanpa ini teks
+                                           akan meluber dari tombolnya yang sudah disempitkan (min-w-0)
+                                           di layar sempit, bukan patah ke baris ke-2. */}
+                                       <span className="text-[10px] font-bold text-center break-words leading-tight">{item.label}</span>
                                    </button>
                                );
                            })}
                            {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                    <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
                                    <span className="text-[10px] font-bold">Lainnya</span>
                                </button>
