@@ -442,7 +442,11 @@
                                return (
                                    <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                        <Icon path={item.icon()} filled={active} className="h-6 w-6" />
-                                       <span className="text-[10px] font-bold">{item.label}</span>
+                                       {/* break-words -- label seperti "Pelanggaran" satu kata tanpa
+                                           spasi, tidak bisa pindah baris secara alami; tanpa ini teks
+                                           akan meluber dari tombolnya yang sudah disempitkan (min-w-0)
+                                           di layar sempit, bukan patah ke baris ke-2. */}
+                                       <span className="text-[10px] font-bold text-center break-words leading-tight">{item.label}</span>
                                    </button>
                                );
                            })}
