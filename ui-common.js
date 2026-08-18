@@ -171,17 +171,20 @@
        //    ada; yang berganti hanya ISI-nya (memuat / pencarian / pesan
        //    gagal). Sebelumnya ada field yang muncul lalu hilang sendiri
        //    beberapa detik kemudian dan itu bikin guru mengira aplikasi hang.
-       // 3. Gagal memuat daftar = turun ke mode legacy (PIN saja, server
+       // 3. Gagal memuat daftar = turun ke mode legacy (password saja, server
        //    mencocokkan ke semua akun) DENGAN pesan kecil + tombol "Coba
        //    lagi", bukan diam-diam.
        //
        // usersState: 'loading' | 'ready' | 'error'
        function LoginScreen({ onLogin, loading, error, password, setPassword, users, usersState, onRetryUsers, selectedTeacher, setSelectedTeacher }) {
            const [query, setQuery] = useState('');
-           // PIN guru umumnya angka, jadi keyboard HP dibuka langsung sebagai
-           // numpad. Tapi password lama boleh mengandung huruf — makanya ada
-           // sakelar kecil, bukan numpad yang dipaksakan permanen.
-           const [numericPin, setNumericPin] = useState(true);
+           // Papan ketik HP dibuka sebagai keyboard HURUF, bukan numpad. Yang
+           // dibagikan admin ke guru di sekolah ini adalah PASSWORD (boleh
+           // mengandung huruf), bukan PIN angka — jadi numpad sebagai bawaan
+           // memaksa mayoritas guru menekan sakelar dulu setiap kali login.
+           // Yang password-nya kebetulan angka semua tetap bisa pindah ke
+           // numpad lewat sakelar ABC/123 di sebelah label.
+           const [numericPin, setNumericPin] = useState(false);
 
            const userList = Array.isArray(users) ? users : [];
            const state = usersState || 'loading';
@@ -198,8 +201,8 @@
                setQuery('');
            };
 
-           // Tombol Masuk ada di bawah field PIN; tanpa ini keyboard HP sering
-           // menutupinya persis setelah PIN diketik.
+           // Tombol Masuk ada di bawah field password; tanpa ini keyboard HP
+           // sering menutupinya persis setelah password diketik.
            const keepInView = (e) => {
                const el = e && e.target;
                if (el && typeof el.scrollIntoView === 'function') {
@@ -253,11 +256,11 @@
                                            className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
                                        />
                                        {state === 'loading' && (
-                                           <div className="text-[10px] text-slate-500 mt-1.5 px-1">Memuat daftar guru... Anda tetap bisa langsung mengisi PIN di bawah.</div>
+                                           <div className="text-[10px] text-slate-500 mt-1.5 px-1">Memuat daftar guru... Anda tetap bisa langsung mengisi password di bawah.</div>
                                        )}
                                        {state === 'error' && (
                                            <div className="flex items-center gap-2 mt-1.5 px-1">
-                                               <span className="text-[10px] text-amber-700 flex-1">Daftar guru gagal dimuat. Login dengan PIN saja tetap bisa.</span>
+                                               <span className="text-[10px] text-amber-700 flex-1">Daftar guru gagal dimuat. Login dengan password saja tetap bisa.</span>
                                                <button type="button" onClick={onRetryUsers} className="flex-shrink-0 text-[10px] font-bold text-sky-dim underline py-2 px-1">Coba lagi</button>
                                            </div>
                                        )}
@@ -282,11 +285,31 @@
                            </div>
 
                            <div>
-                               <div className="flex items-center justify-between mb-1.5">
-                                   <label className="text-xs text-slate-500 font-semibold">{selectedTeacher ? 'PIN' : 'PIN / Password Petugas'}</label>
-                                   <button type="button" onClick={() => setNumericPin(v => !v)} className="text-[10px] font-bold text-sky-dim py-1 px-2 rounded-lg bg-slate-100 border border-slate-200">
-                                       {numericPin ? 'Ada huruf? ABC' : 'Angka saja? 123'}
-                                   </button>
+                               {/* Sakelar papan ketik = DUA tombol dengan yang aktif
+                                   tersorot, bukan satu tombol berisi pertanyaan
+                                   ("Ada huruf? ABC" / "Angka saja? 123"). Tombol tanya
+                                   itu adalah AKSI (pindah ke mode sebelah), tapi
+                                   posisinya persis di samping label bikin guru
+                                   membacanya sebagai KETERANGAN mode yang sedang aktif —
+                                   jadi terlihat bertentangan dengan placeholder di
+                                   bawahnya dan dilaporkan sebagai bug. Dua tombol
+                                   berdampingan tidak punya arah baca yang ambigu:
+                                   yang tersorot = yang sedang dipakai. */}
+                               <div className="flex items-center justify-between gap-2 mb-1.5">
+                                   <label className="text-xs text-slate-500 font-semibold">Password Petugas</label>
+                                   <div role="group" aria-label="Jenis papan ketik" className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
+                                       {[{ label: 'ABC', numeric: false }, { label: '123', numeric: true }].map(opt => (
+                                           <button
+                                               key={opt.label}
+                                               type="button"
+                                               onClick={() => setNumericPin(opt.numeric)}
+                                               aria-pressed={numericPin === opt.numeric}
+                                               className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition ${numericPin === opt.numeric ? 'bg-white text-sky-dim border border-slate-200 shadow-sm' : 'text-slate-500'}`}
+                                           >
+                                               {opt.label}
+                                           </button>
+                                       ))}
+                                   </div>
                                </div>
                                <input
                                    type="password"
@@ -295,7 +318,7 @@
                                    onFocus={keepInView}
                                    inputMode={numericPin ? 'numeric' : 'text'}
                                    autoComplete="current-password"
-                                   placeholder={numericPin ? 'Masukkan PIN...' : 'Masukkan password...'}
+                                   placeholder="Masukkan password..."
                                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-sky focus:ring-1 focus:ring-sky transition"
                                    required
                                />

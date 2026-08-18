@@ -117,7 +117,7 @@ Daftar siswa yang ditandai perlu pendampingan khusus, beserta catatan dan nama g
 
 Satu halaman berisi tiga kelompok pengaturan:
 
-- **Guru & Akun**: menambah guru baru (ID, nama, PIN awal, peran, jabatan), mengatur ulang PIN yang lupa, mengubah jabatan, mengubah peran, menetapkan **wali kelas** (dipilih dari daftar kelas yang ada, bukan diketik manual agar tidak salah ketik), serta **menonaktifkan/mengaktifkan** akun guru yang pindah/pensiun. Ada kotak pencarian nama guru.
+- **Guru & Akun**: menambah guru baru (ID, nama, password awal, peran, jabatan), mengatur ulang password yang lupa, mengubah jabatan, mengubah peran, menetapkan **wali kelas** (dipilih dari daftar kelas yang ada, bukan diketik manual agar tidak salah ketik), serta **menonaktifkan/mengaktifkan** akun guru yang pindah/pensiun. Ada kotak pencarian nama guru.
 - **Jadwal Piket**: menyusun jadwal piket mingguan (Senin–Sabtu) dengan memilih hari dan guru, lalu menyimpan. Jadwal ini yang muncul di Beranda semua guru sebagai "Guru Piket Hari Ini".
 - **Hapus data surat per bulan**: pembersihan arsip surat dalam jumlah besar, dengan dialog konfirmasi sebelum benar-benar dihapus.
 
@@ -128,7 +128,7 @@ Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/me
 ### 3.11 Kenyamanan Pakai
 
 - **Ukuran huruf bisa diperbesar** lewat tombol di bagian atas layar, dan pilihan itu diingat untuk kunjungan berikutnya.
-- **Tetap login sampai 6 jam** — tidak perlu memasukkan PIN ulang setiap membuka aplikasi dalam rentang itu.
+- **Tetap login sampai 6 jam** — tidak perlu memasukkan password ulang setiap membuka aplikasi dalam rentang itu.
 - Tampilan dirancang untuk **layar HP** dengan tombol besar, karena sebagian besar pencatatan dilakukan sambil berdiri di gerbang.
 
 ---
@@ -150,13 +150,13 @@ Manfaat SIGAP bagi siswa dan orang tua bersifat **tidak langsung tapi nyata**: c
 
 ### 5.1 Masuk Pertama Kali (Guru Baru)
 
-1. Admin membuat akun Anda lebih dulu lewat menu **Kelola → Guru & Akun → Tambah Guru**, dan memberi tahu **PIN awal** Anda.
+1. Admin membuat akun Anda lebih dulu lewat menu **Kelola → Guru & Akun → Tambah Guru**, dan memberi tahu **password awal** Anda.
 2. Buka alamat SIGAP di browser HP atau laptop.
 3. Di kotak **Nama Guru**, ketik nama Anda, lalu ketuk nama Anda yang muncul.
-4. Masukkan **PIN** Anda, lalu tekan **Masuk**.
+4. Masukkan **password** Anda, lalu tekan **Masuk**. Kalau password Anda angka semua, ketuk **123** di samping label agar keyboard HP langsung terbuka sebagai papan angka.
 5. Selesai — Anda langsung diarahkan ke Beranda dengan menu sesuai peran Anda.
 
-> **Catatan:** kalau daftar nama guru belum sempat muncul (misalnya sinyal lambat), Anda **tetap bisa langsung mengisi PIN dan menekan Masuk**. Formnya sengaja dibuat tidak pernah terkunci.
+> **Catatan:** kalau daftar nama guru belum sempat muncul (misalnya sinyal lambat), Anda **tetap bisa langsung mengisi password dan menekan Masuk**. Formnya sengaja dibuat tidak pernah terkunci.
 
 ### 5.2 Mencatat Keterlambatan (4 Langkah)
 
@@ -214,13 +214,13 @@ Di **Beranda**, wali kelas juga langsung melihat ringkasan mingguan kelasnya dan
 3. Tekan **Simpan**.
 4. Mulai saat itu, setiap guru melihat "Guru Piket Hari Ini" di Beranda mereka, dan guru yang bertugas mendapat tanda **✓ Anda piket hari ini**.
 
-### 5.9 Guru Lupa PIN
+### 5.9 Guru Lupa Password
 
 1. Hubungi Admin sekolah.
-2. Admin membuka **Kelola → Guru & Akun**, mencari nama guru tersebut, lalu menekan tindakan **atur ulang PIN**.
-3. Admin memberi tahu PIN yang baru kepada guru yang bersangkutan.
+2. Admin membuka **Kelola → Guru & Akun**, mencari nama guru tersebut, lalu menekan tindakan **atur ulang password**.
+3. Admin memberi tahu password yang baru kepada guru yang bersangkutan.
 
-Tidak ada tombol "lupa password" yang mengirim email — pemulihan PIN dilakukan lewat Admin sekolah.
+Tidak ada tombol "lupa password" yang mengirim email — pemulihan password dilakukan lewat Admin sekolah.
 
 ---
 
@@ -250,16 +250,16 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 ## 8. Pertanyaan yang Sering Diajukan (FAQ)
 
 **1. Apakah data siswa aman?**
-Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan PIN, dan **tidak semua orang melihat semua data**: guru biasa hanya melihat catatan pelanggaran yang ia tulis sendiri, wali kelas hanya kelasnya, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
+Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan password, dan **tidak semua orang melihat semua data**: guru biasa hanya melihat catatan pelanggaran yang ia tulis sendiri, wali kelas hanya kelasnya, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
 
 **2. Apakah bisa dipakai di HP?**
 Bisa, dan memang dirancang untuk HP. Cukup buka alamat SIGAP lewat browser (Chrome, Safari, dll.) — tidak perlu instal aplikasi. Bisa juga dibuka di laptop.
 
-**3. Bagaimana kalau lupa PIN?**
+**3. Bagaimana kalau lupa password?**
 Hubungi Admin sekolah untuk diatur ulang (lihat alur 5.9). Tidak ada pemulihan lewat email/SMS.
 
 **4. Apakah siswa perlu email untuk memakai aplikasi ini?**
-Tidak. Siswa tidak login sama sekali, kecuali pengurus OSIS yang diberi akun khusus oleh Admin. Akun itu pun cukup nama + PIN, tanpa email.
+Tidak. Siswa tidak login sama sekali, kecuali pengurus OSIS yang diberi akun khusus oleh Admin. Akun itu pun cukup nama + password, tanpa email.
 
 **5. Kalau saya salah catat, bagaimana?**
 Anda bisa memperbaiki atau menghapus catatan Anda sendiri dalam **5 menit** pertama lewat menu Riwayat. Lewat dari itu, mintalah bantuan Admin. Semua perbaikan tercatat di Audit Log.
@@ -271,7 +271,7 @@ Tidak. Satu siswa hanya bisa dicatat terlambat sekali per hari — percobaan ked
 Layar login tetap bisa diisi walaupun daftar nama guru belum selesai dimuat. Halaman lain memuat data secukupnya, bukan seluruh arsip sekolah, sehingga tetap ringan meski data sudah menumpuk bertahun-tahun. Namun aplikasi ini tetap **membutuhkan koneksi internet** untuk menyimpan catatan.
 
 **8. Apakah saya harus login ulang setiap hari?**
-Sesi bertahan **6 jam**. Setelah itu Anda diminta memasukkan PIN lagi — pembatasan waktu ini disengaja demi keamanan data siswa.
+Sesi bertahan **6 jam**. Setelah itu Anda diminta memasukkan password lagi — pembatasan waktu ini disengaja demi keamanan data siswa.
 
 ---
 

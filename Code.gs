@@ -79,7 +79,7 @@ function doPost(e) {
       if (failCount === LOGIN_RATE_MAX_FAILURES) {
         logAudit({ name: 'System', id: '-' }, 'Login Rate Limit Triggered', 'Lockout global aktif ' + (LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + failCount + ' percobaan gagal');
       }
-      return jsonOut({ status: 'error', message: requestedTeacherId ? 'PIN salah!' : 'Password salah!' });
+      return jsonOut({ status: 'error', message: 'Password salah!' });
     }
 
     // ---- Logout (dicatat ke Audit Log, sesi dihapus dari server) ----
