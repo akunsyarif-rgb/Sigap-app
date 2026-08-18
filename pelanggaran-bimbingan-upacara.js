@@ -28,11 +28,9 @@
            const waliByClass = {};
            (waliKelasMap || []).forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
-               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
-           );
+           // filterStudents (helpers.js) mengurutkan berdasarkan relevansi (posisi
+           // kecocokan paling awal menang), sama seperti pencarian di Gerbang.
+           const filtered = filterStudents(students, searchQuery);
 
            // canSeeClassDetail: pelanggaranList sudah berisi data lengkap (kelasnya/semua),
            // jadi riwayat siswa dihitung langsung dari situ. Selain itu, pelanggaranList
@@ -429,11 +427,9 @@
 
            const jenisPresets = ['Atribut Tidak Lengkap', 'Tidak Tertib', 'Terlambat Baris'];
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
-               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
-           );
+           // filterStudents (helpers.js) mengurutkan berdasarkan relevansi (posisi
+           // kecocokan paling awal menang), sama seperti pencarian di Gerbang.
+           const filtered = filterStudents(students, searchQuery);
 
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
 

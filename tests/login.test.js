@@ -331,6 +331,32 @@ test('filterLoginUsers: case-insensitive, hanya {id,name}, aman untuk input aneh
   assert.equal(filterLoginUsers(many, 'guru', 3).length, 3);
 });
 
+// ---- filterStudents murni (Gerbang/Pelanggaran/Upacara) ----
+// Laporan lapangan: ketik "Ter" memunculkan "Pretty Puteri" (cocok di
+// tengah, "pu-TER-i") di ATAS "Terra De Langit Muslim" (cocok di awal
+// nama) -- karena sebelumnya cuma .filter() tanpa urutan relevansi.
+test('filterStudents: kecocokan paling awal menang, nama/kelas/NISN semua diperiksa', () => {
+  const filterStudents = get('filterStudents');
+
+  const students = [
+    { nisn: '1', name: 'Pretty Puteri', class: 'XI A' },
+    { nisn: '2', name: 'Terra De Langit Muslim', class: 'XI G' },
+  ];
+  eq(filterStudents(students, 'Ter').map((s) => s.name), ['Terra De Langit Muslim', 'Pretty Puteri']);
+
+  // Cocok di kelas/NISN tetap ikut, diurut sama-sama berdasar posisi.
+  const mixed = [
+    { nisn: '100', name: 'Rahma', class: 'XI B' },
+    { nisn: '200', name: 'Zahra', class: 'X A1' },
+  ];
+  eq(filterStudents(mixed, 'a1').map((s) => s.name), ['Zahra']);
+
+  eq(filterStudents([], 'apa saja'), []);
+  eq(filterStudents(students, ''), []);
+  eq(filterStudents(null, 'ter'), []);
+  eq(filterStudents(undefined, 'ter'), []);
+});
+
 // ---- 7: guru terpilih benar-benar terkirim sebagai teacherId ----
 test('buildLoginPayload: teacherId hanya ikut kalau guru dipilih', () => {
   const buildLoginPayload = get('buildLoginPayload');

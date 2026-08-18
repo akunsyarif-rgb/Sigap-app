@@ -73,11 +73,9 @@
            const waliByClass = {};
            waliKelasMap.forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
 
-           const filtered = searchQuery.trim() === '' ? [] : students.filter(s =>
-               s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               s.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               (s.nisn && s.nisn.toString().includes(searchQuery.trim()))
-           );
+           // filterStudents (helpers.js) mengurutkan berdasarkan relevansi (posisi
+           // kecocokan paling awal menang) -- bukan cuma .filter() tanpa urutan.
+           const filtered = filterStudents(students, searchQuery);
 
            // Live Activity Log — gabungan Terlambat + Surat hari ini, terbaru dulu,
            // supaya guru piket lain langsung tahu siapa yang sudah dicatat (hindari input ganda).
