@@ -380,7 +380,13 @@
                                            <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-600 transition">Aa−</button>
                                            <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-sm font-bold text-slate-600 transition">Aa+</button>
                                        </div>
-                                       <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2 rounded-lg transition">Keluar</button>
+                                       {/* border-t + mt-1.5 pt-1.5 (bukan langsung nempel di bawah
+                                           Aa+/Aa-) -- dilaporkan: menu ukuran tulisan terlalu dekat
+                                           dengan Keluar, gampang ke-tap keluar tanpa sengaja saat
+                                           mau atur ukuran huruf. */}
+                                       <div className="border-t border-slate-200 mt-1.5 pt-1.5">
+                                           <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2.5 rounded-lg transition">Keluar</button>
+                                       </div>
                                    </div>
                                </React.Fragment>
                            )}
