@@ -428,27 +428,28 @@
                            </div>
                        </div>
                    )}
-                   <div className="bg-paper/95 backdrop-blur-md border-t border-slate-200">
-                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-2 pb-safe">
+                   {/* Dikembalikan ke gaya semula (bg-white/95, aktif = sky-dim, tanpa
+                       titik indikator) setelah laporan langsung dari HP asli: versi navy
+                       + 6 item primer (audit desain) bikin BottomNav admin/BK overflow
+                       horizontal, "Lainnya" (satu-satunya jalan ke menu Kelola) terdorong
+                       keluar layar. px-3 -> px-2 supaya 5 item (4 primer + Lainnya) lebih
+                       rapat dan tidak mepet di layar sempit. */}
+                   <div className="bg-white/95 backdrop-blur-md border-t border-slate-200">
+                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-1 pb-safe">
                            {primaryMenus.map((key) => {
                                const item = NAV_ITEMS[key];
                                const active = activeTab === key;
                                return (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${active ? 'text-navy scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                        <Icon path={item.icon()} filled={active} className="h-6 w-6" />
                                        <span className="text-[10px] font-bold">{item.label}</span>
-                                       {/* Titik indikator selalu di-render (opacity di-toggle, bukan
-                                           conditional render) supaya tinggi tombol tidak melompat
-                                           saat pindah aktif/nonaktif. */}
-                                       <span className={`w-1 h-1 rounded-full bg-navy transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}></span>
                                    </button>
                                );
                            })}
                            {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-3 ${isSecondaryActive || showMore ? 'text-navy scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
+                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
                                    <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
                                    <span className="text-[10px] font-bold">Lainnya</span>
-                                   <span className={`w-1 h-1 rounded-full bg-navy transition-opacity ${isSecondaryActive || showMore ? 'opacity-100' : 'opacity-0'}`}></span>
                                </button>
                            )}
                        </div>

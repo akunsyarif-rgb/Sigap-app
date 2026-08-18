@@ -161,8 +161,8 @@ const cases = [
   ['Header', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }],
   ['Header (menu ukuran tulisan terbuka)', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }, 'Header', [true]],
   ['BottomNav (guru, 4 menu primer)', { menus: ['scan', 'dashboard', 'log', 'pelanggaran'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'scan', setActiveTab: () => {} }, 'BottomNav'],
-  ['BottomNav (admin, 6 menu primer + Lainnya)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], activeTab: 'stats', setActiveTab: () => {} }, 'BottomNav'],
-  ['BottomNav (panel Lainnya terbuka)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran', 'stats', 'auditlog'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav', [true]],
+  ['BottomNav (admin, 4 menu primer + Lainnya berisi Kelola)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav'],
+  ['BottomNav (panel Lainnya terbuka)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav', [true]],
 ];
 
 for (const [label, props, fnNameOverride, overrides] of cases) {
