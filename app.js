@@ -188,7 +188,18 @@
                if (roleKey !== 'admin') return;
                fetch(`${API_URL}?action=getTeachers&token=${API_TOKEN}&sessionToken=${sessionToken}`)
                    .then(res => res.json()).then(checkSession)
-                   .then(data => { if (data.status === 'success') setTeachers(data.teachers); });
+                   .then(data => {
+                       if (data.status !== 'success') return;
+                       // Diurut lagi di sini (bukan cuma andalkan urutan dari server) --
+                       // getTeachers di Code.gs SUDAH mengurutkan abjad, tapi itu kode
+                       // Apps Script yang baru aktif setelah di-clasp-deploy manual (lihat
+                       // CLAUDE.md), jadi backend produksi yang masih lama akan tetap
+                       // kirim urutan baris Sheet apa adanya sampai deploy itu terjadi.
+                       // Sort di sini membuat urutan abjad langsung benar di frontend
+                       // tanpa bergantung pada kapan deploy backend-nya dilakukan.
+                       const sorted = [...data.teachers].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+                       setTeachers(sorted);
+                   });
            };
 
            const fetchBimbingan = () => {
