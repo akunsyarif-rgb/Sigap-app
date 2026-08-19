@@ -128,7 +128,14 @@ const buttonWithText = (node, label) =>
   findAll(node, (n) => (n.type === 'button' || n.type === get('Button')) && allText(n).trim() === label)[0];
 
 const now = new Date();
-const ts = (daysAgo, h) => new Date(now.getFullYear(), now.getMonth(), Math.max(1, now.getDate() - (daysAgo || 0)), h || 8, 0, 0).toISOString();
+// Jam absolut (h) bisa jatuh di masa depan relatif ke waktu tes ini benar-benar
+// jalan (mis. tes jalan jam 02:00, tapi data "hari ini" dibuat jam 09:00) --
+// RekapUpacara/RekapKelasTab keduanya membuang entri dt > now lewat
+// passesPeriod, jadi data tes untuk "hari ini" harus tetap <= now sungguhan.
+const ts = (daysAgo, h) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), Math.max(1, now.getDate() - (daysAgo || 0)), h || 8, 0, 0);
+    return (d > now ? now : d).toISOString();
+};
 
 const UPACARA = [
   { timestamp: ts(0, 9), nisn: '3', name: 'Candra', class: 'XI TEKNIK', jenis_pelanggaran: 'Terlambat Baris', catatan: '', logged_by: 'OSIS A' },
