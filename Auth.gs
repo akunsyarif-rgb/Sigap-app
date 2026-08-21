@@ -13,21 +13,68 @@
 // CacheService.put() — bukan angka sembarang, tidak bisa diperpanjang lagi
 // tanpa ganti mekanisme penyimpanan sesi sama sekali.
 
+// ===== Perpanjangan sesi (sliding) =====
+// Sebelumnya sesi di-put SEKALI saat login dan tidak pernah disentuh lagi,
+// jadi sesi mati tepat 6 jam sejak login WALAU guru sedang aktif memakainya —
+// logout mendadak di tengah jam pelajaran, tanpa alasan yang bisa dijelaskan
+// ke penggunanya. Sekarang setiap request yang sesinya masih sah memperpanjang
+// masa berlakunya 6 jam lagi ke depan (put ulang; 21600 detik tetap batas
+// maksimum SATU put di Apps Script, jadi perpanjangannya harus per-request
+// seperti ini, bukan sekali dengan TTL lebih panjang).
+//
+// Tetap ada batas mutlak sejak login supaya token yang tersimpan di
+// localStorage tidak bisa hidup selamanya hanya karena terus dipakai.
+var SESSION_TTL_SECONDS = 21600;                    // 6 jam — batas maksimum CacheService.put()
+var SESSION_ABSOLUTE_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari sejak login
+
 function createSession(user) {
   var token = Utilities.getUuid();
-  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(user), 21600); // 6 jam
+  // loginAt disimpan DI DALAM record sesi (bukan entri cache terpisah) supaya
+  // batas mutlak di atas ikut terbawa setiap kali record-nya di-put ulang.
+  var record = { user: user, loginAt: Date.now() };
+  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(record), SESSION_TTL_SECONDS);
   return token;
 }
 
+// Diisi getSessionUser() setiap kali sesi berhasil diperpanjang, lalu
+// dilampirkan ke respons oleh jsonOut() di Utils.gs supaya klien tahu sampai
+// kapan sesinya sekarang berlaku. 0 = tidak ada perpanjangan pada request ini.
+var SESSION_RENEWED_UNTIL = 0;
+
 function getSessionUser(token) {
+  SESSION_RENEWED_UNTIL = 0;
   if (!token) return null;
-  var raw = CacheService.getScriptCache().get('sess_' + token);
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get('sess_' + token);
   if (!raw) return null;
+  var parsed;
   try {
-    return JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch (e) {
     return null;
   }
+  if (!parsed) return null;
+
+  // Record format lama (objek user polos, tanpa pembungkus) — sesi yang dibuat
+  // sebelum perubahan ini tetap berlaku sampai habis sendiri, tapi tidak ikut
+  // diperpanjang karena umur aslinya tidak diketahui.
+  if (!parsed.user) return parsed;
+
+  var loginAt = Number(parsed.loginAt) || 0;
+  var now = Date.now();
+  if (loginAt && now - loginAt >= SESSION_ABSOLUTE_MAX_MS) {
+    cache.remove('sess_' + token);
+    return null;
+  }
+  // Perpanjang. Kegagalan put di sini TIDAK boleh menggagalkan request-nya —
+  // sesi yang ada tetap sah sampai TTL sebelumnya habis.
+  try {
+    cache.put('sess_' + token, raw, SESSION_TTL_SECONDS);
+    var until = now + SESSION_TTL_SECONDS * 1000;
+    if (loginAt) until = Math.min(until, loginAt + SESSION_ABSOLUTE_MAX_MS);
+    SESSION_RENEWED_UNTIL = until;
+  } catch (e) {}
+  return parsed.user;
 }
 
 // ===== Verifikasi password (dua skema, migrasi otomatis) =====

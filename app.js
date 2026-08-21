@@ -3,9 +3,11 @@
 // dan render seluruh tampilan. Dimuat PALING TERAKHIR.
 
        // Sesi login disimpan di localStorage supaya tidak logout tiap refresh —
-       // sesi di server (CacheService) hidup 6 jam sejak login (lihat
-       // createSession di Auth.gs); localStorage cuma "mengingat" token itu,
-       // validitas sebenarnya tetap ditentukan server di setiap panggilan API.
+       // sesi di server (CacheService) berlaku 6 jam dan DIPERPANJANG 6 jam lagi
+       // setiap kali dipakai, dengan batas mutlak 7 hari sejak login (lihat
+       // createSession/getSessionUser di Auth.gs); localStorage cuma "mengingat"
+       // token itu, validitas sebenarnya tetap ditentukan server di setiap
+       // panggilan API.
        //
        // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: dulu `user` dipulihkan
        // dari localStorage TANPA cek umur sama sekali. Karena sesi server mati
@@ -19,21 +21,54 @@
        // dilaporkan guru. Stempel kedaluwarsa di bawah ini yang mencegahnya:
        // sesi yang sudah lewat umur tidak pernah dipakai untuk render sama
        // sekali, jadi aplikasi langsung membuka layar login yang bisa dipakai.
-       const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000; // samakan dengan TTL createSession() di Auth.gs
+       //
+       // SESSION_MAX_AGE_MS + bentuk record-nya sekarang ada di helpers.js
+       // (buildSessionRecord/parseSessionRecord) supaya bisa dites langsung
+       // tanpa React — lihat blok "Sesi login: SATU record utuh" di sana untuk
+       // alasan kenapa tiga kunci terpisah diganti satu record.
 
        function loadStoredSession() {
            try {
-               const token = localStorage.getItem('sigap_session_token');
-               const rawUser = localStorage.getItem('sigap_user');
-               if (!token || !rawUser) return { token: null, user: null, expired: false };
-               const expiresAt = parseInt(localStorage.getItem('sigap_session_expires') || '0', 10);
-               // Tanpa stempel = sesi dari versi lama aplikasi. Umurnya tidak
-               // bisa diketahui, jadi diperlakukan sebagai kedaluwarsa: sekali
-               // login ulang jauh lebih baik daripada mengulang bug di atas.
-               if (!expiresAt || Date.now() >= expiresAt) return { token: null, user: null, expired: true };
-               return { token, user: JSON.parse(rawUser), expired: false };
+               const stored = parseSessionRecord(localStorage.getItem(SESSION_STORAGE_KEY));
+               if (stored.token || stored.expired) return stored;
+               // Belum ada record baru — coba format tiga-kunci lama, supaya
+               // deploy ini tidak melogout guru yang saat itu sedang login.
+               // Yang berhasil dibaca langsung ditulis ulang sebagai satu
+               // record dan kunci lamanya dibuang (migrasi sekali jalan).
+               const legacy = parseLegacySession(
+                   localStorage.getItem(SESSION_LEGACY_KEYS.token),
+                   localStorage.getItem(SESSION_LEGACY_KEYS.user),
+                   localStorage.getItem(SESSION_LEGACY_KEYS.expires)
+               );
+               if (legacy.token) saveStoredSession(legacy.token, legacy.user, legacy.expiresAt, legacy.loginAt);
+               else if (legacy.expired) removeLegacySessionKeys();
+               return legacy;
            } catch (e) {}
-           return { token: null, user: null, expired: false };
+           return { token: null, user: null, expired: false, expiresAt: 0, loginAt: 0 };
+       }
+
+       // SATU setItem — tidak ada lagi keadaan "token tersimpan tapi stempelnya
+       // tidak", yang dulu terbaca sebagai sesi kedaluwarsa palsu.
+       function saveStoredSession(token, user, expiresAt, loginAt) {
+           try {
+               localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(buildSessionRecord(token, user, expiresAt, loginAt)));
+               removeLegacySessionKeys();
+               return true;
+           } catch (e) {
+               // Kuota penuh / mode privat. Sesi tetap hidup di memori untuk
+               // pemakaian sekarang; yang hilang cuma kemampuan bertahan
+               // melewati reload — dan itu jauh lebih baik daripada
+               // meninggalkan record separuh jadi yang bikin logout palsu.
+               return false;
+           }
+       }
+
+       function removeLegacySessionKeys() {
+           try {
+               localStorage.removeItem(SESSION_LEGACY_KEYS.token);
+               localStorage.removeItem(SESSION_LEGACY_KEYS.user);
+               localStorage.removeItem(SESSION_LEGACY_KEYS.expires);
+           } catch (e) {}
        }
 
        // 4 kemungkinan role: admin, bk_kesiswaan, guru, osis — default ke 'guru'
@@ -62,6 +97,17 @@
 
            const [user, setUser] = useState(storedSession.user);
            const [sessionToken, setSessionToken] = useState(storedSession.token);
+           // Masa berlaku sesi yang sedang dipegang. Dipakai untuk menstempel
+           // snapshot data (lihat efek cache di bawah) dan diperpanjang setiap
+           // kali server mengabarkan sesinya baru saja diperpanjang.
+           const sessionExpiresAt = useRef(storedSession.expiresAt || 0);
+           const sessionLoginAt = useRef(storedSession.loginAt || 0);
+           // Token yang SEDANG aktif, terbaca seketika (bukan menunggu render
+           // berikutnya seperti state). Inilah pembanding yang dipakai penjaga
+           // sesi untuk membedakan jawaban milik sesi sekarang dari jawaban
+           // basi milik sesi sebelumnya — lihat shouldClearSessionForResponse()
+           // di helpers.js.
+           const activeSessionToken = useRef(storedSession.token);
            const [passwordInput, setPasswordInput] = useState('');
            const [loadingLogin, setLoadingLogin] = useState(false);
            const [loginError, setLoginError] = useState(storedSession.expired ? 'Sesi sebelumnya sudah berakhir. Silakan login ulang.' : '');
@@ -150,10 +196,16 @@
            // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
            // — bedanya cuma pesan yang ditampilkan di layar login.
            const clearSession = (errorMessage) => {
+               // Dinolkan LEBIH DULU dan lewat ref, bukan state: mulai detik
+               // ini juga setiap jawaban yang masih dalam perjalanan harus
+               // langsung terbaca sebagai milik sesi lama, tidak menunggu
+               // render berikutnya.
+               activeSessionToken.current = null;
+               sessionExpiresAt.current = 0;
+               sessionLoginAt.current = 0;
                try {
-                   localStorage.removeItem('sigap_session_token');
-                   localStorage.removeItem('sigap_user');
-                   localStorage.removeItem('sigap_session_expires');
+                   localStorage.removeItem(SESSION_STORAGE_KEY);
+                   removeLegacySessionKeys();
                    // Data operasional ikut dibuang saat logout/sesi habis —
                    // HP yang dipakai bergantian tidak boleh menyisakan daftar
                    // siswa & catatan pelanggaran milik guru sebelumnya.
@@ -177,9 +229,37 @@
            // res.json()) — kalau server bilang sesi sudah tidak valid, langsung
            // kembalikan ke layar login dengan pesan yang jelas, alih-alih
            // diam-diam gagal (list kosong tanpa penjelasan).
+           //
+           // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: dulu penjaga ini cuma
+           // mencocokkan TEKS pesannya. Karena setiap request membawa token
+           // dari render tempat ia ditembakkan, sementara jawabannya baru
+           // datang belasan detik kemudian, jawaban "Sesi berakhir" milik sesi
+           // LAMA bisa mendarat setelah guru berhasil login ulang — dan ikut
+           // menghapus sesi BARU yang baru berumur beberapa detik. Gejalanya:
+           // "login berhasil, lalu langsung logout lagi dengan pesan sesi
+           // habis", berulang setiap kali dicoba, paling sering saat aplikasi
+           // dibuka dari ikon Home Screen (satu-satunya alur yang rutin memulai
+           // dari sesi tersimpan yang sudah mati di server, sehingga 7 request
+           // boot menembak dengan token mati lalu ekornya mendarat belakangan).
+           //
+           // `sessionToken` di bawah adalah token yang BENAR-BENAR dipakai
+           // request ini: penjaga dan URL fetch-nya dibuat di render yang sama,
+           // jadi keduanya pasti melihat token yang sama.
+           const tokenUsedForRequest = sessionToken;
            const checkSession = (data) => {
-               if (data && data.status === 'error' && /sesi berakhir/i.test(data.message || '')) {
+               if (shouldClearSessionForResponse(data, tokenUsedForRequest, activeSessionToken.current)) {
                    clearSession(data.message || 'Sesi berakhir, silakan login ulang.');
+                   return data;
+               }
+               // Server mengabarkan sesi baru saja diperpanjang (backend yang
+               // belum di-deploy ulang tidak mengirim field ini — lihat
+               // nextSessionExpiry di helpers.js).
+               if (data && data.sessionExpiresAt && user && tokenUsedForRequest && tokenUsedForRequest === activeSessionToken.current) {
+                   const extended = nextSessionExpiry(sessionExpiresAt.current, data.sessionExpiresAt);
+                   if (extended > sessionExpiresAt.current) {
+                       sessionExpiresAt.current = extended;
+                       saveStoredSession(tokenUsedForRequest, user, extended, sessionLoginAt.current);
+                   }
                }
                return data;
            };
@@ -354,7 +434,11 @@
                if (!user) return;
                const timer = setTimeout(() => {
                    try {
-                       const expiresAt = parseInt(localStorage.getItem('sigap_session_expires') || '0', 10);
+                       // Masa berlaku diambil dari ref, bukan dibaca ulang dari
+                       // localStorage: ref-lah yang ikut diperpanjang saat
+                       // server memperpanjang sesi, jadi cache tidak pernah
+                       // distempel lebih pendek daripada sesinya sendiri.
+                       const expiresAt = sessionExpiresAt.current;
                        if (!expiresAt) return;
                        const snapshot = buildClientCache(user.id, { students, allLogs, suratList, pelanggaranList, jadwalPiket, waliKelasMap, tindakLanjutList }, expiresAt);
                        localStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(snapshot));
@@ -399,15 +483,23 @@
                        loginInFlight.current = false;
                        setLoadingLogin(false);
                        if (data.status === 'success') {
+                           const loginAt = Date.now();
+                           // Stempel ini yang dipakai loadStoredSession() supaya
+                           // sesi mati tidak pernah dirender lagi. Kalau server
+                           // sudah versi baru ia ikut mengabarkan masa berlaku
+                           // hasil perpanjangannya sendiri; kalau belum, 6 jam
+                           // sejak login persis seperti sebelumnya.
+                           const expiresAt = nextSessionExpiry(loginAt + SESSION_MAX_AGE_MS, data.sessionExpiresAt, loginAt);
+                           // Ref dulu, baru state: penjaga sesi harus langsung
+                           // mengenali token baru ini sebagai yang aktif,
+                           // supaya jawaban basi milik sesi sebelumnya yang
+                           // mendarat sedetik lagi tidak ikut menghapusnya.
+                           activeSessionToken.current = data.sessionToken;
+                           sessionExpiresAt.current = expiresAt;
+                           sessionLoginAt.current = loginAt;
                            setUser(data.user);
                            setSessionToken(data.sessionToken);
-                           try {
-                               localStorage.setItem('sigap_session_token', data.sessionToken);
-                               localStorage.setItem('sigap_user', JSON.stringify(data.user));
-                               // Stempel ini yang dipakai loadStoredSession()
-                               // supaya sesi mati tidak pernah dirender lagi.
-                               localStorage.setItem('sigap_session_expires', String(Date.now() + SESSION_MAX_AGE_MS));
-                           } catch (e) {}
+                           saveStoredSession(data.sessionToken, data.user, expiresAt, loginAt);
                        } else setLoginError(data.message || 'Password salah!');
                    })
                    .catch(() => { loginInFlight.current = false; setLoadingLogin(false); setLoginError('Koneksi Gagal. Coba lagi.'); });
@@ -799,7 +891,8 @@
                // sesi baru saja habis. Kalau kirim laporan ini sendiri gagal
                // (offline dsb.), diamkan saja — sudah ada fallback console.error di atas.
                try {
-                   const token = localStorage.getItem('sigap_session_token');
+                   const token = parseSessionRecord(localStorage.getItem(SESSION_STORAGE_KEY)).token
+                       || localStorage.getItem(SESSION_LEGACY_KEYS.token);
                    fetch(API_URL, {
                        method: 'POST',
                        body: JSON.stringify({
