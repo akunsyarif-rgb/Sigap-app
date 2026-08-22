@@ -85,13 +85,16 @@ order does for anything not hoisted.
 - **`Auth.gs`** — session creation/lookup (`createSession`/`getSessionUser`,
   backed by `CacheService`, 6h max TTL — a hard GAS `CacheService.put()` limit,
   not a design choice). Because 6h is a per-`put()` cap, `getSessionUser()`
-  **re-`put`s the record on every authenticated request** (sliding window) and
-  publishes the new expiry via the `SESSION_RENEWED_UNTIL` global, which
-  `jsonOut` attaches to the response as `sessionExpiresAt`. An absolute cap of
-  7 days from `loginAt` (stored inside the record) stops a token from living
-  forever just because it keeps being used. Session records created by the
-  previous backend (a bare user object, no wrapper) are still honored until
-  they expire, but are not renewed. Also password verification (`verifyPassword`, supports
+  **re-`put`s the record on every authenticated request** (so a busy session's
+  cache entry is not evicted early — Apps Script may drop entries before TTL) and
+  publishes the session's real deadline via the `SESSION_RENEWED_UNTIL` global,
+  which `jsonOut` attaches to the response as `sessionExpiresAt`. **The session
+  lifetime policy is unchanged: 6h from login, never extended.** That cap is now
+  enforced explicitly against `loginAt` (stored inside the record) rather than
+  relying on the cache entry's own TTL, so the re-`put` keeps the entry from
+  being evicted early without ever lengthening the session. Session records
+  created by the previous backend (a bare user object, no wrapper) are still
+  honored until they expire, but are not re-`put`. Also password verification (`verifyPassword`, supports
   both the legacy unsalted-lowercased SHA-256 scheme and the current salted
   scheme, with automatic migration on next successful login). Role helpers
   (`isAdminRole`, `isBkRole`, `isOsisRole`) normalize and check role strings.
@@ -163,20 +166,13 @@ and the stragglers land after the re-login. `activeSessionToken` is a **ref**,
 not state, so a new token is visible to in-flight responses immediately rather
 than one render later. Keep both properties.
 
-Successful responses carrying `sessionExpiresAt` extend the stored stamp
-(`nextSessionExpiry`), which never shortens it and never grants more than one
-full TTL. A backend that hasn't been redeployed yet sends no such field, and
-the client then behaves exactly as before — so the frontend can ship ahead of
-the `.gs` deploy without regressing.
-
-### PWA / Home Screen
-
-`manifest.webmanifest` + the `apple-mobile-web-app-*` metas pin the Home Screen
-launch to a known `start_url`/`scope` instead of whatever URL happened to be
-open when the icon was created. `vercel.json` marks `index.html` and the
-manifest `no-cache`: `BUILD_VERSION` can only bust the `.js` files if the HTML
-that carries it is itself revalidated. **There is deliberately no service
-worker** — with no build step it would serve stale JS and desync auth state.
+Successful responses carrying `sessionExpiresAt` sync the stored stamp to the
+server's own deadline via `nextSessionExpiry`, which never shortens it and never
+grants more than one full TTL — with the 6h-from-login cap the server reports
+the same deadline the client already computed at login, so in practice this only
+keeps the two from drifting. A backend that hasn't been redeployed yet sends no
+such field, and the client then behaves exactly as before — so the frontend can
+ship ahead of the `.gs` deploy without regressing.
 
 ### Pelanggaran Upacara: who sees what
 

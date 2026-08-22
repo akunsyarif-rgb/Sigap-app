@@ -2,12 +2,12 @@
 // Komponen utama App(): login, sesi, fetch data, semua handler simpan,
 // dan render seluruh tampilan. Dimuat PALING TERAKHIR.
 
-       // Sesi login disimpan di localStorage supaya tidak logout tiap refresh —
-       // sesi di server (CacheService) berlaku 6 jam dan DIPERPANJANG 6 jam lagi
-       // setiap kali dipakai, dengan batas mutlak 7 hari sejak login (lihat
-       // createSession/getSessionUser di Auth.gs); localStorage cuma "mengingat"
-       // token itu, validitas sebenarnya tetap ditentukan server di setiap
-       // panggilan API.
+       // Sesi login disimpan di localStorage supaya tidak logout tiap refresh.
+       // Sesi di server (CacheService) hidup MAKSIMAL 6 jam sejak login; batas
+       // itu sekarang ditegakkan eksplisit lewat loginAt di dalam record sesi
+       // (lihat createSession/getSessionUser di Auth.gs). localStorage cuma
+       // "mengingat" token itu — validitas sebenarnya tetap ditentukan server di
+       // setiap panggilan API.
        //
        // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: dulu `user` dipulihkan
        // dari localStorage TANPA cek umur sama sekali. Karena sesi server mati
@@ -97,9 +97,9 @@
 
            const [user, setUser] = useState(storedSession.user);
            const [sessionToken, setSessionToken] = useState(storedSession.token);
-           // Masa berlaku sesi yang sedang dipegang. Dipakai untuk menstempel
-           // snapshot data (lihat efek cache di bawah) dan diperpanjang setiap
-           // kali server mengabarkan sesinya baru saja diperpanjang.
+           // Batas akhir sesi yang sedang dipegang. Dipakai untuk menstempel
+           // snapshot data (lihat efek cache di bawah), dan disinkronkan ke
+           // angka dari server setiap kali respons membawa sessionExpiresAt.
            const sessionExpiresAt = useRef(storedSession.expiresAt || 0);
            const sessionLoginAt = useRef(storedSession.loginAt || 0);
            // Token yang SEDANG aktif, terbaca seketika (bukan menunggu render

@@ -19,7 +19,7 @@
 //   - sesi yang MEMANG habis tetap melogout (perbaikan ini bukan penutup pesan);
 //   - sesi disimpan sebagai satu record utuh, tidak bisa robek separuh;
 //   - record yang tidak terbaca ≠ "sesi habis" (tidak ada pesan palsu);
-//   - sesi diperpanjang selama dipakai, dengan batas mutlak sejak login;
+//   - umur sesi tetap maksimal 6 jam sejak login, ditegakkan di server;
 //   - logout benar-benar menghapus sesi;
 //   - role & hak akses tetap benar setelah sesi dipulihkan.
 
@@ -413,15 +413,16 @@ function loadAuthContext() {
   return ctx;
 }
 
-test('Auth.gs: sesi diperpanjang setiap kali dipakai (tidak lagi mati 6 jam sejak login)', () => {
+test('Auth.gs: entri sesi di-put ulang tiap dipakai supaya tidak dibuang cache lebih awal', () => {
   const ctx = loadAuthContext();
   const token = ctx.createSession(guru);
 
   const user = ctx.getSessionUser(token);
   assert.equal(user.name, 'Kartina');
   assert.equal(user.role, 'guru');
-  assert.equal(ctx.__store['sess_' + token].ttl, 21600, 'sesi harus di-put ulang dengan TTL penuh');
-  assert.ok(ctx.SESSION_RENEWED_UNTIL > Date.now(), 'perpanjangan harus dikabarkan ke klien');
+  assert.equal(ctx.__store['sess_' + token].ttl, 21600, 'entri harus di-put ulang dengan TTL penuh');
+  assert.ok(ctx.SESSION_RENEWED_UNTIL > Date.now(), 'batas akhir sesi harus dikabarkan ke klien');
+  assert.ok(ctx.SESSION_RENEWED_UNTIL <= Date.now() + SIX_HOURS, 'dan tidak pernah lebih dari 6 jam');
 });
 
 test('Auth.gs: token tidak dikenal & token kosong tetap ditolak', () => {
@@ -429,20 +430,36 @@ test('Auth.gs: token tidak dikenal & token kosong tetap ditolak', () => {
   assert.equal(ctx.getSessionUser(''), null);
   assert.equal(ctx.getSessionUser(null), null);
   assert.equal(ctx.getSessionUser('token-karangan'), null);
-  assert.equal(ctx.SESSION_RENEWED_UNTIL, 0, 'token ditolak tidak boleh mengabarkan perpanjangan');
+  assert.equal(ctx.SESSION_RENEWED_UNTIL, 0, 'token ditolak tidak boleh mengabarkan batas akhir sesi');
 });
 
-test('Auth.gs: ada batas mutlak — sesi tidak bisa hidup selamanya hanya karena terus dipakai', () => {
+test('Auth.gs: umur sesi tetap maksimal 6 jam sejak login (kebijakan lama tidak berubah)', () => {
   const ctx = loadAuthContext();
-  const token = ctx.createSession(guru);
-  // Paksa loginAt jadi 8 hari lalu (batas mutlak 7 hari).
-  const key = 'sess_' + token;
-  const rec = JSON.parse(ctx.__store[key].value);
-  rec.loginAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
-  ctx.__store[key].value = JSON.stringify(rec);
+  const key = (t) => 'sess_' + t;
 
-  assert.equal(ctx.getSessionUser(token), null, 'sesi melewati batas mutlak harus ditolak');
-  assert.equal(ctx.__store[key], undefined, 'dan dibuang dari cache');
+  // Baru login: sah.
+  const baru = ctx.createSession(guru);
+  assert.equal(ctx.getSessionUser(baru).name, 'Kartina');
+
+  // Masih di dalam 6 jam (login 5 jam lalu): sah, dan put ulang TIDAK boleh
+  // mendorong batas akhirnya melewati 6 jam sejak login.
+  const hampir = ctx.createSession(guru);
+  const recH = JSON.parse(ctx.__store[key(hampir)].value);
+  recH.loginAt = Date.now() - 5 * 60 * 60 * 1000;
+  ctx.__store[key(hampir)].value = JSON.stringify(recH);
+  assert.equal(ctx.getSessionUser(hampir).name, 'Kartina', 'sesi 5 jam masih sah');
+  assert.ok(
+    ctx.SESSION_RENEWED_UNTIL <= recH.loginAt + SIX_HOURS,
+    'batas akhir tidak boleh lewat dari 6 jam sejak login — put ulang bukan perpanjangan umur'
+  );
+
+  // Lewat 6 jam sejak login: ditolak, walau entri cache-nya masih ada.
+  const lewat = ctx.createSession(guru);
+  const recL = JSON.parse(ctx.__store[key(lewat)].value);
+  recL.loginAt = Date.now() - (SIX_HOURS + 60000);
+  ctx.__store[key(lewat)].value = JSON.stringify(recL);
+  assert.equal(ctx.getSessionUser(lewat), null, 'sesi lewat 6 jam harus ditolak');
+  assert.equal(ctx.__store[key(lewat)], undefined, 'dan dibuang dari cache');
 });
 
 test('Auth.gs: record sesi format lama tetap berlaku sampai habis sendiri', () => {
@@ -454,10 +471,10 @@ test('Auth.gs: record sesi format lama tetap berlaku sampai habis sendiri', () =
   assert.equal(user, null);
   const old = ctx.getSessionUser('LAMA');
   assert.equal(old.name, 'Kartina');
-  assert.equal(ctx.SESSION_RENEWED_UNTIL, 0, 'umur aslinya tidak diketahui, jadi tidak diperpanjang');
+  assert.equal(ctx.SESSION_RENEWED_UNTIL, 0, 'waktu login-nya tidak diketahui, jadi tidak di-put ulang');
 });
 
-test('Utils.gs: jsonOut melampirkan sessionExpiresAt hanya saat sesi diperpanjang', () => {
+test('Utils.gs: jsonOut melampirkan sessionExpiresAt hanya saat sesi tersentuh', () => {
   const ctx = loadAuthContext();
   const captured = [];
   ctx.ContentService = {
@@ -465,12 +482,12 @@ test('Utils.gs: jsonOut melampirkan sessionExpiresAt hanya saat sesi diperpanjan
     MimeType: { JSON: 'JSON' },
   };
 
-  // Tanpa perpanjangan (mis. respons login / Unauthorized).
+  // Request yang tidak menyentuh sesi (mis. respons login / Unauthorized).
   ctx.SESSION_RENEWED_UNTIL = 0;
   ctx.jsonOut({ status: 'success' });
   assert.ok(!JSON.parse(captured[0]).sessionExpiresAt);
 
-  // Setelah getSessionUser memperpanjang sesi.
+  // Setelah getSessionUser memvalidasi & menyegarkan entri sesi.
   const token = ctx.createSession(guru);
   ctx.getSessionUser(token);
   ctx.jsonOut({ status: 'success', logs: [] });

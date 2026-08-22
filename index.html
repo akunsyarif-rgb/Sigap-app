@@ -4,27 +4,6 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
    <title>SIGAP - SMAN 2 Tarakan</title>
-   <!-- Dipasang ke Home Screen (iPhone: Bagikan → Tambah ke Layar Utama).
-        Tanpa manifest & meta di bawah ini, perilaku peluncuran dari ikon
-        ditentukan sepenuhnya oleh tebakan iOS, dan start_url-nya jadi URL apa
-        pun yang kebetulan terbuka saat ikon dibuat (bisa membawa query/hash
-        sisa) — bukan alamat kanonik aplikasi. Ini menyamakan peluncuran dari
-        ikon dengan membuka lewat browser biasa.
-        SENGAJA TIDAK ADA service worker: aplikasi ini tidak punya build step
-        dan mengandalkan BUILD_VERSION di bawah untuk cache-busting, jadi
-        service worker justru akan menyajikan JavaScript versi lama dan
-        membuat state auth tidak sinkron. -->
-   <link rel="manifest" href="manifest.webmanifest">
-   <meta name="apple-mobile-web-app-capable" content="yes">
-   <meta name="mobile-web-app-capable" content="yes">
-   <!-- 'default' (bukan 'black-translucent') dan TANPA viewport-fit=cover:
-        keduanya membuat isi halaman merangkak ke bawah status bar/poni, dan
-        Header di app ini position:fixed top:0 tanpa padding safe-area — sudah
-        pernah rusak sekali soal Header/BottomNav, jangan diulang lewat pintu
-        ini. Dengan 'default', area tampilannya sama persis seperti di browser. -->
-   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-   <meta name="apple-mobile-web-app-title" content="SIGAP">
-   <meta name="theme-color" content="#1B2A41">
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
    <!-- Fraunces (judul/angka besar) + Work Sans (UI/isi). Work Sans memuat
