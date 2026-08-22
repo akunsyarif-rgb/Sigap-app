@@ -13,6 +13,11 @@ name: Deploy backend to Apps Script
 #                         (API_URL di config.js) — supaya di-UPDATE di
 #                         tempat, bukan bikin deployment baru dengan URL
 #                         beda yang tidak dikenali config.js manapun.
+#
+# Urutannya sengaja: validasi dulu sampai tuntas, baru menyentuh project.
+# Semua langkah sebelum "Push kode ke Apps Script" bersifat baca-saja, jadi
+# kalau kredensial bermasalah job berhenti TANPA pernah mengubah apa pun di
+# Apps Script.
 on:
   workflow_dispatch: {}
 
@@ -25,11 +30,94 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+
+      # 1. Gerbang pertama: ketiga secret ada, CLASP_CREDENTIALS JSON utuh,
+      #    dan deployment ID tidak kosong. Tanpa langkah ini secret kosong
+      #    lolos diam-diam (echo selalu sukses) dan baru meledak di clasp
+      #    sebagai "Unexpected end of JSON input" yang tidak menjelaskan apa
+      #    pun. Skrip ini tidak pernah mencetak isi kredensial.
+      - name: Validasi kredensial clasp
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+          CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
+          CLASP_DEPLOYMENT_ID: ${{ secrets.CLASP_DEPLOYMENT_ID }}
+        run: node .github/scripts/check-clasp-credentials.js
+
+      # 2. Tulis file konfigurasi clasp. Secret dilewatkan lewat `env:` dan
+      #    ditulis pakai printf/node dari variabel — BUKAN di-interpolasi ke
+      #    dalam teks perintah shell seperti sebelumnya. Isi ~/.clasprc.json
+      #    yang mengandung tanda kutip tunggal dulu merusak quoting dan bisa
+      #    menghasilkan file rusak (atau membocorkan potongan ke log).
       - name: Siapkan kredensial clasp
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+          CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
         run: |
-          echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
-          echo "{\"scriptId\":\"${{ secrets.CLASP_SCRIPT_ID }}\",\"rootDir\":\".\"}" > .clasp.json
+          set -euo pipefail
+          printf '%s' "$CLASP_CREDENTIALS" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          # .clasp.json = project yang di-push (rootDir "." → repo checkout).
+          # .clasp-pull.json = project yang sama tapi rootDir ke folder
+          # terpisah, dipakai langkah 3 supaya `clasp pull` tidak menimpa
+          # Code.gs/Auth.gs/Utils.gs hasil checkout dengan versi lama dari
+          # server (yang justru mau kita gantikan).
+          mkdir -p "$RUNNER_TEMP/gas-live"
+          node -e '
+            const fs = require("fs");
+            const scriptId = process.env.CLASP_SCRIPT_ID.trim();
+            fs.writeFileSync(".clasp.json", JSON.stringify({ scriptId, rootDir: "." }));
+            fs.writeFileSync(".clasp-pull.json", JSON.stringify({
+              scriptId,
+              rootDir: process.env.RUNNER_TEMP + "/gas-live",
+            }));
+          '
+
+      # 3. Gerbang kedua: uji kredensial ke Apps Script sungguhan dengan
+      #    operasi BACA-SAJA. Kalau token/scriptId salah, job mati di sini —
+      #    sebelum ada satu byte pun yang ditulis ke project.
+      #
+      #    Sekaligus mengambil appsscript.json (manifest) dari project yang
+      #    live. Manifest TIDAK ada di repo ini, padahal updateContent butuh
+      #    manifest dan akan mengganti yang di server. Menyalin manifest live
+      #    apa adanya menjamin push ini cuma mengubah ketiga berkas .gs dan
+      #    tidak pernah diam-diam mengubah timezone, oauthScopes, atau setelan
+      #    webapp (access/executeAs) yang menentukan apakah guru masih bisa
+      #    membuka Web App. Kalau suatu saat appsscript.json sengaja
+      #    di-commit ke repo, versi repo yang menang.
+      - name: Ambil manifest dari project live
+        run: |
+          set -euo pipefail
+          npx clasp pull -P .clasp-pull.json
+          if [ -f appsscript.json ]; then
+            echo "appsscript.json ada di repo — memakai versi repo."
+          elif [ -f "$RUNNER_TEMP/gas-live/appsscript.json" ]; then
+            cp "$RUNNER_TEMP/gas-live/appsscript.json" appsscript.json
+            echo "Manifest live disalin apa adanya (push tidak mengubah manifest):"
+            cat appsscript.json
+          else
+            echo "::error::appsscript.json tidak ada di repo maupun di project live." >&2
+            echo "clasp push akan mengirim project tanpa manifest. Deploy dibatalkan." >&2
+            exit 1
+          fi
+
+      # 4. Catat daftar berkas yang benar-benar akan dikirim. `clasp push`
+      #    memakai projects.updateContent yang MENGGANTI SELURUH isi project,
+      #    jadi daftar ini harus persis: Auth.gs, Code.gs, Utils.gs, dan
+      #    appsscript.json (sesuai .claspignore). Kalau suatu saat ada yang
+      #    salah, log inilah yang menjelaskan kenapa.
+      - name: Periksa berkas yang akan dikirim
+        run: npx clasp status
+
       - name: Push kode ke Apps Script
         run: npx clasp push --force
+
+      # 5. -i WAJIB terisi (sudah dijamin langkah 1). Di clasp v3 pengecekannya
+      #    `if (!deploymentId)`, jadi -i "" akan membuat deployment BARU dengan
+      #    URL Web App baru, bukan memperbarui yang dipakai config.js.
       - name: Update deployment Web App yang sudah ada
-        run: npx clasp deploy -i "${{ secrets.CLASP_DEPLOYMENT_ID }}" -d "Deploy dari GitHub Actions - ${{ github.sha }}"
+        env:
+          CLASP_DEPLOYMENT_ID: ${{ secrets.CLASP_DEPLOYMENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASP_DEPLOYMENT_ID"
+          npx clasp deploy -i "$CLASP_DEPLOYMENT_ID" -d "Deploy dari GitHub Actions - ${{ github.sha }}"

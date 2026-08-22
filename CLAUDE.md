@@ -38,6 +38,16 @@ ever auto-deploys one of them:
 ### clasp (Apps Script CLI)
 
 - `.claspignore` restricts `clasp push` to only the `.gs` files + `appsscript.json`.
+  **`appsscript.json` is not in the repo** and never has been. It matters
+  because `clasp push` calls `projects.updateContent`, which replaces the
+  project's *entire* content — pushing with no manifest either errors or wipes
+  the live one, and the manifest is what holds the timezone, `oauthScopes`, and
+  the `webapp` `access`/`executeAs` settings that decide whether teachers can
+  open the Web App at all. `deploy-gas.yml` handles this by `clasp pull`ing the
+  live manifest into a temp dir and copying it in verbatim before pushing, so a
+  deploy only ever changes the three `.gs` files. If you ever commit a real
+  `appsscript.json`, the workflow prefers the repo's copy — get it from
+  `clasp pull`, don't hand-write it.
 - `.clasp.json` is gitignored (copy `.clasp.json.example` → `.clasp.json` and
   fill in the real `scriptId` from Apps Script Project Settings — this is
   per-person/per-checkout, not committed).
@@ -51,7 +61,23 @@ ever auto-deploys one of them:
   (manual button, not automatic on push) CI job that does the push +
   `clasp deploy -i` for you, gated behind three repo secrets
   (`CLASP_CREDENTIALS`, `CLASP_SCRIPT_ID`, `CLASP_DEPLOYMENT_ID`) that must be
-  configured before it can run.
+  configured before it can run. Every step before `clasp push` is read-only, so
+  a misconfigured secret aborts the run without touching the live project.
+- `.github/scripts/check-clasp-credentials.js` is the first of those steps
+  (unit-tested by `tests/clasp-credentials.test.js`). It exists because both
+  ways this can fail are silent: an unset secret interpolates to an **empty
+  string**, so the old `echo '${{ secrets.X }}' > ~/.clasprc.json` wrote a blank
+  file and clasp died with the useless `Unexpected end of JSON input` (its
+  `FileCredentialStore.readFile` does a bare `JSON.parse`); and `clasp deploy
+  -i ""` does **not** error — clasp v3 tests `if (!deploymentId)`, so an empty
+  `CLASP_DEPLOYMENT_ID` silently creates a *new* deployment on a *new* URL while
+  every teacher keeps hitting the old one. The script mirrors clasp's own
+  credential normalization (v3 `tokens.default`, plus both legacy v1 shapes) and
+  checks for `client_id`/`client_secret`/`refresh_token`, which
+  `GoogleAuth().fromJSON()` requires. It reports shapes, never values — keep it
+  that way, its log is visible to anyone with repo access.
+- Secrets reach the shell through `env:`, never interpolated into the command
+  text: a `'` inside `~/.clasprc.json` used to break the quoting outright.
 
 ## Commands
 
