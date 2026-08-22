@@ -127,15 +127,29 @@ const findAll = (node, pred) => flatten(node).filter((n) => n.type !== undefined
 const buttonWithText = (node, label) =>
   findAll(node, (n) => (n.type === 'button' || n.type === get('Button')) && allText(n).trim() === label)[0];
 
+// ⚠️ Waktu fixture WAJIB selalu di masa lalu DAN di dalam bulan berjalan.
+// Dulu di sini dipakai jam dinding tetap (07:00/08:00/09:00 "hari ini"),
+// padahal periode default RekapUpacara adalah 'bulan-ini' yang membuang
+// timestamp MASA DEPAN (`dt >= startOfMonth(now) && dt <= now`). Jadi setiap
+// kali suite dijalankan sebelum jam 9 pagi waktu lokal, seluruh fixture ikut
+// terbuang dan 8 tes di file ini gagal — bukan karena ada yang rusak, tapi
+// karena jam berapa tesnya dijalankan. Runner CI memakai UTC, jadi ini merah
+// setiap kali CI jalan lewat tengah malam.
+//
+// Sekarang waktunya dihitung MUNDUR dari `now`, dan rentangnya dijepit supaya
+// tidak pernah jatuh sebelum awal bulan (kasus tepat setelah tanggal 1).
+// rank kecil = lebih lama, rank besar = lebih baru; semuanya <= now.
 const now = new Date();
-const ts = (daysAgo, h) => new Date(now.getFullYear(), now.getMonth(), Math.max(1, now.getDate() - (daysAgo || 0)), h || 8, 0, 0).toISOString();
+const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+const SPAN_MS = Math.min(30 * 60 * 1000, Math.max(0, now.getTime() - monthStart));
+const ts = (rank) => new Date(now.getTime() - SPAN_MS + (SPAN_MS * rank) / 4).toISOString();
 
 const UPACARA = [
-  { timestamp: ts(0, 9), nisn: '3', name: 'Candra', class: 'XI TEKNIK', jenis_pelanggaran: 'Terlambat Baris', catatan: '', logged_by: 'OSIS A' },
-  { timestamp: ts(0, 8), nisn: '1', name: 'Ahmad Fauzan', class: 'XI TEKNIK', jenis_pelanggaran: 'Atribut Tidak Lengkap', catatan: 'Sepatu tidak hitam', logged_by: 'OSIS A' },
-  { timestamp: ts(0, 8), nisn: '4', name: 'Dimas', class: 'XI A', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS B' },
-  { timestamp: ts(0, 8), nisn: '2', name: 'Budi', class: 'XI TEKNIK', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS A' },
-  { timestamp: ts(0, 7), nisn: '5', name: 'Fajar', class: 'XI A', jenis_pelanggaran: 'Membawa HP saat upacara', catatan: '', logged_by: 'OSIS B' },
+  { timestamp: ts(3), nisn: '3', name: 'Candra', class: 'XI TEKNIK', jenis_pelanggaran: 'Terlambat Baris', catatan: '', logged_by: 'OSIS A' },
+  { timestamp: ts(2), nisn: '1', name: 'Ahmad Fauzan', class: 'XI TEKNIK', jenis_pelanggaran: 'Atribut Tidak Lengkap', catatan: 'Sepatu tidak hitam', logged_by: 'OSIS A' },
+  { timestamp: ts(2), nisn: '4', name: 'Dimas', class: 'XI A', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS B' },
+  { timestamp: ts(2), nisn: '2', name: 'Budi', class: 'XI TEKNIK', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS A' },
+  { timestamp: ts(1), nisn: '5', name: 'Fajar', class: 'XI A', jenis_pelanggaran: 'Membawa HP saat upacara', catatan: '', logged_by: 'OSIS B' },
 ];
 
 // ---- 9: urutan default Kelas -> Nama A-Z -> waktu ----
