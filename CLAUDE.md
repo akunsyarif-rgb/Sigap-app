@@ -84,7 +84,17 @@ order does for anything not hoisted.
   `login`/`logout` additionally requires a valid session (`getSessionUser`).
 - **`Auth.gs`** — session creation/lookup (`createSession`/`getSessionUser`,
   backed by `CacheService`, 6h max TTL — a hard GAS `CacheService.put()` limit,
-  not a design choice) and password verification (`verifyPassword`, supports
+  not a design choice). Because 6h is a per-`put()` cap, `getSessionUser()`
+  **re-`put`s the record on every authenticated request** (so a busy session's
+  cache entry is not evicted early — Apps Script may drop entries before TTL) and
+  publishes the session's real deadline via the `SESSION_RENEWED_UNTIL` global,
+  which `jsonOut` attaches to the response as `sessionExpiresAt`. **The session
+  lifetime policy is unchanged: 6h from login, never extended.** That cap is now
+  enforced explicitly against `loginAt` (stored inside the record) rather than
+  relying on the cache entry's own TTL, so the re-`put` keeps the entry from
+  being evicted early without ever lengthening the session. Session records
+  created by the previous backend (a bare user object, no wrapper) are still
+  honored until they expire, but are not re-`put`. Also password verification (`verifyPassword`, supports
   both the legacy unsalted-lowercased SHA-256 scheme and the current salted
   scheme, with automatic migration on next successful login). Role helpers
   (`isAdminRole`, `isBkRole`, `isOsisRole`) normalize and check role strings.
@@ -121,14 +131,48 @@ on the first frame (never disable it or cover it with an overlay while
 loading/ready/error states, and a failed fetch must degrade to legacy login
 *with* a visible message. `tests/login.test.js` enforces all three.
 
-Session restore (`loadStoredSession` in `app.js`) writes an expiry stamp
-(`sigap_session_expires`, 6h — same as `createSession`'s `CacheService` TTL)
-and **refuses to render the logged-in UI from a stored session past it**.
-Without the stamp the app rendered the logged-in shell (teacher's name in the
-Header) from an already-dead server session, sat there unusable for several
-seconds, then yanked it away when the first API response came back `Sesi
-berakhir` — exactly what users reported as "the name disappears by itself".
-Don't remove the stamp.
+### Session lifecycle (client)
+
+The session lives in **one** `localStorage` key, `sigap_session`, holding
+`{v, token, user, expiresAt, loginAt}` — written with a single `setItem`.
+It used to be three separate keys (`sigap_session_token`/`sigap_user`/
+`sigap_session_expires`) written by three consecutive `setItem` calls inside
+one `try`; a failure on the 2nd or 3rd (quota — the same origin also writes a
+few-hundred-KB `sigap_data_cache`, and an iOS Home Screen web app gets its own
+tighter storage allowance) left a **torn** record that the reader reported as
+"expired", producing a bogus "Sesi sebelumnya sudah berakhir". The old keys are
+still **read** (and migrated + deleted on first boot) so a deploy never logs
+anyone out; they are never written again. Don't split the record back up.
+
+The expiry stamp itself **refuses to render the logged-in UI from a stored
+session past it**. Without it the app rendered the logged-in shell (teacher's
+name in the Header) from an already-dead server session, sat there unusable for
+several seconds, then yanked it away when the first API response came back
+`Sesi berakhir` — exactly what users reported as "the name disappears by
+itself". Don't remove the stamp. A record that merely **fails to parse** is
+reported as *no session* (silent login screen), not as *expired* — "unknown"
+must never be shown to a teacher as "your session ended".
+
+`checkSession` (the guard chained onto all 36 API responses) is **scoped to the
+token the request was sent with**, via `shouldClearSessionForResponse()` in
+`helpers.js`. Matching only the `Sesi berakhir` message — as it did before —
+meant a late response belonging to a *dead* session could land after the
+teacher had already logged back in and wipe the **new** session. That was the
+reported "login succeeds, then it logs straight back out, every time" bug,
+which showed up once the app was added to the iPhone Home Screen: launching
+from the icon is the one flow that routinely starts from a stored-but-
+server-dead session, so boot fires its 7 parallel requests under a dead token
+and the stragglers land after the re-login. `activeSessionToken` is a **ref**,
+not state, so a new token is visible to in-flight responses immediately rather
+than one render later. Keep both properties.
+
+Successful responses carrying `sessionExpiresAt` sync the stored stamp to the
+server's own deadline via `nextSessionExpiry`, which never shortens it and never
+grants more than one full TTL — with the 6h-from-login cap the server reports
+the same deadline the client already computed at login, so in practice this only
+keeps the two from drifting. A backend that hasn't been redeployed yet sends no
+such field, and the client then behaves exactly as before — so the frontend can
+ship ahead of the `.gs` deploy without regressing.
 
 ### Pelanggaran Upacara: who sees what
 

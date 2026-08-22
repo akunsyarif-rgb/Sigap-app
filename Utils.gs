@@ -8,7 +8,20 @@
 
 // ===== UTILITAS DASAR =====
 
+// Selain membungkus jadi JSON, jsonOut menempelkan sessionExpiresAt kalau
+// getSessionUser() baru saja memperpanjang sesi pada request ini (lihat
+// SESSION_RENEWED_UNTIL di Auth.gs). Dipasang DI SINI, bukan di tiap handler,
+// supaya setiap aksi — termasuk aksi baru yang ditambahkan nanti — otomatis
+// ikut mengabarkan perpanjangannya tanpa ada yang lupa.
+//
+// Beberapa respons GET yang di-cache (students_list, login_users) memakai
+// ContentService langsung tanpa lewat sini dan karena itu tidak membawa field
+// ini — itu tidak masalah: klien hanya memperpanjang stempelnya kalau field
+// ini ada, dan selalu ada request lain di boot yang membawanya.
 function jsonOut(obj) {
+  if (obj && typeof obj === 'object' && typeof SESSION_RENEWED_UNTIL === 'number' && SESSION_RENEWED_UNTIL > 0 && !obj.sessionExpiresAt) {
+    obj.sessionExpiresAt = SESSION_RENEWED_UNTIL;
+  }
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 

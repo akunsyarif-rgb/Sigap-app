@@ -370,12 +370,18 @@ test('buildLoginPayload: teacherId hanya ikut kalau guru dipilih', () => {
 });
 
 // ---- Akar bug: sesi kedaluwarsa tidak boleh dipakai me-render "sudah login" ----
+// Dites lewat format LAMA (tiga kunci terpisah) — selain menjaga aturan aslinya
+// tetap berlaku, ini sekaligus mengunci jalur kompatibilitas: guru yang sedang
+// login saat versi ini di-deploy tidak boleh ikut terlempar ke layar login.
 test('loadStoredSession: sesi kedaluwarsa & sesi tanpa stempel ditolak', () => {
   const loadStoredSession = get('loadStoredSession');
   const userJson = JSON.stringify({ id: 'G01', name: 'Kartina', role: 'guru' });
+  const noSession = (r) => { assert.equal(r.token, null); assert.equal(r.user, null); };
 
   storage = {};
-  eq(loadStoredSession(), { token: null, user: null, expired: false });
+  const kosong = loadStoredSession();
+  noSession(kosong);
+  assert.equal(kosong.expired, false);
 
   // Sesi masih hidup → dipakai.
   storage = { sigap_session_token: 'T', sigap_user: userJson, sigap_session_expires: String(Date.now() + 60000) };
@@ -383,19 +389,28 @@ test('loadStoredSession: sesi kedaluwarsa & sesi tanpa stempel ditolak', () => {
   assert.equal(live.token, 'T');
   assert.equal(live.user.name, 'Kartina');
   assert.equal(live.expired, false);
+  // ...dan ikut dimigrasi ke satu record utuh, kunci lamanya dibuang.
+  assert.equal(storage.sigap_session_token, undefined, 'kunci format lama harus dibersihkan setelah migrasi');
+  assert.equal(JSON.parse(storage.sigap_session).token, 'T');
 
   // Sesi lewat umur → TIDAK dipakai, dan ditandai expired supaya layar login
   // bisa menjelaskan kenapa.
   storage = { sigap_session_token: 'T', sigap_user: userJson, sigap_session_expires: String(Date.now() - 1) };
-  eq(loadStoredSession(), { token: null, user: null, expired: true });
+  const mati = loadStoredSession();
+  noSession(mati);
+  assert.equal(mati.expired, true);
 
   // Sesi dari versi lama (tanpa stempel) → diperlakukan kedaluwarsa.
   storage = { sigap_session_token: 'T', sigap_user: userJson };
-  eq(loadStoredSession(), { token: null, user: null, expired: true });
+  const tanpaStempel = loadStoredSession();
+  noSession(tanpaStempel);
+  assert.equal(tanpaStempel.expired, true);
 
   // JSON rusak tidak boleh melempar.
   storage = { sigap_session_token: 'T', sigap_user: '{bukan json', sigap_session_expires: String(Date.now() + 60000) };
-  eq(loadStoredSession(), { token: null, user: null, expired: false });
+  const rusak = loadStoredSession();
+  noSession(rusak);
+  assert.equal(rusak.expired, false);
 });
 
 test('App: sesi kedaluwarsa → langsung layar login, bukan tampilan "sudah login"', () => {
@@ -446,10 +461,14 @@ test('App: login sukses menyimpan sesi + stempel kedaluwarsa', async () => {
   findAll(tree, (n) => n.type === get('LoginScreen'))[0].props.onLogin({ preventDefault: () => {} });
   await new Promise((r) => setTimeout(r, 0));
 
-  assert.equal(storage.sigap_session_token, 'TOK123');
-  assert.match(storage.sigap_user, /Kartina/);
-  const expires = parseInt(storage.sigap_session_expires, 10);
-  assert.ok(expires > Date.now() + sixHours - 5000 && expires <= Date.now() + sixHours, 'stempel kedaluwarsa harus 6 jam ke depan');
+  // Satu record utuh, bukan tiga kunci terpisah — tiga setItem berurutan bisa
+  // gagal separuh jalan (kuota) dan menyisakan sesi robek yang terbaca sebagai
+  // "sudah berakhir" padahal cuma gagal ditulis.
+  const record = JSON.parse(storage.sigap_session);
+  assert.equal(record.token, 'TOK123');
+  assert.equal(record.user.name, 'Kartina');
+  assert.ok(record.expiresAt > Date.now() + sixHours - 5000 && record.expiresAt <= Date.now() + sixHours, 'stempel kedaluwarsa harus 6 jam ke depan');
+  assert.ok(record.loginAt > 0, 'waktu login disimpan untuk batas mutlak usia sesi');
 });
 
 test('App: daftar guru ditarik tanpa sessionToken (dipanggil sebelum login)', () => {

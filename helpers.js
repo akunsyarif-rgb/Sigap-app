@@ -60,6 +60,123 @@
            return parsed;
        }
 
+       // ===== Sesi login: SATU record utuh di localStorage =====
+       // Dulu sesi disimpan sebagai TIGA kunci terpisah (sigap_session_token,
+       // sigap_user, sigap_session_expires) yang ditulis lewat tiga setItem
+       // berturut-turut di dalam satu try/catch. Kalau setItem kedua atau
+       // ketiga gagal (kuota penuh — origin yang sama juga menulis snapshot
+       // data ratusan KB, dan web app yang dipasang di Home Screen iOS punya
+       // jatah penyimpanan sendiri yang lebih ketat daripada Safari), catch-nya
+       // menelan error itu diam-diam dan menyisakan record ROBEK: token & user
+       // ada, stempel kedaluwarsa tidak. Pembacanya lalu menyimpulkan "sesi
+       // sudah lewat umur" dan layar login berteriak "Sesi sebelumnya sudah
+       // berakhir" — padahal yang terjadi cuma tulisan yang gagal separuh.
+       //
+       // Satu record = satu setItem = tidak ada lagi keadaan separuh jadi.
+       // Record yang tetap tidak bisa dibaca diperlakukan sebagai 'none'
+       // (layar login biasa, TANPA pesan), bukan 'expired' — "tidak tahu"
+       // bukan "sudah habis", dan pesan sesi habis hanya boleh muncul kalau
+       // sesinya memang terbukti lewat umur.
+       const SESSION_STORAGE_KEY = 'sigap_session';
+       // Kunci format lama. Masih DIBACA (supaya deploy ini tidak melogout
+       // siapa pun yang sedang login) dan dihapus begitu berhasil dimigrasi,
+       // tapi tidak pernah ditulis lagi.
+       const SESSION_LEGACY_KEYS = { token: 'sigap_session_token', user: 'sigap_user', expires: 'sigap_session_expires' };
+       // Naikkan kalau BENTUK record berubah — record versi lama diabaikan
+       // (jadi 'none'), bukan dibaca salah.
+       const SESSION_RECORD_VERSION = 1;
+       // Samakan dengan TTL createSession() di Auth.gs: 21600 detik adalah
+       // batas MAKSIMUM satu CacheService.put() di Apps Script.
+       const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+       function buildSessionRecord(token, user, expiresAt, loginAt) {
+           return { v: SESSION_RECORD_VERSION, token: String(token || ''), user: user || null, expiresAt: Number(expiresAt) || 0, loginAt: Number(loginAt) || 0 };
+       }
+
+       // Fungsi, bukan satu objek konstan yang dipakai bersama: pemanggilnya
+       // menyimpan hasil ini ke state dan objek yang dipakai ulang lintas
+       // pemanggil adalah undangan bug yang sulit dilacak.
+       function emptySession() { return { token: null, user: null, expired: false, expiresAt: 0, loginAt: 0 }; }
+       function expiredSession() { return { token: null, user: null, expired: true, expiresAt: 0, loginAt: 0 }; }
+
+       // expired:true HANYA untuk sesi yang benar-benar terbukti lewat umur.
+       // Apa pun yang cuma "tidak terbaca" jatuh ke emptySession().
+       function parseSessionRecord(raw, now) {
+           const at = typeof now === 'number' ? now : Date.now();
+           if (!raw) return emptySession();
+           let parsed;
+           try { parsed = JSON.parse(raw); } catch (e) { return emptySession(); }
+           if (!parsed || typeof parsed !== 'object' || parsed.v !== SESSION_RECORD_VERSION) return emptySession();
+           const token = parsed.token ? String(parsed.token) : '';
+           const user = parsed.user && typeof parsed.user === 'object' ? parsed.user : null;
+           const expiresAt = Number(parsed.expiresAt) || 0;
+           if (!token || !user || !expiresAt) return emptySession();
+           if (at >= expiresAt) return expiredSession();
+           return { token: token, user: user, expired: false, expiresAt: expiresAt, loginAt: Number(parsed.loginAt) || 0 };
+       }
+
+       // Jalur kompatibilitas untuk tiga kunci lama. Aturannya DIPERTAHANKAN
+       // persis seperti sebelumnya, termasuk "tanpa stempel = perlakukan
+       // sebagai kedaluwarsa": di format lama, record tanpa stempel memang
+       // tidak bisa dibedakan dari sesi versi aplikasi lawas yang umurnya
+       // tidak diketahui, dan sekali login ulang jauh lebih baik daripada
+       // merender tampilan "sudah login" dari sesi yang sebenarnya sudah mati.
+       function parseLegacySession(rawToken, rawUser, rawExpires, now) {
+           const at = typeof now === 'number' ? now : Date.now();
+           if (!rawToken || !rawUser) return emptySession();
+           let user;
+           try { user = JSON.parse(rawUser); } catch (e) { return emptySession(); }
+           if (!user || typeof user !== 'object') return emptySession();
+           const expiresAt = parseInt(rawExpires || '0', 10);
+           if (!expiresAt || at >= expiresAt) return expiredSession();
+           return { token: String(rawToken), user: user, expired: false, expiresAt: expiresAt, loginAt: 0 };
+       }
+
+       // Satu-satunya tempat yang mendefinisikan "server bilang sesi habis".
+       const SESSION_EXPIRED_PATTERN = /sesi berakhir/i;
+       function isSessionExpiredResponse(data) {
+           return !!(data && data.status === 'error' && SESSION_EXPIRED_PATTERN.test(String(data.message || '')));
+       }
+
+       // ===== Kapan "Sesi berakhir" boleh benar-benar melogout =====
+       // Jawaban dari server SELALU datang belakangan, kadang belasan detik
+       // setelah request-nya ditembakkan (Apps Script lambat, dan boot
+       // menembakkan 7 request paralel sekaligus). Penjaga sesi yang lama cuma
+       // mencocokkan TEKS pesannya, tanpa pernah menanyakan token mana yang
+       // dipakai request itu — jadi jawaban milik sesi yang SUDAH mati bisa
+       // mendarat setelah guru berhasil login ulang, dan ikut menghapus sesi
+       // BARU yang baru berumur beberapa detik. Itulah "login berhasil lalu
+       // langsung logout lagi" yang dilaporkan dari layar Home Screen: buka
+       // dari ikon = cold start dari halaman yang ditinggal dalam keadaan
+       // login, satu-satunya kondisi yang melahirkan sesi-tersimpan-tapi-mati.
+       //
+       // Aturannya sekarang: sebuah jawaban hanya boleh melogout kalau token
+       // yang dipakai request itu MASIH token yang sedang aktif sekarang.
+       function shouldClearSessionForResponse(data, tokenUsed, activeToken) {
+           if (!isSessionExpiredResponse(data)) return false;
+           if (!tokenUsed || !activeToken) return false; // request tanpa sesi / sudah logout
+           return String(tokenUsed) === String(activeToken);
+       }
+
+       // Perpanjangan sesi. serverExpiresAt = field sessionExpiresAt yang
+       // dikirim backend setiap kali ia berhasil memperpanjang sesi (lihat
+       // getSessionUser di Auth.gs + jsonOut di Utils.gs).
+       //
+       // Backend yang BELUM di-deploy ulang tidak mengirim field ini sama
+       // sekali → kembalikan stempel apa adanya, jadi perilakunya identik
+       // dengan sebelum perubahan ini. Nilai dari server juga tidak pernah
+       // boleh MEMENDEKKAN stempel atau memberi lebih dari satu TTL penuh —
+       // sesi klien tidak boleh bisa dimatikan/diperpanjang liar oleh jawaban
+       // yang aneh.
+       function nextSessionExpiry(currentExpiresAt, serverExpiresAt, now) {
+           const at = typeof now === 'number' ? now : Date.now();
+           const current = Number(currentExpiresAt) || 0;
+           const fromServer = Number(serverExpiresAt) || 0;
+           if (!fromServer) return current;
+           const capped = Math.min(fromServer, at + SESSION_MAX_AGE_MS);
+           return capped > current ? capped : current;
+       }
+
        // ===== Layar Login: pencarian nama guru =====
        // Dipisah dari LoginScreen (murni, tanpa React) supaya logikanya bisa
        // diuji langsung di tests/login.test.js.
