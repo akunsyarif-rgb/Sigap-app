@@ -6,3 +6,8 @@ node_modules/
 .clasp.json
 .clasprc.json
 
+# .clasp-pull.json dibuat sementara oleh .github/workflows/deploy-gas.yml
+# (dan kalau meniru langkahnya secara lokal) cuma untuk `clasp pull` manifest
+# ke folder terpisah — bukan konfigurasi yang perlu di-commit.
+.clasp-pull.json
+

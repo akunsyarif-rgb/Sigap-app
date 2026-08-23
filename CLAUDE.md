@@ -38,20 +38,68 @@ ever auto-deploys one of them:
 ### clasp (Apps Script CLI)
 
 - `.claspignore` restricts `clasp push` to only the `.gs` files + `appsscript.json`.
+  **`appsscript.json` is not in the repo** and never has been. It matters
+  because `clasp push` calls `projects.updateContent`, which replaces the
+  project's *entire* content — pushing with no manifest either errors or wipes
+  the live one, and the manifest is what holds the timezone, `oauthScopes`, and
+  the `webapp` `access`/`executeAs` settings that decide whether teachers can
+  open the Web App at all. `deploy-gas.yml` handles this by `clasp pull`ing the
+  live manifest into a temp dir and copying it in verbatim before pushing, so a
+  deploy only ever changes the three `.gs` files. If you ever commit a real
+  `appsscript.json`, the workflow prefers the repo's copy — get it from
+  `clasp pull`, don't hand-write it.
 - `.clasp.json` is gitignored (copy `.clasp.json.example` → `.clasp.json` and
   fill in the real `scriptId` from Apps Script Project Settings — this is
   per-person/per-checkout, not committed).
-- `npm run clasp:login` / `clasp:push` / `clasp:deploy` — `clasp:deploy` runs
-  `clasp push && clasp deploy`, but a bare `clasp deploy` creates a **new**
-  deployment with a **different** Web App URL, which the live `config.js`
-  (frontend) won't know about. To update the URL already in use, deploy
-  targeting the existing deployment ID: `clasp deploy -i <deploymentId>`
-  (find it via `clasp deployments`).
+- `npm run clasp:login` / `clasp:push` / `clasp:deploy`. A bare `clasp deploy`
+  creates a **new** deployment with a **different** Web App URL that the live
+  `config.js` knows nothing about — and it does not error, so the only symptom
+  is teachers still running the old code. `clasp:deploy` used to be exactly
+  that (`clasp push && clasp deploy`); it now runs
+  `.github/scripts/clasp-deploy-existing.js`, which refuses to start without
+  `CLASP_DEPLOYMENT_ID` and always passes `-i`:
+  `CLASP_DEPLOYMENT_ID=<id> npm run clasp:deploy` (find the id via
+  `clasp deployments`, matching `API_URL` in `config.js`). No path in this repo
+  — CI or local — can create a deployment; `tests/deploy-workflow.test.js`
+  greps for a bare `clasp deploy`/`create-deployment` and fails the build.
 - `.github/workflows/deploy-gas.yml` is an opt-in, `workflow_dispatch`-only
   (manual button, not automatic on push) CI job that does the push +
   `clasp deploy -i` for you, gated behind three repo secrets
   (`CLASP_CREDENTIALS`, `CLASP_SCRIPT_ID`, `CLASP_DEPLOYMENT_ID`) that must be
-  configured before it can run.
+  configured before it can run. Every step before `clasp push` is read-only, so
+  a misconfigured secret aborts the run without touching the live project.
+- `.github/scripts/check-clasp-credentials.js` is the first of those steps
+  (unit-tested by `tests/clasp-credentials.test.js`). It exists because both
+  ways this can fail are silent: an unset secret interpolates to an **empty
+  string**, so the old `echo '${{ secrets.X }}' > ~/.clasprc.json` wrote a blank
+  file and clasp died with the useless `Unexpected end of JSON input` (its
+  `FileCredentialStore.readFile` does a bare `JSON.parse`); and `clasp deploy
+  -i ""` does **not** error — clasp v3 tests `if (!deploymentId)`, so an empty
+  `CLASP_DEPLOYMENT_ID` silently creates a *new* deployment on a *new* URL while
+  every teacher keeps hitting the old one. The script mirrors clasp's own
+  credential normalization (v3 `tokens.default`, plus both legacy v1 shapes) and
+  checks for `client_id`/`client_secret`/`refresh_token`, which
+  `GoogleAuth().fromJSON()` requires. It reports shapes, never values — keep it
+  that way, its log is visible to anyone with repo access.
+- Secrets reach the shell through `env:`, never interpolated into the command
+  text: a `'` inside `~/.clasprc.json` used to break the quoting outright
+  (`echo '<value>'` dies with a shell syntax error). `printf '%s' "$VAR"` writes
+  it back byte-identical, multiline and special characters included.
+- `.github/scripts/verify-clasp-target.js` is the second gate (tested by
+  `tests/clasp-target.test.js`). Valid-but-*wrong* secrets are the failure the
+  credential check can't see: a `CLASP_DEPLOYMENT_ID` belonging to another
+  project or since deleted lets `clasp push` mutate the live project and only
+  then fails at `clasp deploy -i`, leaving teachers on a version nobody tested.
+  `clasp deployments --json` lists deployments **for the configured scriptId**,
+  so finding the id in that list proves both that it exists and that it belongs
+  to this project. The step also re-checks `.clasp.json`'s `scriptId` against
+  `CLASP_SCRIPT_ID` so a stray `.clasp.json` can't redirect the push. It reads
+  the list from a file under `RUNNER_TEMP` and never prints it — other
+  deployments' ids are in there.
+- Ordering is load-bearing and `tests/deploy-workflow.test.js` asserts it:
+  every read-only gate (credential check → deployment verify → `clasp pull` →
+  `clasp status`) runs before the first write (`clasp push`). Keep new steps on
+  the correct side of that line.
 
 ## Commands
 
