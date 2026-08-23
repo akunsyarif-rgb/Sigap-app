@@ -109,6 +109,43 @@ test('ketiga bentuk .clasprc.json yang didukung clasp v3 diterima', () => {
   }
 });
 
+test('kredensial dengan karakter khusus tetap diterima utuh', () => {
+  // Yang lama pakai `echo '${{ secrets.X }}'`: satu kutip tunggal di dalam
+  // nilai merusak quoting shell dan menghasilkan file rusak. Nilai nyata dari
+  // Google memang memuat backslash (di dalam string JSON), dan deskripsi/token
+  // bisa memuat kutip. Semua bentuk ini harus lolos utuh.
+  const aneh = {
+    tokens: {
+      default: {
+        type: 'authorized_user',
+        client_id: "kutip'tunggal.apps.googleusercontent.com",
+        client_secret: 'kutip"ganda-dan-$dollar-dan-`backtick`',
+        refresh_token: 'garis\\miring/dan\\backslash\\\\ dan\ttab',
+        catatan: 'unicode: Å“ Ã± ä¸­æ–‡ ðŸ”‘ dan newline literal',
+      },
+    },
+  };
+  const hasil = checkClaspCredentials({ ...ENV_OK, CLASP_CREDENTIALS: JSON.stringify(aneh) });
+  assert.deepEqual(hasil.problems, []);
+});
+
+test('kredensial multiline (JSON ter-pretty-print) tetap diterima', () => {
+  // ~/.clasprc.json asli ditulis clasp dengan JSON.stringify(store, null, 2),
+  // jadi nilainya memang multiline.
+  const rapi = JSON.stringify(
+    { tokens: { default: { type: 'authorized_user', client_id: 'a', client_secret: 'b', refresh_token: 'c' } } },
+    null,
+    2,
+  );
+  assert.ok(rapi.includes('\n'), 'fixture harus multiline');
+  const hasil = checkClaspCredentials({ ...ENV_OK, CLASP_CREDENTIALS: rapi });
+  assert.deepEqual(hasil.problems, []);
+
+  // Termasuk kalau ada newline di ujung (umum saat menyalin isi berkas).
+  const hasilNewline = checkClaspCredentials({ ...ENV_OK, CLASP_CREDENTIALS: rapi + '\n' });
+  assert.deepEqual(hasilNewline.problems, []);
+});
+
 test('JSON valid tapi bukan kredensial clasp ditolak', () => {
   const hasil = checkClaspCredentials({ ...ENV_OK, CLASP_CREDENTIALS: '{"halo":"dunia"}' });
   assert.match(gabung(hasil), /tidak berisi kredensial yang dikenali/);

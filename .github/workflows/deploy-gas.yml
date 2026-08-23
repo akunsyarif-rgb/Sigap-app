@@ -72,12 +72,33 @@ jobs:
             }));
           '
 
-      # 3. Gerbang kedua: uji kredensial ke Apps Script sungguhan dengan
-      #    operasi BACA-SAJA. Kalau token/scriptId salah, job mati di sini —
-      #    sebelum ada satu byte pun yang ditulis ke project.
+      # 3. Gerbang kedua: buktikan kita menembak project DAN deployment yang
+      #    benar, lewat satu panggilan BACA-SAJA. `clasp deployments --json`
+      #    mengembalikan deployment milik scriptId yang dikonfigurasi, jadi
+      #    kalau CLASP_DEPLOYMENT_ID ada di daftar itu, dua hal terbukti
+      #    sekaligus: deployment-nya memang ada, dan memang milik project ini.
       #
-      #    Sekaligus mengambil appsscript.json (manifest) dari project yang
-      #    live. Manifest TIDAK ada di repo ini, padahal updateContent butuh
+      #    Ini juga panggilan berjaringan pertama, jadi sekaligus membuktikan
+      #    kredensialnya benar-benar dipakai Apps Script — tanpa menulis apa
+      #    pun.
+      #
+      #    Kalau ID-nya tidak ditemukan, job mati DI SINI, sebelum `clasp
+      #    push`. Kalau dibiarkan lewat, push sudah mengubah project live tapi
+      #    `clasp deploy -i` gagal, sehingga guru menjalankan versi yang tidak
+      #    pernah dites. Daftar deployment ditulis ke berkas di RUNNER_TEMP dan
+      #    tidak pernah dicetak ke log.
+      - name: Verifikasi target deploy
+        env:
+          CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
+          CLASP_DEPLOYMENT_ID: ${{ secrets.CLASP_DEPLOYMENT_ID }}
+        run: |
+          set -euo pipefail
+          npx clasp deployments --json > "$RUNNER_TEMP/deployments.json"
+          node .github/scripts/verify-clasp-target.js "$RUNNER_TEMP/deployments.json"
+
+      # 4. Gerbang ketiga: ambil appsscript.json (manifest) dari project yang
+      #    live, juga baca-saja. Manifest TIDAK ada di repo ini, padahal
+      #    updateContent butuh
       #    manifest dan akan mengganti yang di server. Menyalin manifest live
       #    apa adanya menjamin push ini cuma mengubah ketiga berkas .gs dan
       #    tidak pernah diam-diam mengubah timezone, oauthScopes, atau setelan
@@ -100,7 +121,7 @@ jobs:
             exit 1
           fi
 
-      # 4. Catat daftar berkas yang benar-benar akan dikirim. `clasp push`
+      # 5. Catat daftar berkas yang benar-benar akan dikirim. `clasp push`
       #    memakai projects.updateContent yang MENGGANTI SELURUH isi project,
       #    jadi daftar ini harus persis: Auth.gs, Code.gs, Utils.gs, dan
       #    appsscript.json (sesuai .claspignore). Kalau suatu saat ada yang
@@ -111,7 +132,8 @@ jobs:
       - name: Push kode ke Apps Script
         run: npx clasp push --force
 
-      # 5. -i WAJIB terisi (sudah dijamin langkah 1). Di clasp v3 pengecekannya
+      # 6. -i WAJIB terisi (dijamin langkah 1, dan langkah 3 sudah
+      #    membuktikan ID itu memang ada di project ini). Di clasp v3 pengecekannya
       #    `if (!deploymentId)`, jadi -i "" akan membuat deployment BARU dengan
       #    URL Web App baru, bukan memperbarui yang dipakai config.js.
       - name: Update deployment Web App yang sudah ada
