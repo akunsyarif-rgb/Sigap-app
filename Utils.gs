@@ -215,16 +215,58 @@ function getRowLoggedBy(sheet, rowIndex) {
   return sheet.getRange(rowIndex, lastCol).getValue();
 }
 
+// ===== SCOPE BACA PER-ROLE (RBAC v1) =====
+// Satu-satunya tempat aturan "siapa boleh melihat baris siapa" diterjemahkan
+// dari role menjadi filter baris. Ditaruh di sini, bukan disalin ke tiap
+// handler doGet, supaya tidak mungkin ada endpoint yang memakai versi aturan
+// yang sudah ketinggalan.
+//
+// Tiga tingkat, persis kontrak RBAC v1:
+//   school    -> admin & bk_kesiswaan: semua baris
+//   class_own -> wali kelas: baris kelas perwaliannya GABUNG baris yang dia
+//                tulis sendiri (UNION, bukan salah satu) — guru wali kelas
+//                yang mencatat siswa kelas lain tetap melihat catatannya
+//                sendiri
+//   own       -> guru biasa: hanya baris yang dia tulis sendiri
+//
+// KEPEMILIKAN TETAP DICOCOKKAN LEWAT NAMA PENCATAT (kolom Dicatat_Oleh),
+// sama seperti sebelumnya — TIDAK diganti ke user ID, tidak ada migrasi.
+// Konsekuensinya (dua guru bernama sama saling melihat catatan masing-masing)
+// dikelola Admin lewat pengelolaan identitas akun, bukan lewat kode ini.
+//
+// OSIS tidak pernah sampai ke sini: setiap endpoint disiplin menolaknya lebih
+// dulu lewat isOsisRole().
+function getReadScope(sessionUser) {
+  if (isBkRole(sessionUser.role)) return { level: 'school', name: sessionUser.name };
+  var kelasWali = String(sessionUser.waliKelas || '').trim();
+  if (kelasWali) return { level: 'class_own', kelas: kelasWali, name: sessionUser.name };
+  return { level: 'own', name: sessionUser.name };
+}
+
+// Cocokkan SATU baris terhadap scope. rowClass/rowLoggedBy diambil dari kolom
+// Kelas & Dicatat_Oleh baris itu. sameClass() dipakai (bukan ===) karena nama
+// kelas diketik manual di beberapa tempat — lihat catatan sameClass() di atas.
+function isInReadScope(scope, rowClass, rowLoggedBy) {
+  if (scope.level === 'school') return true;
+  if (scope.level === 'class_own' && sameClass(rowClass, scope.kelas)) return true;
+  return String(rowLoggedBy) === String(scope.name);
+}
+
 // ===== PERUBAHAN UTAMA =====
 // Hapus cache list terkait kategori supaya perubahan langsung kelihatan
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).
-// Juga hapus cache 'today_data' agar Beranda ikut ke-refresh.
+//
+// Kunci 'terlambat' & 'surat' BERUBAH nama (dulu 'today_logs'/'surat_list',
+// sekarang berakhiran _raw) karena isinya ikut berubah bentuk: dulu yang
+// di-cache adalah respons JSON JADI, sekarang array MENTAH yang masih harus
+// difilter per-pengguna (lihat getLogs/getSurat di Code.gs). Nama baru dipakai
+// supaya entri format lama yang masih hidup saat deploy TIDAK terbaca oleh
+// pembaca format baru — kalau kuncinya sama, entri lama akan di-JSON.parse
+// jadi objek dan mematahkan .filter() selama sisa TTL-nya.
 function clearCacheForCategory(category) {
-  var cacheKeys = { terlambat: 'today_logs', pelanggaran: 'pelanggaran_list_raw', surat: 'surat_list' };
+  var cacheKeys = { terlambat: 'log_gerbang_raw', pelanggaran: 'pelanggaran_list_raw', surat: 'surat_list_raw' };
   var key = cacheKeys[category];
   if (key) CacheService.getScriptCache().remove(key);
-  // Tambahan: bersihkan cache Beranda (today_data)
-  CacheService.getScriptCache().remove('today_data');
 }
 
 // Ambil baris >= cutoffDate secara efisien: baca HANYA kolom Timestamp dulu
@@ -263,14 +305,18 @@ function startOfWeekServer(d) {
 // Riwayat keterlambatan 1 siswa saja (dipakai peringatan "sudah Nx terlambat"
 // di form Catat Terlambat) — dipanggil on-demand per siswa yang dipilih,
 // bukan tarik seluruh Log_Gerbang ke semua ~1.296 siswa sekaligus.
+// Kolom yang dibaca dinaikkan dari 5 ke 6 dan kelas + pencatat ikut
+// dikembalikan: keduanya dibutuhkan pemanggil (getStudentLateHistory di
+// Code.gs) untuk menyaring baris lewat isInReadScope() — tanpa kelas dan
+// nama pencatat, scope CLASS ∪ OWN tidak bisa ditegakkan sama sekali.
 function getLateHistoryForStudent(sheet, nisn) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
-  var data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   var result = [];
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][1]) === String(nisn)) {
-      result.push({ timestamp: data[i][0], type: data[i][4] });
+      result.push({ timestamp: data[i][0], class: data[i][3], type: data[i][4], logged_by: data[i][5] });
     }
   }
   result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });

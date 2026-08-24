@@ -31,7 +31,11 @@
            // Statistik/Audit Log lagi nanti, jangan lewat primaryMenus (ruang
            // BottomNav sudah pas untuk 4+Lainnya) -- perlu pendekatan lain.
            admin:         { label: 'Admin',         menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: true, canViewRanking: true },
-           bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog'],          primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: true },
+           // 'auditlog' DICABUT dari bk_kesiswaan (RBAC v1: Audit Log ADMIN ONLY).
+           // Ini cuma menyembunyikan menunya — yang menegakkan adalah gerbang
+           // isAdminRole di getAuditLog (Code.gs). Jangan mengembalikannya ke
+           // sini tanpa mengubah gerbang itu juga.
+           bk_kesiswaan:  { label: 'BK/Kesiswaan',  menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara'],                      primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], canExport: false, canViewRanking: true },
            // 'rekap' TIDAK dimasukkan di sini — akses ke Rekap Kelas untuk guru
            // ditentukan per-orang (cuma yang jadi wali kelas), ditambahkan secara
            // runtime di app.js (effectiveMenus), bukan berlaku untuk semua guru.

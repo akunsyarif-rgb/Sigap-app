@@ -312,16 +312,22 @@ test('Data upacara ditarik sekali walau dipakai dua tab (Upacara & Rekap Kelas)'
 });
 
 // ---- 2 & 6: otorisasi server-side ----
+// CATATAN: aturan scope-nya sendiri (siapa melihat baris apa) diuji secara
+// PERILAKU — memanggil doGet sungguhan dan memeriksa payload-nya — di
+// tests/authorization.test.js. Di sini cukup dipastikan keputusan itu memang
+// diambil di server, memakai helper scope bersama, bukan dititipkan ke UI.
 test('Code.gs: getPelanggaranUpacara membatasi akses di server, bukan cuma di UI', () => {
   const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
   const blok = code.split("if (action === 'getPelanggaranUpacara')")[1].split("if (action === 'getAuditLog')")[0];
 
-  // Guru biasa (bukan OSIS/BK, bukan wali kelas) ditolak.
-  assert.match(blok, /if \(!\(isOsisRole\(sessionUser\.role\) \|\| isBkRole\(sessionUser\.role\) \|\| upacaraWaliKelas\)\)/);
-  assert.match(blok, /Unauthorized/);
-  // OSIS & BK dapat seluruh sekolah; sisanya (wali kelas) dibatasi kelasnya.
-  assert.match(blok, /seluruhSekolah = isBkRole\(sessionUser\.role\) \|\| isOsisRole\(sessionUser\.role\)/);
-  assert.match(blok, /!seluruhSekolah && !sameClass\(u\.class, upacaraWaliKelas\)/);
+  // Scope diambil dari helper bersama (Utils.gs), bukan aturan role yang
+  // ditulis ulang khusus di endpoint ini.
+  assert.match(blok, /getReadScope\(sessionUser\)/);
+  // OSIS & BK/admin dapat seluruh sekolah; guru/wali kelas disaring per baris.
+  assert.match(blok, /lihatSemua = isOsisReader \|\| upacaraScope\.level === 'school'/);
+  assert.match(blok, /!lihatSemua && !isInReadScope\(upacaraScope, u\.class, u\.logged_by\)/);
+  // OSIS hanya menerima field minimum: tanpa nisn, tanpa catatan naratif.
+  assert.match(blok, /if \(isOsisReader\) \{[\s\S]*?upacara\.push\(\{ timestamp: u\.timestamp, name: u\.name/);
 });
 
 test('Code.gs: OSIS tetap terkunci dari kategori disiplin lain', () => {
