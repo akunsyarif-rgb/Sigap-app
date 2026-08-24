@@ -328,7 +328,12 @@
                || parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp)
            );
 
-           const jumlahSiswa = new Set(sorted.map(u => u.nisn)).size;
+           // Kunci identitas siswa: nisn kalau ada, kalau tidak jatuh ke
+           // nama+kelas. Payload upacara untuk OSIS sengaja TIDAK membawa nisn
+           // (dipangkas server-side di getPelanggaranUpacara, RBAC v1) — tanpa
+           // fallback ini seluruh baris berkunci `undefined` dan hitungannya
+           // selalu tampil "1 Siswa" untuk petugas OSIS.
+           const jumlahSiswa = new Set(sorted.map(u => u.nisn || `${u.name}|${normalizeClass(u.class)}`)).size;
            const jumlahKelas = new Set(sorted.map(u => normalizeClass(u.class))).size;
 
            const byClass = [];

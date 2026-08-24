@@ -172,8 +172,7 @@ function doPost(e) {
         }
       }
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.type, sessionUser.name]);
-      CacheService.getScriptCache().remove('today_logs');
-      CacheService.getScriptCache().remove('today_data');
+      CacheService.getScriptCache().remove('log_gerbang_raw');
       return jsonOut({ status: 'success' });
     }
 
@@ -523,12 +522,11 @@ function doPost(e) {
       // foto lagi (fitur upload foto dihapus, lihat catatan di Utils.gs).
       // Kolom Foto_URL (index 6) TETAP ditulis kosong, BUKAN dihapus dari
       // struktur baris — posisi kolom di sheet ini signifikan (dibaca by
-      // index di getSurat/getTodayData), menghapusnya akan menggeser
+      // index di getSurat), menghapusnya akan menggeser
       // Dicatat_Oleh ke posisi Foto_URL dan mematahkan baris-baris lama
       // yang sudah terlanjur punya URL foto tersimpan.
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', '', sessionUser.name]);
-      CacheService.getScriptCache().remove('surat_list');
-      CacheService.getScriptCache().remove('today_data');
+      CacheService.getScriptCache().remove('surat_list_raw');
       return jsonOut({ status: 'success' });
     }
 
@@ -552,8 +550,7 @@ function doPost(e) {
           deletedCount++;
         }
       }
-      CacheService.getScriptCache().remove('surat_list');
-      CacheService.getScriptCache().remove('today_data');
+      CacheService.getScriptCache().remove('surat_list_raw');
       logAudit(sessionUser, 'Hapus Data Surat', deletedCount + ' data (bulan ' + month + '/' + year + ')');
       return jsonOut({ status: 'success', deletedCount: deletedCount });
     }
@@ -566,7 +563,6 @@ function doPost(e) {
       var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
-      CacheService.getScriptCache().remove('today_data');
       return jsonOut({ status: 'success' });
     }
 
@@ -757,73 +753,93 @@ function doGet(e) {
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // ---- Data ringkas hari ini (Terlambat/Surat/Pelanggaran) + data buat
-  // banner "Siswa Sering Terlambat" — dipakai Beranda & Gerbang. JAUH lebih
-  // ringan daripada tarik seluruh sheet (lihat getRowsSince di Utils.gs):
-  // cuma 2 panggilan Sheets API per kategori, berapa pun banyak baris total.
-  // CATATAN: respons ini di-cache GLOBAL (60 detik, sama untuk semua orang)
-  // — jangan pernah taruh data yang beda per-pengguna (mis. status piket
-  // pemanggil) di sini. Konteks personal (piket/wali kelas) ada di
-  // getJadwalPiket/getWaliKelasMap yang dihitung terpisah di frontend. ----
-  if (action === 'getTodayData') {
-    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('today_data');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
-    }
-    var now = new Date();
-    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-
-    var logSheet = ss.getSheetByName('Log_Gerbang');
-    var todayLateRaw = logSheet ? getRowsSince(logSheet, todayStart, 6) : [];
-    var todayLate = todayLateRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], type: r[4], logged_by: r[5] }; }).reverse();
-
-    var suratSheet = ss.getSheetByName('Surat_Masuk');
-    var todaySuratRaw = suratSheet ? getRowsSince(suratSheet, todayStart, 8) : [];
-    var todaySurat = todaySuratRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], jenis: r[4], keterangan: r[5], foto_url: r[6], logged_by: r[7] }; }).reverse();
-
-    var pelanggaranSheet = ss.getSheetByName('Pelanggaran');
-    var todayPelanggaranRaw = pelanggaranSheet ? getRowsSince(pelanggaranSheet, todayStart, 8) : [];
-    var todayPelanggaran = todayPelanggaranRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], jenis_pelanggaran: r[4], sanksi: r[5], catatan: r[6], logged_by: r[7] }; }).reverse();
-
-    var weekStart = startOfWeekServer(now);
-    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    var bannerCutoff = weekStart < monthStart ? weekStart : monthStart;
-    var lateForBannerRaw = logSheet ? getRowsSince(logSheet, bannerCutoff, 6) : [];
-    var lateForBanner = lateForBannerRaw.map(function (r) { return { timestamp: r[0], nisn: r[1], name: r[2], class: r[3], type: r[4], logged_by: r[5] }; });
-
-    var result = JSON.stringify({ status: 'success', todayLate: todayLate, todaySurat: todaySurat, todayPelanggaran: todayPelanggaran, lateForBanner: lateForBanner });
-    cache.put('today_data', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
-  }
+  // ---- getTodayData DIHAPUS (RBAC v1) ----
+  // Endpoint ini mengembalikan SATU respons berisi seluruh keterlambatan,
+  // surat (termasuk kolom keterangan: alasan sakit/izin) dan pelanggaran
+  // (termasuk catatan naratif) hari ini se-sekolah, PLUS lateForBanner yang
+  // berisi seluruh keterlambatan sejak awal minggu/bulan. Gerbangnya cuma
+  // "bukan OSIS", jadi guru biasa menerima semuanya.
+  //
+  // Dihapus, bukan diberi filter scope, karena dua alasan yang berdiri
+  // sendiri: (1) TIDAK ADA satu pun pemanggil di frontend — seluruh datanya
+  // sudah disajikan getLogs/getSurat/getPelanggaran yang kini sudah
+  // ber-scope; (2) respons ini di-cache GLOBAL dengan satu kunci untuk semua
+  // orang, sehingga tidak mungkin dibuat per-pengguna tanpa membongkar
+  // strategi cache-nya. Menyisakannya hidup tanpa perlindungan hanya karena
+  // UI tidak memanggilnya persis pola yang dilarang aturan implementasi.
+  //
+  // Pemanggil lama (kalau ada klien pihak ketiga) akan jatuh ke respons
+  // 'SIGAP API Ready' di akhir doGet, sama seperti action tak dikenal —
+  // tidak ada data yang bocor. Kunci cache 'today_data' ikut tidak ditulis/
+  // dibaca lagi di mana pun.
 
   // ---- Riwayat keterlambatan 1 siswa saja (untuk peringatan "sudah Nx
-  // terlambat" di form Catat Terlambat) — on-demand per siswa yang dipilih ----
+  // terlambat" di form Catat Terlambat) — on-demand per siswa yang dipilih.
+  // Sekarang DI-SCOPE: riwayat keterlambatan tunduk pada aturan histori
+  // (guru = OWN, wali kelas = CLASS ∪ OWN, BK/admin = SCHOOL), jadi baris
+  // yang dikembalikan disaring dulu lewat isInReadScope(). Tanpa ini,
+  // endpoint ini adalah jalur BOLA paling langsung: nisn dikirim mentah dari
+  // client dan doGet tidak kena rate limit tulis, jadi seluruh riwayat
+  // keterlambatan tiap siswa bisa ditarik satu per satu.
+  //
+  // Pengecualian "hari ini = SCHOOL" TIDAK berlaku di sini: ini endpoint
+  // riwayat, bukan papan hari ini. Kebutuhan hari ini sudah dilayani getLogs. ----
   if (action === 'getStudentLateHistory') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var lateScope = getReadScope(sessionUser);
     var logSheet = ss.getSheetByName('Log_Gerbang');
     var history = logSheet ? getLateHistoryForStudent(logSheet, e.parameter.nisn) : [];
+    if (lateScope.level !== 'school') {
+      history = history.filter(function (h) { return isInReadScope(lateScope, h.class, h.logged_by); });
+    }
     return jsonOut({ status: 'success', history: history });
   }
 
-  // ---- Data umum (bukan untuk OSIS) — dipakai Riwayat & Statistik, di-fetch
-  // lazy oleh frontend (baru ditarik saat salah satu tab itu pertama dibuka) ----
+  // ---- Keterlambatan (bukan untuk OSIS) — dipakai Riwayat, Beranda,
+  // Gerbang & Statistik.
+  //
+  // SCOPE RBAC v1 — dua aturan berbeda dalam SATU endpoint, sengaja tidak
+  // dipecah jadi dua URL supaya API/kontrak frontend tidak berubah:
+  //   * baris HARI INI  -> SCHOOL untuk semua role non-OSIS. Guru piket harus
+  //     bisa melihat siapa saja yang sudah tercatat pagi ini, termasuk yang
+  //     dicatat guru lain, tanpa dikaitkan ke jadwal mengajar.
+  //   * baris HISTORI   -> guru = OWN, wali kelas = CLASS ∪ OWN, BK/admin =
+  //     SCHOOL.
+  // Jadi sebuah baris dikirim kalau (hari ini) ATAU (lolos isInReadScope).
+  //
+  // Cache diubah dari "respons jadi" menjadi ARRAY MENTAH (kunci baru
+  // 'log_gerbang_raw' — lihat clearCacheForCategory di Utils.gs kenapa
+  // kuncinya wajib ganti nama), lalu difilter per-pengguna SETELAH dibaca
+  // dari cache. Pola ini sama persis dengan pelanggaran_list_raw dan
+  // alasannya sama: kalau yang di-cache sudah difilter untuk satu orang,
+  // pengguna berikutnya bisa menerima daftar milik orang lain. ----
   if (action === 'getLogs') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('today_logs');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    var logs;
+    var cachedLogsRaw = cache.get('log_gerbang_raw');
+    if (cachedLogsRaw) {
+      logs = JSON.parse(cachedLogsRaw);
+    } else {
+      var sheet = ss.getSheetByName('Log_Gerbang');
+      logs = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          logs.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
+        }
+        logs.reverse();
+      }
+      cache.put('log_gerbang_raw', JSON.stringify(logs), 60);
     }
-    var sheet = ss.getSheetByName('Log_Gerbang');
-    var rows = sheet.getDataRange().getValues();
-    var logs = [];
-    for (var i = 1; i < rows.length; i++) {
-      logs.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
+    var logScope = getReadScope(sessionUser);
+    if (logScope.level !== 'school') {
+      var todayNow = new Date();
+      logs = logs.filter(function (l) {
+        if (isSameDayServer(new Date(l.timestamp), todayNow)) return true;
+        return isInReadScope(logScope, l.class, l.logged_by);
+      });
     }
-    logs.reverse();
-    var result = JSON.stringify({ status: 'success', logs: logs });
-    cache.put('today_logs', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut({ status: 'success', logs: logs });
   }
 
   if (action === 'getTeachers') {
@@ -842,24 +858,41 @@ function doGet(e) {
     return jsonOut({ status: 'success', teachers: teachers });
   }
 
+  // ---- Surat izin/sakit (bukan untuk OSIS).
+  //
+  // SCOPE RBAC v1: guru = OWN, wali kelas = CLASS ∪ OWN, BK/admin = SCHOOL.
+  // TIDAK ada pengecualian "hari ini = SCHOOL" di sini — beda dari
+  // keterlambatan, kontrak Surat tidak punya klausul hari ini, dan kolom
+  // keterangan berisi alasan sakit/izin (data kesehatan siswa) yang justru
+  // paling tidak layak disebar ke seluruh guru.
+  //
+  // Yang berhak (wali kelas & BK/Kesiswaan) tetap menerima keterangan LENGKAP
+  // — tidak ada field yang dipangkas untuk mereka, hanya barisnya yang
+  // disaring. Cache jadi array mentah dengan kunci baru, alasannya sama
+  // seperti getLogs di atas. ----
   if (action === 'getSurat') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('surat_list');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
-    }
-    var sheet = ss.getSheetByName('Surat_Masuk');
-    var surat = [];
-    if (sheet) {
-      var rows = sheet.getDataRange().getValues();
-      for (var i = 1; i < rows.length; i++) {
-        surat.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+    var surat;
+    var cachedSuratRaw = cache.get('surat_list_raw');
+    if (cachedSuratRaw) {
+      surat = JSON.parse(cachedSuratRaw);
+    } else {
+      var sheet = ss.getSheetByName('Surat_Masuk');
+      surat = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          surat.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+        }
+        surat.reverse();
       }
-      surat.reverse();
+      cache.put('surat_list_raw', JSON.stringify(surat), 60);
     }
-    var result = JSON.stringify({ status: 'success', surat: surat });
-    cache.put('surat_list', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    var suratScope = getReadScope(sessionUser);
+    if (suratScope.level !== 'school') {
+      surat = surat.filter(function (sr) { return isInReadScope(suratScope, sr.class, sr.logged_by); });
+    }
+    return jsonOut({ status: 'success', surat: surat });
   }
 
   // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas lihat
@@ -889,36 +922,52 @@ function doGet(e) {
       }
       cache.put('pelanggaran_list_raw', JSON.stringify(pelanggaran), 60);
     }
-    if (!isBkRole(sessionUser.role)) {
-      var myKelas = sessionUser.waliKelas || '';
-      if (myKelas) {
-        pelanggaran = pelanggaran.filter(function (p) { return sameClass(p.class, myKelas); });
-      } else {
-        pelanggaran = pelanggaran.filter(function (p) { return p.logged_by === sessionUser.name; });
-      }
+    // RBAC v1: guru = OWN, wali kelas = CLASS ∪ OWN, BK/admin = SCHOOL.
+    // Sebelumnya percabangannya EKSKLUSIF (kalau wali kelas -> hanya kelasnya,
+    // cabang logged_by tidak pernah jalan), sehingga wali kelas kehilangan
+    // catatan yang DIA SENDIRI tulis untuk siswa kelas lain — termasuk hak
+    // mengoreksinya dalam jendela 5 menit, karena barisnya tidak pernah muncul
+    // di UI. isInReadScope() menggabungkan keduanya (UNION).
+    var pelanggaranScope = getReadScope(sessionUser);
+    if (pelanggaranScope.level !== 'school') {
+      pelanggaran = pelanggaran.filter(function (p) { return isInReadScope(pelanggaranScope, p.class, p.logged_by); });
     }
     return jsonOut({ status: 'success', pelanggaran: pelanggaran });
   }
 
-  // ---- Hitung TOTAL pelanggaran seorang siswa (semua guru, bukan cuma yang
-  // login) — dipakai peringatan "sudah Nx tercatat" saat mencatat pelanggaran
-  // baru. Sengaja cuma kirim ANGKA, bukan daftar isinya (jenis/sanksi/siapa)
-  // — supaya guru biasa tetap dapat konteks penting tanpa bisa mengintip
-  // detail catatan siswa/guru lain lewat celah ini. Dipanggil on-demand per
-  // 1 siswa yang dipilih (pola sama seperti getStudentLateHistory), bukan
-  // agregat semua siswa sekaligus — kalau semua nisn dikirim jadi peta
-  // sekaligus, guru bisa susun ranking siswa paling bermasalah se-sekolah,
-  // justru itu yang mau dicegah. ----
+  // ---- Hitung pelanggaran seorang siswa — dipakai peringatan "sudah Nx
+  // tercatat" saat mencatat pelanggaran baru. Tetap cuma mengirim ANGKA,
+  // bukan daftar isinya (jenis/sanksi/siapa).
+  //
+  // SCOPE RBAC v1 — yang dihitung sekarang HANYA baris yang memang boleh
+  // dilihat pemanggil: guru = OWN, wali kelas = CLASS ∪ OWN, BK/admin =
+  // SCHOOL. Sebelumnya angkanya selalu total se-sekolah, dan itu membuat
+  // endpoint ini jalur enumerasi paling murah di seluruh API: nisn dikirim
+  // mentah dari client, seluruh daftar NISN sudah dibagikan getStudents, dan
+  // doGet tidak melewati rate limit tulis — jadi guru biasa bisa memanggilnya
+  // berulang kali untuk menyusun peta "NISN -> jumlah pelanggaran" seluruh
+  // sekolah, persis ranking siswa bermasalah yang justru ingin dicegah.
+  //
+  // Dengan scope, NISN di luar jangkauan pemanggil selalu menghasilkan 0,
+  // jadi memanipulasi parameter nisn tidak lagi membocorkan apa pun. Kolom
+  // yang dibaca naik dari 1 (nisn saja) ke 7 (nisn..Dicatat_Oleh) karena
+  // kelas & nama pencatat wajib ada untuk menegakkan scope — tetap SATU
+  // panggilan getRange, jadi biaya Sheets API-nya tidak berubah. ----
   if (action === 'getPelanggaranCountForStudent') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var countScope = getReadScope(sessionUser);
     var sheet = ss.getSheetByName('Pelanggaran');
     var count = 0;
     if (sheet) {
       var lastRow = sheet.getLastRow();
       if (lastRow > 1) {
-        var nisnValues = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
-        for (var i = 0; i < nisnValues.length; i++) {
-          if (String(nisnValues[i][0]) === String(e.parameter.nisn)) count++;
+        // Kolom B..H = NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh
+        // -> index 0 = nisn, index 2 = kelas, index 6 = dicatat_oleh.
+        var pelanggaranRows = sheet.getRange(2, 2, lastRow - 1, 7).getValues();
+        for (var i = 0; i < pelanggaranRows.length; i++) {
+          if (String(pelanggaranRows[i][0]) !== String(e.parameter.nisn)) continue;
+          if (!isInReadScope(countScope, pelanggaranRows[i][2], pelanggaranRows[i][6])) continue;
+          count++;
         }
       }
     }
@@ -977,20 +1026,26 @@ function doGet(e) {
   // Siapa boleh apa di Rekap Pelanggaran Upacara — ditegakkan DI SINI, bukan
   // sekadar menyembunyikan menu di frontend:
   // - admin & BK/Kesiswaan : seluruh sekolah
-  // - OSIS                 : seluruh sekolah, TAPI hanya untuk data upacara.
-  //                          Semua endpoint disiplin lain (getLogs, getSurat,
+  // - OSIS                 : seluruh sekolah, TAPI hanya untuk data upacara
+  //                          DAN hanya field minimum (lihat di bawah). Semua
+  //                          endpoint disiplin lain (getLogs, getSurat,
   //                          getPelanggaran, getBimbingan, getTindakLanjut)
   //                          tetap menolak OSIS seperti sebelumnya.
-  // - guru wali kelas      : HANYA kelasnya sendiri — dipakai kategori Upacara
+  // - guru wali kelas      : kelasnya sendiri GABUNG catatan yang dia tulis
+  //                          sendiri (CLASS ∪ OWN) — dipakai kategori Upacara
   //                          di Rekap Kelas, supaya wali kelas tidak perlu
   //                          membuka menu Upacara cuma untuk tahu kondisi
   //                          anaknya.
-  // - guru biasa           : tidak dapat akses.
+  // - guru biasa           : OWN — hanya catatan yang dia tulis sendiri.
+  //                          Praktisnya kosong selama addPelanggaranUpacara
+  //                          masih dibatasi ke OSIS/BK/admin, tapi gerbangnya
+  //                          dibuka supaya scope-nya konsisten dengan kontrak
+  //                          ("OWN jika memang memiliki fungsi pencatatan")
+  //                          dan tidak perlu diubah lagi kalau nanti guru
+  //                          diberi hak mencatat. Membuka gerbang ini TIDAK
+  //                          menambah data yang terlihat: isinya disaring
+  //                          isInReadScope() dengan aturan OWN yang sama.
   if (action === 'getPelanggaranUpacara') {
-    var upacaraWaliKelas = String(sessionUser.waliKelas || '');
-    if (!(isOsisRole(sessionUser.role) || isBkRole(sessionUser.role) || upacaraWaliKelas)) {
-      return jsonOut({ status: 'error', message: 'Unauthorized' });
-    }
     // Cache MENTAH (semua pencatat) lalu difilter per-pengguna SETELAH dibaca
     // dari cache — pola yang sama persis dengan pelanggaran_list_raw di atas,
     // dan alasannya sama: kalau yang di-cache adalah hasil yang sudah
@@ -1018,25 +1073,53 @@ function doGet(e) {
       }
       cache.put('pelanggaran_upacara_raw', JSON.stringify(upacaraRaw), 60);
     }
-    // OSIS sekarang melihat SELURUH rekap upacara (sebelumnya hanya catatan
-    // yang dia input sendiri) — Rekap Upacara memang dimaksudkan sebagai alat
-    // baca bersama untuk petugas upacara. Yang tidak berubah: OSIS tetap
-    // terkunci dari semua kategori disiplin lain.
-    var seluruhSekolah = isBkRole(sessionUser.role) || isOsisRole(sessionUser.role);
+    // OSIS melihat SELURUH rekap upacara — Rekap Upacara memang dimaksudkan
+    // sebagai alat baca bersama untuk petugas upacara. Yang tidak berubah:
+    // OSIS tetap terkunci dari semua kategori disiplin lain.
+    //
+    // TAPI OSIS hanya menerima FIELD MINIMUM: nisn dan catatan naratif
+    // DIBUANG dari payloadnya. Untuk tugas OSIS (tahu siapa di kelas mana
+    // melanggar apa, kapan) nama + kelas + jenis + waktu sudah cukup; nisn
+    // adalah nomor induk yang tidak dipakai tampilan rekap, dan catatan
+    // adalah teks bebas yang bisa berisi konteks pribadi siswa. Field ini
+    // dipangkas DI SERVER, bukan disembunyikan di UI, jadi tidak pernah
+    // sampai ke browser petugas OSIS.
+    //
+    // NISN TETAP dikirim di getStudents untuk OSIS — di sana nisn adalah
+    // identitas yang ditulis addPelanggaranUpacara ke sheet, jadi
+    // membuangnya akan mematahkan fungsi pencatatan upacara itu sendiri.
+    // Yang tidak diperlukan adalah nisn pada jalur BACA rekap ini.
+    var isOsisReader = isOsisRole(sessionUser.role);
+    var upacaraScope = getReadScope(sessionUser);
+    var lihatSemua = isOsisReader || upacaraScope.level === 'school';
     var upacara = [];
     for (var ui = 0; ui < upacaraRaw.length; ui++) {
       var u = upacaraRaw[ui];
-      if (!seluruhSekolah && !sameClass(u.class, upacaraWaliKelas)) {
-        continue; // wali kelas: hanya kelasnya sendiri
+      if (!lihatSemua && !isInReadScope(upacaraScope, u.class, u.logged_by)) {
+        continue; // wali kelas: CLASS ∪ OWN — guru biasa: OWN
       }
-      upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
+      if (isOsisReader) {
+        upacara.push({ timestamp: u.timestamp, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, logged_by: u.logged_by });
+      } else {
+        upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
+      }
     }
     return jsonOut({ status: 'success', upacara: upacara });
   }
 
-  // ---- Audit Log (admin + BK/Kesiswaan only) — jejak keamanan permanen ----
+  // ---- Audit Log (ADMIN ONLY) — jejak keamanan permanen.
+  // Gerbangnya isAdminRole, BUKAN isBkRole: isBkRole bernilai true untuk
+  // admin DAN bk_kesiswaan, sehingga sebelumnya BK/Kesiswaan ikut bisa
+  // membaca 300 baris terakhir Audit Log — termasuk login/logout, reset
+  // password, perubahan role, perubahan wali kelas, penghapusan data, dan
+  // pemicu lockout brute-force. Kontrak RBAC v1 menetapkan Audit Log
+  // ADMIN ONLY. Menu 'auditlog' juga sudah dicabut dari bk_kesiswaan di
+  // config.js, tapi gerbang inilah yang menegakkannya.
+  //
+  // Ini SATU-SATUNYA jalur baca ke sheet Audit_Log di seluruh backend
+  // (logAudit di Utils.gs hanya menulis) — tidak ada endpoint alternatif. ----
   if (action === 'getAuditLog') {
-    if (!isBkRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    if (!isAdminRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var sheet = ss.getSheetByName('Audit_Log');
     var auditLog = [];
     if (sheet) {
