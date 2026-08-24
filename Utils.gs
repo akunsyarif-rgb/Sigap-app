@@ -224,17 +224,24 @@ function getRowLoggedBy(sheet, rowIndex) {
 // browser bukan pengamanan: datanya sudah terlanjur sampai ke perangkat.
 //
 // Aturan yang disepakati:
-//   Keterlambatan HARI INI : seluruh sekolah untuk semua role non-OSIS.
+//   Keterlambatan & Surat HARI INI : seluruh sekolah untuk semua role non-OSIS.
 //     Ini BUKAN kelonggaran — guru piket di gerbang harus saling melihat
 //     catatan hari itu supaya satu siswa tidak dicatat dua kali (lihat
-//     GerbangTab di gerbang.js & pengecekan duplikat di aksi 'record').
-//   RIWAYAT keterlambatan  : admin/BK seluruh sekolah; wali kelas = kelasnya
-//     sendiri + catatan yang ia tulis; guru biasa = HANYA catatan yang ia
-//     tulis sendiri.
+//     GerbangTab di gerbang.js & pengecekan duplikat di aksi 'record'/'addSurat').
+//   RIWAYAT keterlambatan & surat : admin/BK seluruh sekolah; wali kelas =
+//     kelas perwaliannya (tanggal berapa pun); guru biasa = TIDAK ADA riwayat
+//     hari sebelumnya. Yang ia catat sendiri hanya terlihat pada HARI catatan
+//     itu dibuat ("OWN-hari-ini") — dan itu sudah tercakup oleh aturan "hari
+//     ini = seluruh sekolah" di atas, jadi tidak ada klausa OWN terpisah di
+//     sini. Ini yang membedakannya dari Pelanggaran: guru piket yang mencatat
+//     puluhan siswa lintas kelas tiap pagi TIDAK ikut menyimpan riwayat lintas
+//     kelas itu di layarnya besok harinya.
 //   PELANGGARAN            : admin/BK seluruh sekolah; wali kelas = kelasnya
-//     sendiri + catatan yang ia tulis; guru biasa = HANYA catatan yang ia
-//     tulis sendiri. (Tidak ada pengecualian "hari ini" di sini — mencatat
-//     pelanggaran tidak punya alur anti-duplikat seperti gerbang.)
+//     sendiri + catatan yang ia tulis (TANPA batas tanggal); guru biasa =
+//     HANYA catatan yang ia tulis sendiri (TANPA batas tanggal). Sengaja
+//     BERBEDA dari dua kategori di atas dan tidak boleh disamakan: mencatat
+//     pelanggaran bukan alur gerbang massal, dan guru perlu bisa menelusuri
+//     kembali catatan pelanggaran yang ia buat sendiri.
 //   OSIS                   : tidak dapat keduanya (ditolak di handler).
 //
 // Kepemilikan (OWN) memakai mekanisme yang SUDAH ADA di aplikasi ini: kolom
@@ -255,21 +262,28 @@ function readerClass(sessionUser) {
   return String((sessionUser && sessionUser.waliKelas) || '').trim();
 }
 
-// logs = daftar objek {timestamp, class, logged_by, ...} (urutan/isi lain
-// dibiarkan apa adanya). now dipisah jadi parameter supaya bisa diuji.
-function scopeLateLogsForUser(logs, sessionUser, now) {
-  var list = logs || [];
+// Dipakai untuk DUA kategori yang aturannya sama: Keterlambatan (Log_Gerbang)
+// dan Surat/Izin (Surat_Masuk). rows = daftar objek {timestamp, class,
+// logged_by, ...}; isi lain dibiarkan apa adanya. `now` dipisah jadi parameter
+// supaya bisa diuji tanpa bergantung jam dinding.
+//
+// Catatan kenapa tidak ada klausa ownsRow() di sini: "OWN-hari-ini" seluruhnya
+// tercakup oleh klausa hari-ini (yang berlaku untuk seluruh sekolah). Klausa
+// OWN tanpa batas tanggal justru yang harus TIDAK ADA — itu membuat guru piket
+// menyimpan riwayat lintas kelas dari hari-hari sebelumnya hanya karena ia yang
+// mencatatnya. ownsRow() tetap dipakai untuk Pelanggaran di bawah, yang
+// aturannya memang berbeda.
+function scopeDailyRecordsForUser(rows, sessionUser, now) {
+  var list = rows || [];
   if (isSchoolWideReader(sessionUser)) return list;
   var today = now instanceof Date ? now : new Date();
   var kelas = readerClass(sessionUser);
-  return list.filter(function (l) {
-    if (!l) return false;
-    // Hari ini: seluruh sekolah (alur gerbang di atas).
-    if (l.timestamp && isSameDayServer(new Date(l.timestamp), today)) return true;
-    // Wali kelas: kelas perwaliannya.
-    if (kelas && sameClass(l.class, kelas)) return true;
-    // Sisanya: hanya catatan sendiri.
-    return ownsRow(l, sessionUser);
+  return list.filter(function (r) {
+    if (!r) return false;
+    // Hari ini: seluruh sekolah (alur gerbang) — termasuk catatan sendiri.
+    if (r.timestamp && isSameDayServer(new Date(r.timestamp), today)) return true;
+    // Wali kelas: kelas perwaliannya, tanggal berapa pun.
+    return !!kelas && sameClass(r.class, kelas);
   });
 }
 
@@ -287,7 +301,7 @@ function scopeTodayDataPayload(payload, sessionUser) {
     todayLate: data.todayLate || [],
     todaySurat: data.todaySurat || [],
     todayPelanggaran: scopePelanggaranForUser(data.todayPelanggaran || [], sessionUser),
-    lateForBanner: scopeLateLogsForUser(data.lateForBanner || [], sessionUser),
+    lateForBanner: scopeDailyRecordsForUser(data.lateForBanner || [], sessionUser),
   };
 }
 
@@ -352,7 +366,7 @@ function startOfWeekServer(d) {
 // bukan tarik seluruh Log_Gerbang ke semua ~1.296 siswa sekaligus.
 // Kolom Kelas & Dicatat_Oleh ikut dibaca (6 kolom, bukan 5) BUKAN untuk
 // dikirim ke klien, tapi supaya hasilnya bisa disaring lewat
-// scopeLateLogsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
+// scopeDailyRecordsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
 // siswa bisa ditarik siapa saja yang tahu NISN-nya.
 function getLateHistoryForStudent(sheet, nisn) {
   var lastRow = sheet.getLastRow();

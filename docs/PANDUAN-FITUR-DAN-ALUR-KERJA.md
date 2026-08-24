@@ -74,14 +74,16 @@ Semua catatan tersimpan dan bisa ditelusuri kapan saja.
 
 **Siapa melihat apa di Riwayat** (dibatasi di server, bukan sekadar disembunyikan di layar):
 
-| | Keterlambatan hari ini | Riwayat keterlambatan hari sebelumnya | Pelanggaran |
+| | Keterlambatan & Surat hari ini | Riwayat keterlambatan & surat hari sebelumnya | Pelanggaran |
 | --- | --- | --- | --- |
-| Guru | seluruh sekolah | hanya yang ia catat sendiri | hanya yang ia catat sendiri |
-| Wali kelas | seluruh sekolah | kelas perwaliannya + catatannya sendiri | kelas perwaliannya + catatannya sendiri |
+| Guru | seluruh sekolah | tidak ada | hanya yang ia catat sendiri (tanggal berapa pun) |
+| Wali kelas | seluruh sekolah | kelas perwaliannya | kelas perwaliannya + catatannya sendiri |
 | BK/Kesiswaan & Admin | seluruh sekolah | seluruh sekolah | seluruh sekolah |
 | OSIS | tidak ada akses | tidak ada akses | tidak ada akses |
 
-Kolom "hari ini" sengaja terbuka untuk semua guru: guru piket di gerbang harus saling melihat catatan hari itu supaya satu siswa tidak tercatat dua kali.
+Kolom "hari ini" sengaja terbuka untuk semua guru: guru piket di gerbang harus saling melihat catatan hari itu supaya satu siswa tidak tercatat dua kali. Catatan yang dibuat seorang guru tetap terlihat olehnya **pada hari itu**; besoknya, catatan untuk siswa di luar kelas perwaliannya tidak lagi muncul di layarnya. Pelanggaran sengaja berbeda: catatan yang ia buat sendiri tetap bisa ia telusuri kapan pun.
+
+Aturan ini soal **apa yang terlihat**. Aturan perbaikan catatan tidak berubah: koreksi hanya bisa dilakukan dalam 5 menit pertama sejak dicatat (Admin tanpa batas waktu).
 
 **Perbaikan salah ketik:** kalau guru salah memilih alasan atau salah ketik keterangan, catatan bisa **diubah atau dihapus dalam 5 menit pertama** sejak dicatat, dan hanya catatan yang ditulis sendiri. Setelah 5 menit lewat, hanya Admin yang bisa memperbaikinya. Aturan ini sengaja dibuat agar catatan tidak bisa "dirapikan" diam-diam berhari-hari kemudian.
 
@@ -283,7 +285,7 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 ## 8. Pertanyaan yang Sering Diajukan (FAQ)
 
 **1. Apakah data siswa aman?**
-Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan password, dan **tidak semua orang melihat semua data**: guru biasa hanya melihat catatan pelanggaran & riwayat keterlambatan yang ia tulis sendiri (keterlambatan hari ini tetap terbuka untuk semua guru demi alur gerbang), wali kelas melihat kelasnya sendiri ditambah catatannya sendiri, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
+Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan password, dan **tidak semua orang melihat semua data**: guru biasa tidak menyimpan riwayat keterlambatan/surat hari-hari sebelumnya sama sekali (hari ini tetap terbuka untuk semua guru demi alur gerbang) dan hanya melihat catatan pelanggaran yang ia tulis sendiri, wali kelas melihat kelas perwaliannya, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
 
 **2. Apakah bisa dipakai di HP?**
 Bisa, dan memang dirancang untuk HP. Cukup buka alamat SIGAP lewat browser (Chrome, Safari, dll.) — tidak perlu instal aplikasi. Bisa juga dibuka di laptop.

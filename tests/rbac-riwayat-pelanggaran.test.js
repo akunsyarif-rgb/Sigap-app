@@ -10,12 +10,20 @@
 // ke frontend, test ini merah.
 //
 // Aturan yang dijaga:
-//   Guru        : keterlambatan hari ini = SEKOLAH, riwayat = MILIK SENDIRI,
-//                 pelanggaran = MILIK SENDIRI
-//   Wali kelas  : keterlambatan hari ini = SEKOLAH, riwayat = KELAS + MILIK
-//                 SENDIRI, pelanggaran = KELAS + MILIK SENDIRI
-//   BK/Admin    : seluruh sekolah
-//   OSIS        : ditolak
+// Aturan final:
+//   KETERLAMBATAN & SURAT
+//     Guru       : hari ini = SEKOLAH; riwayat = MILIK SENDIRI HARI INI saja
+//                  (jadi tidak ada riwayat hari sebelumnya sama sekali —
+//                  "OWN-hari-ini" seluruhnya tercakup klausa hari ini)
+//     Wali kelas : hari ini = SEKOLAH; riwayat = KELASNYA (tanggal berapa pun)
+//                  + MILIK SENDIRI HARI INI. Catatan lintas kelas yang ia buat
+//                  KEMARIN tidak boleh ikut hanya karena ia yang mencatat.
+//     BK/Admin   : seluruh sekolah
+//     OSIS       : ditolak
+//   PELANGGARAN (sengaja BERBEDA, tidak diubah)
+//     Guru       : MILIK SENDIRI, tanpa batas tanggal
+//     Wali kelas : KELASNYA + MILIK SENDIRI, tanpa batas tanggal
+//     BK/Admin   : seluruh sekolah / OSIS ditolak
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -65,6 +73,19 @@ const LATE_ROWS = [
   [kemarin(3), '3003', 'Citra', 'XII C', 'Kesiangan', 'Bu BK'],        // lama, kelas lain, ditulis BK
   [hariIni(90), '3003', 'Citra', 'XII C', 'Hujan', 'Bu BK'],           // HARI INI, kelas lain
   [hariIni(30), '2002', 'Budi', 'XI B', 'Kesiangan', 'Bu BK'],         // HARI INI, kelas lain
+  [hariIni(20), '1001', 'Rahma', 'XI A', 'Macet', 'Pak Anwar'],        // HARI INI, dicatat guru biasa (OWN hari ini)
+  [hariIni(10), '3003', 'Citra', 'XII C', 'Hujan', 'Bu Kartina'],      // HARI INI, kelas lain, dicatat wali XI A (OWN hari ini)
+];
+
+// Surat_Masuk: [Timestamp, NISN, Nama, Kelas, Jenis, Keterangan, Foto_URL, Dicatat_Oleh]
+const SURAT_ROWS = [
+  [kemarin(12), '1001', 'Rahma', 'XI A', 'Sakit', 'demam', '', 'Bu BK'],          // lama, kelas wali
+  [kemarin(11), '2002', 'Budi', 'XI B', 'Izin', 'acara keluarga', '', 'Pak Anwar'], // lama, kelas lain, milik guru biasa
+  [kemarin(4), '2002', 'Budi', 'XI B', 'Sakit', 'flu', '', 'Bu Kartina'],         // lama, kelas lain, milik wali XI A
+  [kemarin(2), '3003', 'Citra', 'XII C', 'Izin', 'lomba', '', 'Bu BK'],           // lama, kelas lain
+  [hariIni(75), '3003', 'Citra', 'XII C', 'Sakit', 'demam', '', 'Bu BK'],         // HARI INI, kelas lain
+  [hariIni(45), '2002', 'Budi', 'XI B', 'Izin', 'ke dokter', '', 'Pak Anwar'],    // HARI INI, milik guru biasa
+  [hariIni(25), '1001', 'Rahma', 'XI A', 'Sakit', 'pusing', '', 'Bu Kartina'],    // HARI INI, kelas wali
 ];
 
 // Pelanggaran: [Timestamp, NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh]
@@ -87,6 +108,7 @@ const USERS = {
 function loadServer() {
   const sheets = {
     Log_Gerbang: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Alasan', 'Dicatat_Oleh'], LATE_ROWS),
+    Surat_Masuk: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis', 'Keterangan', 'Foto_URL', 'Dicatat_Oleh'], SURAT_ROWS),
     Pelanggaran: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh'], PELANGGARAN_ROWS),
     Audit_Log: makeSheet(['Timestamp', 'Nama', 'ID', 'Aksi', 'Detail'], []),
   };
@@ -141,19 +163,23 @@ test('getLogs: admin & BK tetap melihat seluruh sekolah', () => {
   });
 });
 
-test('getLogs: guru biasa TIDAK melihat riwayat hari sebelumnya milik orang lain', () => {
+test('getLogs: guru biasa TIDAK punya riwayat hari sebelumnya — termasuk catatannya sendiri', () => {
   const s = loadServer();
   const res = s.as('guru', { action: 'getLogs' });
   assert.equal(res.status, 'success');
 
   const riwayat = res.logs.filter((l) => !isHariIni(l.timestamp));
-  assert.ok(riwayat.length > 0, 'guru tetap melihat riwayat miliknya sendiri');
-  riwayat.forEach((l) => {
-    assert.equal(l.logged_by, 'Pak Anwar', `riwayat milik orang lain bocor: ${JSON.stringify(l)}`);
-  });
-  // Baris lama milik guru lain (termasuk kelas mana pun) tidak boleh ada.
-  assert.ok(!ringkas(res.logs).includes('Rahma/XI A/Bu Kartina'), 'catatan lama milik guru lain bocor');
-  assert.ok(!ringkas(res.logs).includes('Citra/XII C/Bu BK'), 'riwayat kelas lain bocor');
+  assert.deepEqual(riwayat, [], 'guru biasa tidak boleh menerima satu pun baris hari sebelumnya');
+  // Termasuk baris yang DIA SENDIRI catat kemarin untuk siswa kelas lain —
+  // inilah yang membedakan OWN-hari-ini dari OWN.
+  assert.ok(!ringkas(res.logs).includes('Budi/XI B/Pak Anwar'), 'catatan sendiri dari kemarin tidak boleh ikut');
+  assert.ok(!ringkas(res.logs).includes('Rahma/XI A/Pak Anwar'), 'catatan sendiri dari kemarin tidak boleh ikut');
+});
+
+test('getLogs: guru biasa tetap melihat catatan MILIKNYA SENDIRI hari ini', () => {
+  const s = loadServer();
+  const daftar = ringkas(s.as('guru', { action: 'getLogs' }).logs);
+  assert.ok(daftar.includes('Rahma/XI A/Pak Anwar/HARIINI'), 'OWN hari ini harus terlihat');
 });
 
 test('getLogs: keterlambatan HARI INI tetap seluruh sekolah untuk guru biasa (alur gerbang)', () => {
@@ -166,18 +192,25 @@ test('getLogs: keterlambatan HARI INI tetap seluruh sekolah untuk guru biasa (al
   assert.ok(hariIniRows.some((l) => l.logged_by === 'Bu BK' && l.class === 'XII C'));
 });
 
-test('getLogs: wali kelas = kelasnya + catatan sendiri + hari ini, bukan kelas lain', () => {
+test('getLogs: wali kelas = KELASNYA (tanggal berapa pun) + hari ini seluruh sekolah', () => {
   const s = loadServer();
-  const res = s.as('wali', { action: 'getLogs' });
-  const daftar = ringkas(res.logs);
+  const daftar = ringkas(s.as('wali', { action: 'getLogs' }).logs);
 
-  assert.ok(daftar.includes('Rahma/XI A/Bu Kartina'), 'kelas perwalian harus ikut');
-  assert.ok(daftar.includes('Rahma/XI A/Pak Anwar'), 'kelas perwalian walau dicatat guru lain');
-  assert.ok(daftar.includes('Budi/XI B/Bu Kartina'), 'catatan miliknya sendiri di kelas lain harus ikut (CLASS ∪ OWN)');
-  assert.ok(!daftar.includes('Budi/XI B/Pak Anwar'), 'riwayat kelas lain milik guru lain TIDAK boleh ikut');
-  assert.ok(!daftar.includes('Citra/XII C/Bu BK'), 'riwayat kelas lain TIDAK boleh ikut');
-  // Hari ini tetap seluruh sekolah.
-  assert.ok(daftar.includes('Citra/XII C/Bu BK/HARIINI'));
+  assert.ok(daftar.includes('Rahma/XI A/Bu Kartina'), 'riwayat kelas perwalian harus ikut');
+  assert.ok(daftar.includes('Rahma/XI A/Pak Anwar'), 'riwayat kelas perwalian walau dicatat guru lain');
+  assert.ok(daftar.includes('Citra/XII C/Bu Kartina/HARIINI'), 'catatannya sendiri hari ini untuk kelas lain tetap terlihat');
+  assert.ok(daftar.includes('Citra/XII C/Bu BK/HARIINI'), 'hari ini tetap seluruh sekolah');
+});
+
+test('getLogs: wali kelas TIDAK menyimpan riwayat kelas lain hanya karena pernah mencatatnya', () => {
+  const s = loadServer();
+  const daftar = ringkas(s.as('wali', { action: 'getLogs' }).logs);
+  // kemarin(10): Budi (XI B) dicatat Bu Kartina sendiri — kelas lain, hari sebelumnya.
+  assert.ok(!daftar.includes('Budi/XI B/Bu Kartina'), 'catatan sendiri lintas kelas dari hari sebelumnya harus hilang');
+  assert.ok(!daftar.includes('Budi/XI B/Pak Anwar'), 'riwayat kelas lain milik guru lain tetap tertutup');
+  assert.ok(!daftar.includes('Citra/XII C/Bu BK'), 'riwayat kelas lain tetap tertutup');
+  s.as('wali', { action: 'getLogs' }).logs.filter((l) => !isHariIni(l.timestamp))
+    .forEach((l) => assert.ok(l.class === 'XI A', `baris non-hari-ini di luar kelas perwalian bocor: ${JSON.stringify(l)}`));
 });
 
 test('getLogs: OSIS ditolak dan tidak menerima baris apa pun', () => {
@@ -205,6 +238,77 @@ test('getLogs: parameter karangan dari klien tidak bisa memperluas cakupan', () 
     logged_by: 'Bu Kartina', name: 'Bu Kartina', id: 'G02',
   });
   assert.deepEqual(ringkas(nakal.logs), ringkas(jujur.logs), 'parameter tambahan tidak boleh mengubah hasil');
+});
+
+// ================= SURAT / IZIN =================
+// Aturannya SAMA PERSIS dengan keterlambatan (fungsi cakupan yang sama).
+
+test('getSurat: admin & BK seluruh sekolah, lengkap dengan keterangannya', () => {
+  const s = loadServer();
+  ['admin', 'bk'].forEach((who) => {
+    const res = s.as(who, { action: 'getSurat' });
+    assert.equal(res.status, 'success');
+    assert.equal(res.surat.length, SURAT_ROWS.length, `${who} harus melihat semua surat`);
+  });
+  const bk = s.as('bk', { action: 'getSurat' });
+  assert.ok(bk.surat.some((x) => x.keterangan === 'acara keluarga'), 'BK boleh melihat keterangan lengkap');
+});
+
+test('getSurat: guru biasa melihat surat HARI INI seluruh sekolah', () => {
+  const s = loadServer();
+  const res = s.as('guru', { action: 'getSurat' });
+  const hariIniRows = res.surat.filter((x) => isHariIni(x.timestamp));
+  assert.equal(hariIniRows.length, SURAT_ROWS.filter((r) => isHariIni(r[0])).length,
+    'surat hari ini terbuka untuk semua guru (alur gerbang: cek siapa sudah menyerahkan surat)');
+  assert.ok(hariIniRows.some((x) => x.class === 'XII C'), 'termasuk kelas lain');
+});
+
+test('getSurat: guru biasa TIDAK melihat surat hari sebelumnya — termasuk miliknya', () => {
+  const s = loadServer();
+  const res = s.as('guru', { action: 'getSurat' });
+  assert.deepEqual(res.surat.filter((x) => !isHariIni(x.timestamp)), [],
+    'tidak boleh ada satu pun surat hari sebelumnya');
+  assert.ok(!ringkas(res.surat).includes('Budi/XI B/Pak Anwar'), 'surat miliknya sendiri dari kemarin ikut tertutup');
+  assert.ok(!JSON.stringify(res.surat).includes('acara keluarga'), 'keterangan surat lama tidak ikut terkirim');
+});
+
+test('getSurat: guru biasa tetap melihat surat MILIKNYA SENDIRI hari ini', () => {
+  const s = loadServer();
+  const daftar = ringkas(s.as('guru', { action: 'getSurat' }).surat);
+  assert.ok(daftar.includes('Budi/XI B/Pak Anwar/HARIINI'), 'OWN hari ini harus terlihat');
+});
+
+test('getSurat: wali kelas = riwayat KELASNYA + hari ini seluruh sekolah', () => {
+  const s = loadServer();
+  const daftar = ringkas(s.as('wali', { action: 'getSurat' }).surat);
+  assert.ok(daftar.includes('Rahma/XI A/Bu BK'), 'riwayat surat kelas perwalian ikut walau dicatat orang lain');
+  assert.ok(daftar.includes('Rahma/XI A/Bu Kartina/HARIINI'));
+  assert.ok(daftar.includes('Citra/XII C/Bu BK/HARIINI'), 'hari ini tetap seluruh sekolah');
+});
+
+test('getSurat: wali kelas TIDAK menyimpan surat kelas lain hanya karena pernah mencatatnya', () => {
+  const s = loadServer();
+  const res = s.as('wali', { action: 'getSurat' });
+  // kemarin(4): surat Budi (XI B) dicatat Bu Kartina sendiri.
+  assert.ok(!ringkas(res.surat).includes('Budi/XI B/Bu Kartina'), 'surat sendiri lintas kelas dari hari sebelumnya harus hilang');
+  res.surat.filter((x) => !isHariIni(x.timestamp))
+    .forEach((x) => assert.equal(x.class, 'XI A', `surat non-hari-ini di luar kelas perwalian bocor: ${JSON.stringify(x)}`));
+});
+
+test('getSurat: OSIS ditolak', () => {
+  const s = loadServer();
+  const res = s.as('osis', { action: 'getSurat' });
+  assert.equal(res.status, 'error');
+  assert.equal(res.surat, undefined);
+});
+
+test('getSurat: cache tidak bocor antar pengguna', () => {
+  const s = loadServer();
+  s.as('admin', { action: 'getSurat' });                    // isi cache dengan daftar penuh
+  const guru = s.as('guru', { action: 'getSurat' });
+  assert.ok(guru.surat.every((x) => isHariIni(x.timestamp)), 'guru tidak boleh menerima daftar penuh dari cache');
+  const wali = s.as('wali', { action: 'getSurat' });
+  assert.ok(!ringkas(wali.surat).includes('Citra/XII C/Bu BK'), 'wali kelas tidak menerima riwayat kelas lain dari cache');
 });
 
 // ================= PELANGGARAN =================
@@ -253,27 +357,52 @@ test('getPelanggaran: cache tidak bocor antar pengguna', () => {
   assert.ok(!ringkas(wali.pelanggaran).some((d) => d.startsWith('Citra/XII C')));
 });
 
+test('Pelanggaran TIDAK ikut aturan OWN-hari-ini (sengaja berbeda dari keterlambatan/surat)', () => {
+  const s = loadServer();
+  // Guru biasa tetap melihat pelanggaran yang ia catat KEMARIN.
+  const guru = s.as('guru', { action: 'getPelanggaran' });
+  const lamaMilikGuru = guru.pelanggaran.filter((p) => !isHariIni(p.timestamp));
+  assert.ok(lamaMilikGuru.length > 0, 'OWN pelanggaran tanpa batas tanggal harus dipertahankan');
+  lamaMilikGuru.forEach((p) => assert.equal(p.logged_by, 'Pak Anwar'));
+
+  // Wali kelas tetap melihat pelanggaran yang ia catat kemarin untuk kelas lain.
+  const wali = s.as('wali', { action: 'getPelanggaran' });
+  assert.ok(ringkas(wali.pelanggaran).includes('Budi/XI B/Bu Kartina'),
+    'CLASS ∪ OWN pelanggaran (tanpa batas tanggal) harus tetap berlaku');
+
+  // Dan fungsi cakupannya memang terpisah dari yang dipakai keterlambatan/surat.
+  const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
+  const blok = utils.split('function scopePelanggaranForUser(')[1].split('\n}')[0];
+  assert.match(blok, /ownsRow\(p, sessionUser\)/, 'pelanggaran tetap memakai klausa OWN');
+  assert.doesNotMatch(blok, /isSameDayServer/, 'pelanggaran tidak boleh dibatasi per tanggal');
+});
+
 // ================= RIWAYAT 1 SISWA (parameter nisn/studentId) =================
 
 test('getStudentLateHistory: guru tidak bisa menarik riwayat siswa lewat NISN', () => {
   const s = loadServer();
-  // NISN 1001 (Rahma, XI A) punya 2 baris lama: milik Bu Kartina & Pak Anwar.
+  // NISN 1001 (Rahma, XI A): 2 baris hari sebelumnya (Bu Kartina & Pak Anwar)
+  // + 1 baris HARI INI (Pak Anwar).
   const guru = s.as('guru', { action: 'getStudentLateHistory', nisn: '1001' });
   assert.equal(guru.status, 'success');
-  assert.equal(guru.history.length, 1, 'guru hanya melihat catatan yang ia tulis sendiri');
-  assert.equal(guru.history[0].type, 'Ban bocor');
+  assert.equal(guru.history.length, 1, 'guru hanya melihat baris hari ini');
+  assert.equal(guru.history[0].type, 'Macet');
+  assert.ok(guru.history.every((h) => isHariIni(h.timestamp)), 'tidak ada baris hari sebelumnya');
   // Field penyaring tidak ikut terkirim ke klien.
   assert.deepEqual(Object.keys(guru.history[0]).sort(), ['timestamp', 'type']);
 
   const wali = s.as('wali', { action: 'getStudentLateHistory', nisn: '1001' });
-  assert.equal(wali.history.length, 2, 'wali kelas melihat seluruh riwayat siswa kelasnya');
+  assert.equal(wali.history.length, 3, 'wali kelas melihat seluruh riwayat siswa kelasnya');
 
   const bk = s.as('bk', { action: 'getStudentLateHistory', nisn: '3003' });
-  assert.equal(bk.history.length, 2, 'BK melihat seluruh sekolah');
+  assert.equal(bk.history.length, 3, 'BK melihat seluruh sekolah');
 
-  const guruKelasLain = s.as('guru', { action: 'getStudentLateHistory', nisn: '3003' });
-  assert.equal(guruKelasLain.history.filter((h) => !isHariIni(h.timestamp)).length, 0,
-    'riwayat lama siswa kelas lain tidak boleh terbaca guru biasa');
+  // Siswa kelas lain: guru & wali hanya boleh dapat baris hari ini.
+  ['guru', 'wali'].forEach((who) => {
+    const res = s.as(who, { action: 'getStudentLateHistory', nisn: '3003' });
+    assert.equal(res.history.filter((h) => !isHariIni(h.timestamp)).length, 0,
+      `${who} tidak boleh membaca riwayat lama siswa kelas lain`);
+  });
 
   const osis = s.as('osis', { action: 'getStudentLateHistory', nisn: '1001' });
   assert.equal(osis.status, 'error');
@@ -285,11 +414,11 @@ test('getStudentLateHistory: `count` mengirim JUMLAH saja (peringatan gerbang te
   // melihat 1 baris detail, tapi jumlahnya tetap apa adanya supaya peringatan
   // "sudah Nx terlambat" tidak mengecil diam-diam.
   const guru = s.as('guru', { action: 'getStudentLateHistory', nisn: '1001' });
-  assert.equal(guru.count, 2, 'jumlah se-sekolah tetap dikirim');
-  assert.equal(guru.history.length, 1, 'detailnya tetap dibatasi');
+  assert.equal(guru.count, 3, 'jumlah se-sekolah tetap dikirim apa adanya');
+  assert.equal(guru.history.length, 1, 'detailnya tetap dibatasi ke hari ini');
   // Yang dikirim benar-benar cuma angka: tidak ada nama pencatat/kelas/alasan
   // milik baris yang tidak boleh dilihat.
-  assert.doesNotMatch(JSON.stringify(guru), /Bu Kartina|Kesiangan/);
+  assert.doesNotMatch(JSON.stringify(guru), /Bu Kartina|Ban bocor/);
   assert.equal(typeof guru.count, 'number');
 });
 
@@ -325,17 +454,57 @@ test('getTodayData: bagian hari ini tetap sekolah, lateForBanner & pelanggaran i
   guruLagi.lateForBanner.filter((l) => !isHariIni(l.timestamp)).forEach((l) => assert.equal(l.logged_by, 'Pak Anwar'));
 });
 
+// ================= MANIPULASI PARAMETER =================
+
+test('Security: manipulasi studentId/classId/recordId/tanggal/scope tidak memperluas akses', () => {
+  const s = loadServer();
+  const nakal = {
+    studentId: '2002', nisn: '2002', classId: 'XI B', class: 'XI B', kelas: 'XI B',
+    recordId: '3', id: '3', rowIndex: '3', row: '3',
+    scope: 'school', all: 'true', full: '1',
+    tanggal: '2020-01-01', start: '2020-01-01', end: '2030-12-31', date: '2020-01-01',
+    role: 'admin', waliKelas: 'XI B', logged_by: 'Bu BK', requester: 'Bu BK', owner: 'Bu BK',
+  };
+
+  ['getLogs', 'getSurat'].forEach((action) => {
+    const jujur = s.as('guru', { action });
+    const dicurangi = s.as('guru', Object.assign({ action }, nakal));
+    const kunci = action === 'getLogs' ? 'logs' : 'surat';
+    assert.deepEqual(ringkas(dicurangi[kunci]), ringkas(jujur[kunci]), `${action}: parameter karangan mengubah hasil`);
+    assert.ok(dicurangi[kunci].every((r) => isHariIni(r.timestamp)), `${action}: cakupan guru tetap hari ini saja`);
+  });
+
+  // Wali kelas tidak bisa berpindah kelas lewat parameter.
+  const waliJujur = s.as('wali', { action: 'getLogs' });
+  const waliNakal = s.as('wali', Object.assign({ action: 'getLogs' }, nakal));
+  assert.deepEqual(ringkas(waliNakal.logs), ringkas(waliJujur.logs));
+  waliNakal.logs.filter((l) => !isHariIni(l.timestamp)).forEach((l) => assert.equal(l.class, 'XI A'));
+
+  // studentId pada endpoint yang memang menerimanya tetap dibatasi cakupan.
+  const detail = s.as('guru', { action: 'getStudentLateHistory', nisn: '2002', classId: 'XI B', scope: 'school' });
+  assert.ok(detail.history.every((h) => isHariIni(h.timestamp)), 'riwayat lama siswa lain tidak boleh terbuka lewat NISN');
+
+  // Tidak ada endpoint GET yang menyerahkan satu baris berdasarkan recordId.
+  const acak = s.as('guru', { action: 'getRecord', recordId: '3', id: '3' });
+  assert.notEqual(acak.status, 'success');
+});
+
 // ================= PENEGAKAN DI SERVER, BUKAN DI BROWSER =================
 
 test('Code.gs: penyaringan cakupan terjadi di server & cache tetap disimpan mentah', () => {
   const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
   const blok = code.split("if (action === 'getLogs')")[1].split("if (action === 'getTeachers')")[0];
-  assert.match(blok, /scopeLateLogsForUser\(logsRaw, sessionUser\)/, 'getLogs wajib menyaring per pengguna');
+  assert.match(blok, /scopeDailyRecordsForUser\(logsRaw, sessionUser\)/, 'getLogs wajib menyaring per pengguna');
   assert.match(blok, /cache\.put\('today_logs', JSON\.stringify\(logsRaw\), 60\)/, 'yang di-cache harus daftar mentah');
   assert.doesNotMatch(blok, /cache\.put\('today_logs', result/, 'jangan cache hasil yang sudah difilter per orang');
 
   const pelBlok = code.split("if (action === 'getPelanggaran')")[1].split("if (action === 'getPelanggaranCountForStudent')")[0];
   assert.match(pelBlok, /scopePelanggaranForUser\(pelanggaran, sessionUser\)/);
+
+  const suratBlok = code.split("if (action === 'getSurat')")[1].split("if (action === 'getPelanggaran')")[0];
+  assert.match(suratBlok, /scopeDailyRecordsForUser\(suratRaw, sessionUser\)/, 'getSurat wajib menyaring per pengguna');
+  assert.match(suratBlok, /cache\.put\('surat_list', JSON\.stringify\(suratRaw\), 60\)/, 'cache surat harus mentah');
+  assert.doesNotMatch(suratBlok, /cache\.put\('surat_list', result/, 'jangan cache hasil yang sudah difilter');
 });
 
 test('Utils.gs: OWN tetap memakai mekanisme nama pencatat yang sudah ada', () => {

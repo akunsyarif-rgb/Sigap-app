@@ -307,26 +307,41 @@ this pattern (major-version pin, not exact patch — unverifiable exact patches
 risk 404s from unpkg; not `latest` — risks silent breaking upgrades) when
 touching these `<script>` tags.
 
-### Read scope: Keterlambatan & Pelanggaran (RBAC)
+### Read scope: Keterlambatan, Surat & Pelanggaran (RBAC)
 
-`scopeLateLogsForUser()` / `scopePelanggaranForUser()` in `Utils.gs` are the
-single source of truth, applied server-side by `getLogs`, `getPelanggaran`,
-`getStudentLateHistory`, and `getTodayData`:
+`scopeDailyRecordsForUser()` (Keterlambatan + Surat) and
+`scopePelanggaranForUser()` (Pelanggaran) in `Utils.gs` are the single source of
+truth, applied server-side by `getLogs`, `getSurat`, `getPelanggaran`,
+`getStudentLateHistory`, and `getTodayData`. The two categories deliberately
+follow **different** rules — don't unify them:
 
-- **today's** lateness → school-wide for every non-OSIS role. This is not
-  laxity: gate duty teachers must see each other's entries or the same student
-  gets recorded twice (`GerbangTab`, and the duplicate check in `record`).
-- **older** lateness and **all** pelanggaran → admin/BK school-wide; a wali
-  kelas gets their class **plus rows they logged**; a plain guru gets **only
-  rows they logged**; OSIS is rejected outright.
+| | Keterlambatan & Surat | Pelanggaran |
+| --- | --- | --- |
+| admin / bk_kesiswaan | whole school | whole school |
+| wali kelas | own class (any date) + everything from **today** | own class + own records, any date |
+| plain guru | everything from **today** only | own records, any date |
+| osis | rejected | rejected |
 
-`getLogs` used to return the *entire* `Log_Gerbang` to every non-OSIS caller
-and let the browser decide what to show — a plain guru could read any class's
-history straight out of the Network tab. When touching these handlers, keep
-the cache **raw** (`today_logs`, `pelanggaran_list_raw`, `today_data` all store
-the unfiltered list) and scope **after** reading it; caching a per-user result
-hands one teacher's list to the next caller. `tests/rbac-riwayat-pelanggaran.test.js`
-calls `doGet()` for real and pins all of this down, cache leakage included.
+**Today is school-wide** for lateness and surat because gate duty teachers must
+see each other's entries or the same student gets recorded twice (`GerbangTab`,
+and the duplicate checks in `record`/`addSurat`). "OWN-hari-ini" needs no clause
+of its own — it is fully contained in that today rule. What must *not* come back
+is an unrestricted OWN clause: a wali kelas who does gate duty would otherwise
+keep a cross-class history forever, just because they typed it. Pelanggaran is
+the opposite case (no mass gate flow, teachers need to trace their own entries),
+so it keeps unrestricted OWN.
+
+`getLogs` and `getSurat` used to return the *entire* sheet to every non-OSIS
+caller and let the browser decide what to show — a plain guru could read any
+class's history straight out of the Network tab. When touching these handlers,
+keep the cache **raw** (`today_logs`, `surat_list`, `pelanggaran_list_raw`,
+`today_data` all store the unfiltered list) and scope **after** reading it;
+caching a per-user result hands one teacher's list to the next caller.
+`tests/rbac-riwayat-pelanggaran.test.js` calls `doGet()` for real and pins all
+of this down, cache leakage and parameter tampering included.
+
+Visibility is not the edit rule: the 5-minute edit/delete window in
+`editEntry`/`deleteEntry` is unchanged and independent of this.
 
 Ownership (OWN) uses the existing mechanism — the `Dicatat_Oleh` column matched
 against the session user's name, same as `editEntry`/`deleteEntry`. Don't
@@ -335,9 +350,14 @@ replace it with ids "while you're in there": old rows only carry the name.
 `getStudentLateHistory` returns scoped detail rows **plus** `count`, the
 student's true school-wide total as a bare number. That count is what keeps the
 "sudah Nx terlambat" warning in `RecordModal` honest now that a guru's
-`allLogs` no longer contains other teachers' rows — same deliberate trade-off
-(and same reasoning) as `getPelanggaranCountForStudent`: per-student, on
-demand, never an all-students map that could be turned into a ranking.
+`allLogs` only holds today. Same deliberate trade-off (and same reasoning) as
+`getPelanggaranCountForStudent`: per-student, on demand, never an all-students
+map that could be turned into a ranking.
+
+`BACKEND_VERSION` in `Code.gs` is echoed by the token-gated status ping
+(`doGet` with no action). Bump it whenever a `.gs` change needs verifying after
+a manual deploy — it's the only way to tell "deployed" from "saved but still
+serving the old version" without guessing.
 
 ### Export Data: who may export what
 

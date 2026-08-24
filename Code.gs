@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-24-rbac-scope';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedPelanggaran', 'adminOnlyAuditLog'];
+var BACKEND_VERSION = '2026-08-24-rbac-own-today';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog'];
 
 // ===== doPost =====
 
@@ -826,7 +826,7 @@ function doGet(e) {
     // Parameter nisn datang dari klien, jadi endpoint ini adalah jalan paling
     // langsung untuk menarik riwayat siswa mana pun kalau tidak dibatasi:
     // cakupannya dilewatkan melalui aturan yang sama dengan getLogs.
-    var historyScoped = scopeLateLogsForUser(historyRaw, sessionUser);
+    var historyScoped = scopeDailyRecordsForUser(historyRaw, sessionUser);
     // Kelas & nama pencatat hanya dipakai untuk menyaring di atas — yang
     // dikirim ke klien tetap dua field seperti sebelumnya.
     var history = historyScoped.map(function (h) { return { timestamp: h.timestamp, type: h.type }; });
@@ -849,8 +849,9 @@ function doGet(e) {
   // Artinya guru biasa bisa membaca riwayat keterlambatan siswa kelas mana pun
   // hanya dengan membuka Inspect/Network — penyaringan di UI tidak pernah
   // menjadi pengamanan. Cakupan sekarang ditentukan server lewat
-  // scopeLateLogsForUser() di Utils.gs: hari ini seluruh sekolah (alur gerbang
-  // butuh itu), riwayat lama = kelas perwalian + catatan sendiri.
+  // scopeDailyRecordsForUser() di Utils.gs: hari ini seluruh sekolah (alur gerbang
+  // butuh itu), riwayat hari sebelumnya = kelas perwalian saja. Guru biasa
+  // tidak menyimpan riwayat lintas kelas hanya karena ia yang mencatatnya.
   //
   // Yang di-cache adalah daftar MENTAH (sama untuk semua orang), lalu disaring
   // per-pengguna SETELAH dibaca dari cache — pola yang sama persis dengan
@@ -878,7 +879,7 @@ function doGet(e) {
       }
       cache.put('today_logs', JSON.stringify(logsRaw), 60);
     }
-    return jsonOut({ status: 'success', logs: scopeLateLogsForUser(logsRaw, sessionUser) });
+    return jsonOut({ status: 'success', logs: scopeDailyRecordsForUser(logsRaw, sessionUser) });
   }
 
   if (action === 'getTeachers') {
@@ -897,24 +898,34 @@ function doGet(e) {
     return jsonOut({ status: 'success', teachers: teachers });
   }
 
+  // Surat/Izin mengikuti aturan cakupan yang SAMA PERSIS dengan Keterlambatan
+  // (scopeDailyRecordsForUser di Utils.gs): hari ini seluruh sekolah — guru
+  // gerbang harus tahu siswa mana yang sudah menyerahkan surat hari itu supaya
+  // tidak dicatat dua kali — sedangkan riwayat hari sebelumnya hanya untuk
+  // admin/BK (seluruh sekolah) dan wali kelas (kelasnya sendiri).
+  // Sebelum ini seluruh isi Surat_Masuk dikirim ke setiap pemanggil non-OSIS.
+  // Cache tetap MENTAH & global, penyaringan dilakukan setelah dibaca.
   if (action === 'getSurat') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('surat_list');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
-    }
-    var sheet = ss.getSheetByName('Surat_Masuk');
-    var surat = [];
-    if (sheet) {
-      var rows = sheet.getDataRange().getValues();
-      for (var i = 1; i < rows.length; i++) {
-        surat.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+    var suratRaw;
+    var cachedSurat = cache.get('surat_list');
+    if (cachedSurat) {
+      // Toleran terhadap entri format LAMA (respons utuh {status, surat}).
+      var parsedSurat = JSON.parse(cachedSurat);
+      suratRaw = Array.isArray(parsedSurat) ? parsedSurat : (parsedSurat.surat || []);
+    } else {
+      var sheet = ss.getSheetByName('Surat_Masuk');
+      suratRaw = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          suratRaw.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], jenis: rows[i][4], keterangan: rows[i][5], foto_url: rows[i][6], logged_by: rows[i][7] });
+        }
+        suratRaw.reverse();
       }
-      surat.reverse();
+      cache.put('surat_list', JSON.stringify(suratRaw), 60);
     }
-    var result = JSON.stringify({ status: 'success', surat: surat });
-    cache.put('surat_list', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut({ status: 'success', surat: scopeDailyRecordsForUser(suratRaw, sessionUser) });
   }
 
   // ---- Pelanggaran: BK/Kesiswaan/Admin lihat semua, wali kelas lihat
