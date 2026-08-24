@@ -150,7 +150,7 @@ order does for anything not hoisted.
   hashing (`hashPasswordLegacy`/`hashPasswordSalted`), `sameClass` (tolerant
   class-name matching — mirrors `normalizeClass()` in `helpers.js`, keep both
   in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
-  throws), `getRowsSince` (binary-search over timestamps to avoid scanning
+  throws; readable by admin only — see `getAuditLog`), `getRowsSince` (binary-search over timestamps to avoid scanning
   full sheets), and **login rate limiting** (`isLoginRateLimited`/
   `recordLoginFailure`): the rate limiter is a **global, fixed 5-minute
   window** (not per-account, not sliding) capped at 15 failures. It's global
@@ -334,11 +334,13 @@ Every attempt, successful or rejected, is written to `Audit_Log` with
 metadata only (jenis/periode/cakupan/format/row count/status) — never student
 names or note contents.
 
-Note the pre-existing asymmetry: `getAuditLog` is admin **+ BK/Kesiswaan**
-(`isBkRole`), unchanged by this feature — so BK/Kesiswaan can see export audit
-rows too. Tightening that to admin-only is a one-line change in `Code.gs` plus
-dropping `'auditlog'` from `bk_kesiswaan` in `config.js`, but it removes an
-existing capability, so it wasn't done unilaterally.
+`getAuditLog` is **admin-only** (`isAdminRole`). It used to be admin +
+BK/Kesiswaan (`isBkRole`); it was tightened when export landed, because the
+Audit Log now also carries every export attempt — it is an oversight trail over
+*everyone*, including admins, not a day-to-day BK tool. The gate is the role
+check in `Code.gs`; dropping `'auditlog'` from `bk_kesiswaan` in `config.js`
+(and the `roleKey !== 'admin'` guard in `fetchAuditLog`) only stops a request
+that would now be rejected anyway.
 
 ### Tests
 

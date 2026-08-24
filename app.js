@@ -317,7 +317,9 @@
            };
 
            const fetchAuditLog = () => {
-               if (roleKey !== 'admin' && roleKey !== 'bk_kesiswaan') return;
+               // Admin-only, mengikuti getAuditLog di Code.gs — tanpa ini BK
+               // menembak request yang pasti dijawab Unauthorized.
+               if (roleKey !== 'admin') return;
                fetch(`${API_URL}?action=getAuditLog&token=${API_TOKEN}&sessionToken=${sessionToken}`)
                    .then(res => res.json()).then(checkSession)
                    .then(data => { if (data.status === 'success') setAuditLog(data.auditLog); });

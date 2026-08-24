@@ -1034,9 +1034,16 @@ function doGet(e) {
     return jsonOut({ status: 'success', upacara: upacara });
   }
 
-  // ---- Audit Log (admin + BK/Kesiswaan only) — jejak keamanan permanen ----
+  // ---- Audit Log (ADMIN ONLY) — jejak keamanan permanen ----
+  // Sebelumnya isBkRole (admin + BK/Kesiswaan). Dipersempit ke admin saja:
+  // Audit Log memuat jejak SEMUA orang (termasuk aksi admin & percobaan export
+  // milik guru lain), jadi ia alat pengawasan, bukan alat kerja harian BK.
+  // Pemeriksaan tetap memakai helper role yang sudah ada (isAdminRole di
+  // Auth.gs) — tidak ada mekanisme role/identitas baru. Menu 'auditlog' juga
+  // dicabut dari bk_kesiswaan di config.js, tapi ITU bukan pengamanannya:
+  // gerbangnya di baris ini.
   if (action === 'getAuditLog') {
-    if (!isBkRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    if (!isAdminRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var sheet = ss.getSheetByName('Audit_Log');
     var auditLog = [];
     if (sheet) {

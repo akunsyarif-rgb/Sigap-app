@@ -402,13 +402,39 @@ test('Audit: periode kosong tercatat sebagai "tidak ada data", bukan sebagai exp
   assert.match(s.audit()[0][4], /status=tidak ada data/);
 });
 
-test('Audit Log tetap tertutup untuk guru, wali kelas, dan OSIS', () => {
+test('Audit Log: HANYA admin yang boleh membuka — BK/Kesiswaan pun ditolak', () => {
   const s = loadServer();
-  ['guru', 'waliA', 'osis'].forEach((who) => {
+  // Peran BK & Kesiswaan memakai satu role yang sama di sistem ini
+  // ('bk_kesiswaan', lihat Auth.gs) — jadi satu kasus menutup keduanya.
+  ['bk', 'waliA', 'guru', 'osis'].forEach((who) => {
     const res = s.call({ action: 'getAuditLog', token: 'TOKEN-OK', sessionToken: s.tokens[who] });
     assert.equal(res.status, 'error', `${who} tidak boleh melihat Audit Log`);
-    assert.equal(res.auditLog, undefined);
+    assert.match(res.message, /Unauthorized/);
+    assert.equal(res.auditLog, undefined, 'penolakan tidak boleh membawa satu baris audit pun');
   });
+
+  const admin = s.call({ action: 'getAuditLog', token: 'TOKEN-OK', sessionToken: s.tokens.admin });
+  assert.equal(admin.status, 'success', 'admin tetap bisa membuka Audit Log');
+  assert.ok(Array.isArray(admin.auditLog));
+});
+
+test('Audit Log: dipersempit tanpa merusak hak export BK/Kesiswaan & wali kelas', () => {
+  const s = loadServer();
+  // Pengetatan Audit Log hanya menyentuh getAuditLog — jalur export tidak ikut.
+  assert.equal(s.exportAs('bk', { jenis: 'bimbingan' }).status, 'success');
+  assert.equal(s.exportAs('bk').status, 'success');
+  assert.equal(s.exportAs('waliA').status, 'success');
+  assert.equal(s.exportAs('guru').status, 'error');
+  assert.equal(s.exportAs('osis').status, 'error');
+  // Barisnya tetap tercatat walau BK tidak bisa lagi membacanya sendiri.
+  assert.ok(s.audit().length >= 3);
+});
+
+test('Code.gs: gerbang Audit Log memakai helper role yang sudah ada, bukan role baru', () => {
+  const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  const blok = code.split("if (action === 'getAuditLog')")[1].split("if (action === 'getJadwalPiket')")[0];
+  assert.match(blok, /!isAdminRole\(sessionUser\.role\)/);
+  assert.doesNotMatch(blok, /isBkRole\(/, 'tidak boleh lagi memakai isBkRole');
 });
 
 // ================= RATE LIMIT & URUTAN PEMERIKSAAN =================

@@ -123,7 +123,7 @@ Satu halaman berisi tiga kelompok pengaturan:
 
 ### 3.10 Audit Log — Jejak Siapa Melakukan Apa
 
-Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/menghapus catatan, kapan, dan atas siswa siapa. Bisa dicari. Hanya Admin dan BK/Kesiswaan yang bisa membukanya. Fungsinya seperti **buku tamu yang tidak bisa dihapus** — kalau ada catatan yang hilang atau berubah, ketahuan siapa yang melakukannya.
+Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/menghapus catatan, kapan, dan atas siswa siapa. Bisa dicari. **Hanya Admin** yang bisa membukanya — BK/Kesiswaan, wali kelas, guru, dan OSIS tidak. Fungsinya seperti **buku tamu yang tidak bisa dihapus** — kalau ada catatan yang hilang atau berubah, ketahuan siapa yang melakukannya.
 
 ### 3.11 Export Data — Laporan PDF & Excel Tanpa Membuka Spreadsheet
 

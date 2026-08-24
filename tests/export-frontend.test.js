@@ -421,6 +421,21 @@ test('config & app.js: menu Export untuk admin/BK, runtime untuk wali kelas, tid
   assert.match(app, /activeTab === 'export' && effectiveMenus\.includes\('export'\) && canAccessExport\(roleKey, user\.waliKelas\)/);
 });
 
+test('config & app.js: menu Audit Log hanya untuk Admin', () => {
+  const ROLES = get('ROLES');
+  assert.ok(ROLES.admin.menus.includes('auditlog'), 'admin tetap punya menu Audit Log');
+  assert.ok(!ROLES.bk_kesiswaan.menus.includes('auditlog'), 'BK/Kesiswaan tidak lagi punya menu Audit Log');
+  assert.ok(!ROLES.guru.menus.includes('auditlog'));
+  assert.ok(!ROLES.osis.menus.includes('auditlog'));
+  // Menu 'export' yang baru tidak ikut tercabut dari BK saat menu audit dicabut.
+  assert.ok(ROLES.bk_kesiswaan.menus.includes('export'));
+
+  const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const blok = app.split('const fetchAuditLog = () => {')[1].split('};')[0];
+  assert.match(blok, /roleKey !== 'admin'/);
+  assert.doesNotMatch(blok, /bk_kesiswaan/, 'BK tidak lagi menembak getAuditLog');
+});
+
 test('app.js: laporan tidak disaring ulang di browser — dipakai apa adanya dari server', () => {
   const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const blok = app.split('const handleExportData = (payload, callback) => {')[1].split('const handleAddUpacara')[0];
