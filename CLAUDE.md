@@ -307,6 +307,38 @@ this pattern (major-version pin, not exact patch — unverifiable exact patches
 risk 404s from unpkg; not `latest` — risks silent breaking upgrades) when
 touching these `<script>` tags.
 
+### Read scope: Keterlambatan & Pelanggaran (RBAC)
+
+`scopeLateLogsForUser()` / `scopePelanggaranForUser()` in `Utils.gs` are the
+single source of truth, applied server-side by `getLogs`, `getPelanggaran`,
+`getStudentLateHistory`, and `getTodayData`:
+
+- **today's** lateness → school-wide for every non-OSIS role. This is not
+  laxity: gate duty teachers must see each other's entries or the same student
+  gets recorded twice (`GerbangTab`, and the duplicate check in `record`).
+- **older** lateness and **all** pelanggaran → admin/BK school-wide; a wali
+  kelas gets their class **plus rows they logged**; a plain guru gets **only
+  rows they logged**; OSIS is rejected outright.
+
+`getLogs` used to return the *entire* `Log_Gerbang` to every non-OSIS caller
+and let the browser decide what to show — a plain guru could read any class's
+history straight out of the Network tab. When touching these handlers, keep
+the cache **raw** (`today_logs`, `pelanggaran_list_raw`, `today_data` all store
+the unfiltered list) and scope **after** reading it; caching a per-user result
+hands one teacher's list to the next caller. `tests/rbac-riwayat-pelanggaran.test.js`
+calls `doGet()` for real and pins all of this down, cache leakage included.
+
+Ownership (OWN) uses the existing mechanism — the `Dicatat_Oleh` column matched
+against the session user's name, same as `editEntry`/`deleteEntry`. Don't
+replace it with ids "while you're in there": old rows only carry the name.
+
+`getStudentLateHistory` returns scoped detail rows **plus** `count`, the
+student's true school-wide total as a bare number. That count is what keeps the
+"sudah Nx terlambat" warning in `RecordModal` honest now that a guru's
+`allLogs` no longer contains other teachers' rows — same deliberate trade-off
+(and same reasoning) as `getPelanggaranCountForStudent`: per-student, on
+demand, never an all-students map that could be turned into a ranking.
+
 ### Export Data: who may export what
 
 `exportData` (a `doGet` action) is the only path that hands a report file's

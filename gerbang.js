@@ -3,14 +3,29 @@
 // (Catat Terlambat / Catat Surat). Surat cuma laporan tertulis (jenis +
 // keterangan) — TIDAK ada lampiran foto (dihapus, lihat catatan di Utils.gs).
 
-       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs }) {
+       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount }) {
            const presets = [
                { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
                { type: 'Hujan', emoji: '🌧️', label: 'Hujan' },
                { type: 'Kendaraan bermasalah', emoji: '🏍️', label: 'Kendaraan' },
                { type: 'Keperluan keluarga', emoji: '👥', label: 'Urusan Keluarga' },
            ];
+           // Baris detail yang boleh dilihat pemakai ini (server yang membatasi
+           // cakupannya — lihat getLogs di Code.gs).
            const studentHistory = allLogs.filter(l => l.nisn === student.nisn);
+           // Jumlah SEBENARNYA se-sekolah untuk siswa ini, angka saja, diambil
+           // saat modal dibuka. Untuk guru biasa, allLogs sudah tidak memuat
+           // catatan guru lain, jadi tanpa ini peringatan "perlu tindak lanjut"
+           // bisa tidak muncul padahal siswanya sudah berkali-kali terlambat.
+           // Prop opsional: kalau tidak dipasang, perilakunya persis seperti dulu.
+           const [serverLateCount, setServerLateCount] = useState(0);
+           useEffect(() => {
+               if (!onGetLateCount) return;
+               let batal = false;
+               onGetLateCount(student.nisn).then(n => { if (!batal) setServerLateCount(n || 0); });
+               return () => { batal = true; };
+           }, [student.nisn]);
+           const totalLate = Math.max(studentHistory.length, serverLateCount);
            return (
                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                    <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-5 animate-pop">
@@ -21,11 +36,11 @@
                            <div className="text-xs text-slate-500 font-medium bg-white inline-block px-3 py-1 rounded-full mt-2 border border-slate-200">{student.class}</div>
                        </div>
 
-                       {studentHistory.length >= 3 && (
+                       {totalLate >= 3 && (
                            <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
                                <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
                                    <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
-                                   <span>Sudah {studentHistory.length}x terlambat — perlu tindak lanjut</span>
+                                   <span>Sudah {totalLate}x terlambat — perlu tindak lanjut</span>
                                </div>
                                {studentHistory.slice(0, 3).map((h, i) => {
                                    const hDt = parseTimestamp(h.timestamp);

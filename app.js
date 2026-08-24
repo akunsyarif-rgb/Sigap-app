@@ -316,6 +316,19 @@
                    .catch(() => 0);
            };
 
+           // Jumlah keterlambatan 1 siswa (angka saja) — dipakai peringatan
+           // "sudah Nx terlambat" di modal Catat Terlambat. Sejak riwayat
+           // dibatasi per cakupan di server (lihat scopeLateLogsForUser di
+           // Utils.gs), allLogs milik guru biasa TIDAK lagi memuat catatan guru
+           // lain, jadi hitungan dari allLogs saja akan mengecil diam-diam dan
+           // peringatannya tidak muncul saat seharusnya muncul.
+           const fetchStudentLateCount = (nisn) => {
+               return fetch(`${API_URL}?action=getStudentLateHistory&nisn=${encodeURIComponent(nisn)}&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => (data.status === 'success' && typeof data.count === 'number') ? data.count : 0)
+                   .catch(() => 0);
+           };
+
            const fetchAuditLog = () => {
                // Admin-only, mengikuti getAuditLog di Code.gs — tanpa ini BK
                // menembak request yang pasti dijawab Unauthorized.
@@ -911,7 +924,7 @@
                            </div>
 
                            {selectedStudent && (
-                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} />
+                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} />
                            )}
 
                            <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />

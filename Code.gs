@@ -767,9 +767,11 @@ function doGet(e) {
   // getJadwalPiket/getWaliKelasMap yang dihitung terpisah di frontend. ----
   if (action === 'getTodayData') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('today_data');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    var cachedToday = cache.get('today_data');
+    if (cachedToday) {
+      // Cache tetap MENTAH & global; pembatasan cakupan dilakukan setelah
+      // dibaca, per pemanggil (pola yang sama dengan getLogs/getPelanggaran).
+      return jsonOut(scopeTodayDataPayload(JSON.parse(cachedToday), sessionUser));
     }
     var now = new Date();
     var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -794,7 +796,7 @@ function doGet(e) {
 
     var result = JSON.stringify({ status: 'success', todayLate: todayLate, todaySurat: todaySurat, todayPelanggaran: todayPelanggaran, lateForBanner: lateForBanner });
     cache.put('today_data', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut(scopeTodayDataPayload(JSON.parse(result), sessionUser));
   }
 
   // ---- Riwayat keterlambatan 1 siswa saja (untuk peringatan "sudah Nx
@@ -802,28 +804,63 @@ function doGet(e) {
   if (action === 'getStudentLateHistory') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var logSheet = ss.getSheetByName('Log_Gerbang');
-    var history = logSheet ? getLateHistoryForStudent(logSheet, e.parameter.nisn) : [];
-    return jsonOut({ status: 'success', history: history });
+    var historyRaw = logSheet ? getLateHistoryForStudent(logSheet, e.parameter.nisn) : [];
+    // Parameter nisn datang dari klien, jadi endpoint ini adalah jalan paling
+    // langsung untuk menarik riwayat siswa mana pun kalau tidak dibatasi:
+    // cakupannya dilewatkan melalui aturan yang sama dengan getLogs.
+    var historyScoped = scopeLateLogsForUser(historyRaw, sessionUser);
+    // Kelas & nama pencatat hanya dipakai untuk menyaring di atas — yang
+    // dikirim ke klien tetap dua field seperti sebelumnya.
+    var history = historyScoped.map(function (h) { return { timestamp: h.timestamp, type: h.type }; });
+    // `count` = TOTAL keterlambatan siswa ini di seluruh sekolah, ANGKA saja —
+    // tanpa tanggal, alasan, atau nama pencatatnya. Ini yang membuat peringatan
+    // "sudah Nx terlambat" di form Catat Terlambat tetap benar untuk guru piket
+    // setelah riwayat detail dibatasi di atas. Pola & alasannya sama persis
+    // dengan getPelanggaranCountForStudent: guru tetap dapat konteks yang ia
+    // butuhkan saat menangani SATU siswa yang sedang ada di depannya, tanpa
+    // bisa menelusuri catatan siswa/guru lain. Sengaja per-siswa on-demand,
+    // bukan peta semua siswa sekaligus (itu akan jadi bahan ranking).
+    return jsonOut({ status: 'success', history: history, count: historyRaw.length });
   }
 
   // ---- Data umum (bukan untuk OSIS) — dipakai Riwayat & Statistik, di-fetch
   // lazy oleh frontend (baru ditarik saat salah satu tab itu pertama dibuka) ----
+  // ⚠️ BUG YANG PERNAH TERJADI — jangan diulang: aksi ini dulu mengirim
+  // SELURUH isi Log_Gerbang (riwayat seluruh sekolah, lintas bulan) ke SETIAP
+  // pemanggil non-OSIS, dan browser yang memutuskan mana yang ditampilkan.
+  // Artinya guru biasa bisa membaca riwayat keterlambatan siswa kelas mana pun
+  // hanya dengan membuka Inspect/Network — penyaringan di UI tidak pernah
+  // menjadi pengamanan. Cakupan sekarang ditentukan server lewat
+  // scopeLateLogsForUser() di Utils.gs: hari ini seluruh sekolah (alur gerbang
+  // butuh itu), riwayat lama = kelas perwalian + catatan sendiri.
+  //
+  // Yang di-cache adalah daftar MENTAH (sama untuk semua orang), lalu disaring
+  // per-pengguna SETELAH dibaca dari cache — pola yang sama persis dengan
+  // pelanggaran_list_raw di bawah. Kalau yang di-cache adalah hasil yang sudah
+  // disaring untuk satu orang, pemanggil berikutnya bisa menerima daftar milik
+  // orang lain.
   if (action === 'getLogs') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
-    var cached = cache.get('today_logs');
-    if (cached) {
-      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+    var logsRaw;
+    var cachedLogs = cache.get('today_logs');
+    if (cachedLogs) {
+      // Toleran terhadap entri format LAMA (respons utuh {status, logs})
+      // yang mungkin masih tersisa di cache saat versi ini baru di-deploy.
+      var parsedLogs = JSON.parse(cachedLogs);
+      logsRaw = Array.isArray(parsedLogs) ? parsedLogs : (parsedLogs.logs || []);
+    } else {
+      var sheet = ss.getSheetByName('Log_Gerbang');
+      logsRaw = [];
+      if (sheet) {
+        var rows = sheet.getDataRange().getValues();
+        for (var i = 1; i < rows.length; i++) {
+          logsRaw.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
+        }
+        logsRaw.reverse();
+      }
+      cache.put('today_logs', JSON.stringify(logsRaw), 60);
     }
-    var sheet = ss.getSheetByName('Log_Gerbang');
-    var rows = sheet.getDataRange().getValues();
-    var logs = [];
-    for (var i = 1; i < rows.length; i++) {
-      logs.push({ timestamp: rows[i][0], nisn: rows[i][1], name: rows[i][2], class: rows[i][3], type: rows[i][4], logged_by: rows[i][5] });
-    }
-    logs.reverse();
-    var result = JSON.stringify({ status: 'success', logs: logs });
-    cache.put('today_logs', result, 60);
-    return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut({ status: 'success', logs: scopeLateLogsForUser(logsRaw, sessionUser) });
   }
 
   if (action === 'getTeachers') {
@@ -889,15 +926,11 @@ function doGet(e) {
       }
       cache.put('pelanggaran_list_raw', JSON.stringify(pelanggaran), 60);
     }
-    if (!isBkRole(sessionUser.role)) {
-      var myKelas = sessionUser.waliKelas || '';
-      if (myKelas) {
-        pelanggaran = pelanggaran.filter(function (p) { return sameClass(p.class, myKelas); });
-      } else {
-        pelanggaran = pelanggaran.filter(function (p) { return p.logged_by === sessionUser.name; });
-      }
-    }
-    return jsonOut({ status: 'success', pelanggaran: pelanggaran });
+    // Cakupan ditentukan scopePelanggaranForUser() di Utils.gs: admin/BK
+    // seluruh sekolah, wali kelas = kelasnya + catatan yang ia tulis sendiri
+    // (sebelumnya KELAS saja — catatan yang ia tulis untuk siswa kelas lain
+    // ikut hilang dari daftarnya sendiri), guru biasa = catatan sendiri.
+    return jsonOut({ status: 'success', pelanggaran: scopePelanggaranForUser(pelanggaran, sessionUser) });
   }
 
   // ---- Hitung TOTAL pelanggaran seorang siswa (semua guru, bukan cuma yang

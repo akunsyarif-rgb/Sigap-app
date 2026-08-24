@@ -215,6 +215,93 @@ function getRowLoggedBy(sheet, rowIndex) {
   return sheet.getRange(rowIndex, lastCol).getValue();
 }
 
+// ===== RBAC: baris mana yang boleh dilihat siapa =====
+// SATU tempat yang menentukan cakupan baca untuk Keterlambatan & Pelanggaran,
+// dipakai getLogs / getPelanggaran / getStudentLateHistory / getTodayData di
+// Code.gs. Ditegakkan di SERVER — sebelum ini getLogs mengirim SELURUH
+// Log_Gerbang (riwayat sekolah lintas tahun ajaran) ke setiap pemanggil
+// non-OSIS, dan browser yang memutuskan apa yang ditampilkan. Menyaring di
+// browser bukan pengamanan: datanya sudah terlanjur sampai ke perangkat.
+//
+// Aturan yang disepakati:
+//   Keterlambatan HARI INI : seluruh sekolah untuk semua role non-OSIS.
+//     Ini BUKAN kelonggaran — guru piket di gerbang harus saling melihat
+//     catatan hari itu supaya satu siswa tidak dicatat dua kali (lihat
+//     GerbangTab di gerbang.js & pengecekan duplikat di aksi 'record').
+//   RIWAYAT keterlambatan  : admin/BK seluruh sekolah; wali kelas = kelasnya
+//     sendiri + catatan yang ia tulis; guru biasa = HANYA catatan yang ia
+//     tulis sendiri.
+//   PELANGGARAN            : admin/BK seluruh sekolah; wali kelas = kelasnya
+//     sendiri + catatan yang ia tulis; guru biasa = HANYA catatan yang ia
+//     tulis sendiri. (Tidak ada pengecualian "hari ini" di sini — mencatat
+//     pelanggaran tidak punya alur anti-duplikat seperti gerbang.)
+//   OSIS                   : tidak dapat keduanya (ditolak di handler).
+//
+// Kepemilikan (OWN) memakai mekanisme yang SUDAH ADA di aplikasi ini: kolom
+// Dicatat_Oleh dicocokkan dengan nama pemilik sesi, sama persis seperti yang
+// dipakai editEntry/deleteEntry. Nama pencatat kosong / sesi tanpa nama tidak
+// pernah dianggap memiliki baris apa pun.
+function isSchoolWideReader(sessionUser) {
+  return isBkRole(sessionUser && sessionUser.role); // admin + bk_kesiswaan
+}
+
+function ownsRow(row, sessionUser) {
+  var owner = String((row && row.logged_by) || '').trim();
+  var me = String((sessionUser && sessionUser.name) || '').trim();
+  return !!owner && !!me && owner === me;
+}
+
+function readerClass(sessionUser) {
+  return String((sessionUser && sessionUser.waliKelas) || '').trim();
+}
+
+// logs = daftar objek {timestamp, class, logged_by, ...} (urutan/isi lain
+// dibiarkan apa adanya). now dipisah jadi parameter supaya bisa diuji.
+function scopeLateLogsForUser(logs, sessionUser, now) {
+  var list = logs || [];
+  if (isSchoolWideReader(sessionUser)) return list;
+  var today = now instanceof Date ? now : new Date();
+  var kelas = readerClass(sessionUser);
+  return list.filter(function (l) {
+    if (!l) return false;
+    // Hari ini: seluruh sekolah (alur gerbang di atas).
+    if (l.timestamp && isSameDayServer(new Date(l.timestamp), today)) return true;
+    // Wali kelas: kelas perwaliannya.
+    if (kelas && sameClass(l.class, kelas)) return true;
+    // Sisanya: hanya catatan sendiri.
+    return ownsRow(l, sessionUser);
+  });
+}
+
+// getTodayData mengirim satu paket berisi data HARI INI + potongan riwayat
+// (lateForBanner, seminggu/sebulan ke belakang, untuk banner "sering
+// terlambat"). Bagian hari ini tetap seluruh sekolah; bagian riwayat &
+// pelanggaran dibatasi dengan aturan yang sama seperti getLogs/getPelanggaran,
+// supaya tidak ada jalan memutar untuk menarik riwayat lewat endpoint ini.
+// Surat sengaja tidak diubah di sini — cakupannya memang belum pernah
+// dibatasi per kelas (lihat getSurat), dan itu di luar perbaikan ini.
+function scopeTodayDataPayload(payload, sessionUser) {
+  var data = payload || {};
+  return {
+    status: data.status || 'success',
+    todayLate: data.todayLate || [],
+    todaySurat: data.todaySurat || [],
+    todayPelanggaran: scopePelanggaranForUser(data.todayPelanggaran || [], sessionUser),
+    lateForBanner: scopeLateLogsForUser(data.lateForBanner || [], sessionUser),
+  };
+}
+
+function scopePelanggaranForUser(list, sessionUser) {
+  var rows = list || [];
+  if (isSchoolWideReader(sessionUser)) return rows;
+  var kelas = readerClass(sessionUser);
+  return rows.filter(function (p) {
+    if (!p) return false;
+    if (kelas && sameClass(p.class, kelas)) return true;
+    return ownsRow(p, sessionUser);
+  });
+}
+
 // ===== PERUBAHAN UTAMA =====
 // Hapus cache list terkait kategori supaya perubahan langsung kelihatan
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).
@@ -263,14 +350,18 @@ function startOfWeekServer(d) {
 // Riwayat keterlambatan 1 siswa saja (dipakai peringatan "sudah Nx terlambat"
 // di form Catat Terlambat) — dipanggil on-demand per siswa yang dipilih,
 // bukan tarik seluruh Log_Gerbang ke semua ~1.296 siswa sekaligus.
+// Kolom Kelas & Dicatat_Oleh ikut dibaca (6 kolom, bukan 5) BUKAN untuk
+// dikirim ke klien, tapi supaya hasilnya bisa disaring lewat
+// scopeLateLogsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
+// siswa bisa ditarik siapa saja yang tahu NISN-nya.
 function getLateHistoryForStudent(sheet, nisn) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
-  var data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   var result = [];
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][1]) === String(nisn)) {
-      result.push({ timestamp: data[i][0], type: data[i][4] });
+      result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
     }
   }
   result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });

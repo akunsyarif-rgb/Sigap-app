@@ -1,0 +1,373 @@
+// ===== tests/rbac-riwayat-pelanggaran.test.js =====
+// Cakupan baca Keterlambatan & Pelanggaran, ditegakkan DI SERVER.
+//
+// Ditulis setelah temuan di Preview PR #36: getLogs mengirim SELURUH
+// Log_Gerbang (riwayat seluruh sekolah) ke setiap pemanggil non-OSIS, dan
+// browser yang memutuskan apa yang ditampilkan — jadi guru biasa bisa membaca
+// riwayat kelas mana pun lewat Inspect/Network. File ini memanggil doGet()
+// yang SUNGGUHAN (Utils.gs+Auth.gs+Code.gs di vm, layanan Apps Script di-stub)
+// dan memeriksa ISI RESPONS, bukan tampilan — kalau penyaringan pindah lagi
+// ke frontend, test ini merah.
+//
+// Aturan yang dijaga:
+//   Guru        : keterlambatan hari ini = SEKOLAH, riwayat = MILIK SENDIRI,
+//                 pelanggaran = MILIK SENDIRI
+//   Wali kelas  : keterlambatan hari ini = SEKOLAH, riwayat = KELAS + MILIK
+//                 SENDIRI, pelanggaran = KELAS + MILIK SENDIRI
+//   BK/Admin    : seluruh sekolah
+//   OSIS        : ditolak
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const crypto = require('node:crypto');
+
+const ROOT = path.join(__dirname, '..');
+
+function makeSheet(header, rows) {
+  const data = [header.slice()].concat(rows.map((r) => r.slice()));
+  return {
+    appended: [],
+    getLastRow: () => data.length,
+    getLastColumn: () => header.length,
+    getDataRange: () => ({ getValues: () => data.map((r) => r.slice()) }),
+    getRange: (row, col, numRows, numCols) => ({
+      getValues: () => {
+        const out = [];
+        for (let r = row; r < row + numRows; r++) {
+          const src = data[r - 1] || [];
+          const line = [];
+          for (let c = col; c < col + numCols; c++) line.push(src[c - 1] === undefined ? '' : src[c - 1]);
+          out.push(line);
+        }
+        return out;
+      },
+      setValue: () => {}, setValues: () => {}, clearContent: () => {},
+    }),
+    appendRow(row) { data.push(row.slice()); this.appended.push(row.slice()); },
+  };
+}
+
+// Waktu fixture dihitung MUNDUR dari sekarang supaya "hari ini" selalu benar
+// jam berapa pun test dijalankan (pelajaran dari tests/rekap-upacara.test.js).
+const now = new Date();
+const hariIni = (menitLalu) => new Date(now.getTime() - menitLalu * 60000);
+const kemarin = (hariLalu) => new Date(now.getTime() - hariLalu * 24 * 3600 * 1000);
+
+// Log_Gerbang: [Timestamp, NISN, Nama, Kelas, Alasan, Dicatat_Oleh] (urut menaik)
+const LATE_ROWS = [
+  [kemarin(20), '1001', 'Rahma', 'XI A', 'Kesiangan', 'Bu Kartina'],   // lama, XI A, ditulis wali XI A
+  [kemarin(15), '2002', 'Budi', 'XI B', 'Hujan', 'Pak Anwar'],         // lama, XI B, ditulis guru biasa
+  [kemarin(10), '2002', 'Budi', 'XI B', 'Macet', 'Bu Kartina'],        // lama, XI B, ditulis wali XI A (miliknya)
+  [kemarin(5), '1001', 'Rahma', 'XI A', 'Ban bocor', 'Pak Anwar'],     // lama, XI A, ditulis guru biasa
+  [kemarin(3), '3003', 'Citra', 'XII C', 'Kesiangan', 'Bu BK'],        // lama, kelas lain, ditulis BK
+  [hariIni(90), '3003', 'Citra', 'XII C', 'Hujan', 'Bu BK'],           // HARI INI, kelas lain
+  [hariIni(30), '2002', 'Budi', 'XI B', 'Kesiangan', 'Bu BK'],         // HARI INI, kelas lain
+];
+
+// Pelanggaran: [Timestamp, NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh]
+const PELANGGARAN_ROWS = [
+  [kemarin(9), '1001', 'Rahma', 'XI A', 'Atribut', 'Teguran', '', 'Bu Kartina'],
+  [kemarin(8), '2002', 'Budi', 'XI B', 'Bolos', 'Panggilan Ortu', '', 'Bu BK'],
+  [kemarin(7), '3003', 'Citra', 'XII C', 'Terlambat', 'Teguran', '', 'Pak Anwar'],  // guru biasa, kelas lain (miliknya)
+  [kemarin(6), '2002', 'Budi', 'XI B', 'Atribut', 'Teguran', '', 'Bu Kartina'],     // wali XI A menulis untuk XI B
+  [hariIni(60), '3003', 'Citra', 'XII C', 'Bolos', 'Teguran', '', 'Bu BK'],         // hari ini, kelas lain, milik BK
+];
+
+const USERS = {
+  admin: { id: 'G00', name: 'Pak Admin', role: 'admin', jabatan: '', waliKelas: '' },
+  bk: { id: 'G01', name: 'Bu BK', role: 'bk_kesiswaan', jabatan: '', waliKelas: '' },
+  wali: { id: 'G02', name: 'Bu Kartina', role: 'guru', jabatan: '', waliKelas: 'XI A' },
+  guru: { id: 'G03', name: 'Pak Anwar', role: 'guru', jabatan: '', waliKelas: '' },
+  osis: { id: 'S99', name: 'Ketua OSIS', role: 'osis', jabatan: '', waliKelas: '' },
+};
+
+function loadServer() {
+  const sheets = {
+    Log_Gerbang: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Alasan', 'Dicatat_Oleh'], LATE_ROWS),
+    Pelanggaran: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh'], PELANGGARAN_ROWS),
+    Audit_Log: makeSheet(['Timestamp', 'Nama', 'ID', 'Aksi', 'Detail'], []),
+  };
+  const cacheStore = {};
+  const sandbox = {
+    console,
+    Utilities: {
+      computeDigest: (_a, str) => Array.from(crypto.createHash('sha256').update(String(str)).digest()).map((b) => (b > 127 ? b - 256 : b)),
+      DigestAlgorithm: { SHA_256: 'SHA_256' }, getUuid: () => crypto.randomUUID(),
+    },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === 'API_TOKEN' ? 'TOKEN-OK' : null) }) },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (k) => (Object.prototype.hasOwnProperty.call(cacheStore, k) ? cacheStore[k] : null),
+        put: (k, v) => { cacheStore[k] = String(v); },
+        remove: (k) => { delete cacheStore[k]; },
+      }),
+    },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({
+        getSheetByName: (n) => sheets[n] || null,
+        insertSheet: (n) => { sheets[n] = makeSheet(['x'], []); return sheets[n]; },
+      }),
+    },
+    ContentService: { MimeType: { JSON: 'JSON' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    Logger: { log: () => {} },
+  };
+  vm.createContext(sandbox);
+  ['Utils.gs', 'Auth.gs', 'Code.gs'].forEach((f) => {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
+  });
+  const tokens = {};
+  Object.keys(USERS).forEach((k) => { tokens[k] = vm.runInContext('createSession', sandbox)(USERS[k]); });
+  const doGet = vm.runInContext('doGet', sandbox);
+  const call = (params) => JSON.parse(doGet({ parameter: params }).text);
+  const as = (who, params) => call(Object.assign({ token: 'TOKEN-OK', sessionToken: tokens[who] }, params));
+  return { sandbox, sheets, tokens, call, as, cacheStore };
+}
+
+const isHariIni = (ts) => new Date(ts).toDateString() === now.toDateString();
+const ringkas = (rows) => rows.map((r) => `${r.name}/${r.class}/${r.logged_by}${isHariIni(r.timestamp) ? '/HARIINI' : ''}`);
+
+// ================= KETERLAMBATAN =================
+
+test('getLogs: admin & BK tetap melihat seluruh sekolah', () => {
+  const s = loadServer();
+  ['admin', 'bk'].forEach((who) => {
+    const res = s.as(who, { action: 'getLogs' });
+    assert.equal(res.status, 'success');
+    assert.equal(res.logs.length, LATE_ROWS.length, `${who} harus melihat semua baris`);
+  });
+});
+
+test('getLogs: guru biasa TIDAK melihat riwayat hari sebelumnya milik orang lain', () => {
+  const s = loadServer();
+  const res = s.as('guru', { action: 'getLogs' });
+  assert.equal(res.status, 'success');
+
+  const riwayat = res.logs.filter((l) => !isHariIni(l.timestamp));
+  assert.ok(riwayat.length > 0, 'guru tetap melihat riwayat miliknya sendiri');
+  riwayat.forEach((l) => {
+    assert.equal(l.logged_by, 'Pak Anwar', `riwayat milik orang lain bocor: ${JSON.stringify(l)}`);
+  });
+  // Baris lama milik guru lain (termasuk kelas mana pun) tidak boleh ada.
+  assert.ok(!ringkas(res.logs).includes('Rahma/XI A/Bu Kartina'), 'catatan lama milik guru lain bocor');
+  assert.ok(!ringkas(res.logs).includes('Citra/XII C/Bu BK'), 'riwayat kelas lain bocor');
+});
+
+test('getLogs: keterlambatan HARI INI tetap seluruh sekolah untuk guru biasa (alur gerbang)', () => {
+  const s = loadServer();
+  const res = s.as('guru', { action: 'getLogs' });
+  const hariIniRows = res.logs.filter((l) => isHariIni(l.timestamp));
+  const semuaHariIni = LATE_ROWS.filter((r) => isHariIni(r[0]));
+  assert.equal(hariIniRows.length, semuaHariIni.length,
+    'guru piket harus melihat SEMUA catatan hari ini supaya tidak mencatat siswa yang sama dua kali');
+  assert.ok(hariIniRows.some((l) => l.logged_by === 'Bu BK' && l.class === 'XII C'));
+});
+
+test('getLogs: wali kelas = kelasnya + catatan sendiri + hari ini, bukan kelas lain', () => {
+  const s = loadServer();
+  const res = s.as('wali', { action: 'getLogs' });
+  const daftar = ringkas(res.logs);
+
+  assert.ok(daftar.includes('Rahma/XI A/Bu Kartina'), 'kelas perwalian harus ikut');
+  assert.ok(daftar.includes('Rahma/XI A/Pak Anwar'), 'kelas perwalian walau dicatat guru lain');
+  assert.ok(daftar.includes('Budi/XI B/Bu Kartina'), 'catatan miliknya sendiri di kelas lain harus ikut (CLASS ∪ OWN)');
+  assert.ok(!daftar.includes('Budi/XI B/Pak Anwar'), 'riwayat kelas lain milik guru lain TIDAK boleh ikut');
+  assert.ok(!daftar.includes('Citra/XII C/Bu BK'), 'riwayat kelas lain TIDAK boleh ikut');
+  // Hari ini tetap seluruh sekolah.
+  assert.ok(daftar.includes('Citra/XII C/Bu BK/HARIINI'));
+});
+
+test('getLogs: OSIS ditolak dan tidak menerima baris apa pun', () => {
+  const s = loadServer();
+  const res = s.as('osis', { action: 'getLogs' });
+  assert.equal(res.status, 'error');
+  assert.equal(res.logs, undefined);
+});
+
+test('getLogs: cache tidak bocor antar pengguna (guru setelah admin tetap dibatasi)', () => {
+  const s = loadServer();
+  const adminRes = s.as('admin', { action: 'getLogs' });   // mengisi cache lebih dulu
+  assert.equal(adminRes.logs.length, LATE_ROWS.length);
+  const guruRes = s.as('guru', { action: 'getLogs' });      // membaca cache yang sama
+  assert.ok(guruRes.logs.length < adminRes.logs.length, 'guru tidak boleh menerima daftar milik admin dari cache');
+  guruRes.logs.filter((l) => !isHariIni(l.timestamp)).forEach((l) => assert.equal(l.logged_by, 'Pak Anwar'));
+});
+
+test('getLogs: parameter karangan dari klien tidak bisa memperluas cakupan', () => {
+  const s = loadServer();
+  const jujur = s.as('guru', { action: 'getLogs' });
+  const nakal = s.as('guru', {
+    action: 'getLogs', role: 'admin', waliKelas: 'XI A', kelas: 'XI A', classId: 'XI A',
+    class: 'XI A', scope: 'school', studentId: '1001', nisn: '1001', recordId: '1',
+    logged_by: 'Bu Kartina', name: 'Bu Kartina', id: 'G02',
+  });
+  assert.deepEqual(ringkas(nakal.logs), ringkas(jujur.logs), 'parameter tambahan tidak boleh mengubah hasil');
+});
+
+// ================= PELANGGARAN =================
+
+test('getPelanggaran: admin & BK seluruh sekolah', () => {
+  const s = loadServer();
+  ['admin', 'bk'].forEach((who) => {
+    const res = s.as(who, { action: 'getPelanggaran' });
+    assert.equal(res.pelanggaran.length, PELANGGARAN_ROWS.length, `${who} harus melihat semua`);
+  });
+});
+
+test('getPelanggaran: guru biasa HANYA catatan yang ia tulis sendiri', () => {
+  const s = loadServer();
+  const res = s.as('guru', { action: 'getPelanggaran' });
+  assert.ok(res.pelanggaran.length > 0);
+  res.pelanggaran.forEach((p) => assert.equal(p.logged_by, 'Pak Anwar', `pelanggaran milik orang lain bocor: ${JSON.stringify(p)}`));
+  // Termasuk yang HARI INI milik orang lain — pelanggaran tidak punya
+  // pengecualian "hari ini seluruh sekolah" seperti gerbang.
+  assert.ok(!res.pelanggaran.some((p) => isHariIni(p.timestamp) && p.logged_by !== 'Pak Anwar'));
+});
+
+test('getPelanggaran: wali kelas = kelasnya + catatan sendiri, bukan kelas lain milik orang lain', () => {
+  const s = loadServer();
+  const res = s.as('wali', { action: 'getPelanggaran' });
+  const daftar = ringkas(res.pelanggaran);
+  assert.ok(daftar.includes('Rahma/XI A/Bu Kartina'), 'kelas perwalian ikut');
+  assert.ok(daftar.includes('Budi/XI B/Bu Kartina'), 'catatan sendiri di kelas lain ikut (CLASS ∪ OWN)');
+  assert.ok(!daftar.includes('Budi/XI B/Bu BK'), 'pelanggaran kelas lain milik orang lain TIDAK boleh ikut');
+  assert.ok(!daftar.some((d) => d.startsWith('Citra/XII C')), 'kelas lain TIDAK boleh ikut');
+});
+
+test('getPelanggaran: OSIS ditolak', () => {
+  const s = loadServer();
+  const res = s.as('osis', { action: 'getPelanggaran' });
+  assert.equal(res.status, 'error');
+  assert.equal(res.pelanggaran, undefined);
+});
+
+test('getPelanggaran: cache tidak bocor antar pengguna', () => {
+  const s = loadServer();
+  s.as('bk', { action: 'getPelanggaran' });                    // isi cache dengan daftar penuh
+  const guru = s.as('guru', { action: 'getPelanggaran' });
+  guru.pelanggaran.forEach((p) => assert.equal(p.logged_by, 'Pak Anwar'));
+  const wali = s.as('wali', { action: 'getPelanggaran' });
+  assert.ok(!ringkas(wali.pelanggaran).some((d) => d.startsWith('Citra/XII C')));
+});
+
+// ================= RIWAYAT 1 SISWA (parameter nisn/studentId) =================
+
+test('getStudentLateHistory: guru tidak bisa menarik riwayat siswa lewat NISN', () => {
+  const s = loadServer();
+  // NISN 1001 (Rahma, XI A) punya 2 baris lama: milik Bu Kartina & Pak Anwar.
+  const guru = s.as('guru', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(guru.status, 'success');
+  assert.equal(guru.history.length, 1, 'guru hanya melihat catatan yang ia tulis sendiri');
+  assert.equal(guru.history[0].type, 'Ban bocor');
+  // Field penyaring tidak ikut terkirim ke klien.
+  assert.deepEqual(Object.keys(guru.history[0]).sort(), ['timestamp', 'type']);
+
+  const wali = s.as('wali', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(wali.history.length, 2, 'wali kelas melihat seluruh riwayat siswa kelasnya');
+
+  const bk = s.as('bk', { action: 'getStudentLateHistory', nisn: '3003' });
+  assert.equal(bk.history.length, 2, 'BK melihat seluruh sekolah');
+
+  const guruKelasLain = s.as('guru', { action: 'getStudentLateHistory', nisn: '3003' });
+  assert.equal(guruKelasLain.history.filter((h) => !isHariIni(h.timestamp)).length, 0,
+    'riwayat lama siswa kelas lain tidak boleh terbaca guru biasa');
+
+  const osis = s.as('osis', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(osis.status, 'error');
+});
+
+test('getStudentLateHistory: `count` mengirim JUMLAH saja (peringatan gerbang tetap benar)', () => {
+  const s = loadServer();
+  // NISN 1001 punya 2 baris (Bu Kartina & Pak Anwar) — guru biasa hanya boleh
+  // melihat 1 baris detail, tapi jumlahnya tetap apa adanya supaya peringatan
+  // "sudah Nx terlambat" tidak mengecil diam-diam.
+  const guru = s.as('guru', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(guru.count, 2, 'jumlah se-sekolah tetap dikirim');
+  assert.equal(guru.history.length, 1, 'detailnya tetap dibatasi');
+  // Yang dikirim benar-benar cuma angka: tidak ada nama pencatat/kelas/alasan
+  // milik baris yang tidak boleh dilihat.
+  assert.doesNotMatch(JSON.stringify(guru), /Bu Kartina|Kesiangan/);
+  assert.equal(typeof guru.count, 'number');
+});
+
+test('RecordModal: peringatan memakai jumlah dari server, bukan cuma baris yang terlihat', () => {
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  assert.match(gerbang, /const totalLate = Math\.max\(studentHistory\.length, serverLateCount\)/);
+  assert.match(gerbang, /\{totalLate >= 3 && \(/);
+  // Prop opsional — tanpa onGetLateCount perilakunya sama seperti sebelumnya.
+  assert.match(gerbang, /if \(!onGetLateCount\) return;/);
+
+  const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  assert.match(app, /onGetLateCount=\{fetchStudentLateCount\}/);
+  const blok = app.split('const fetchStudentLateCount = (nisn) => {')[1].split('};')[0];
+  assert.match(blok, /action=getStudentLateHistory/);
+  assert.match(blok, /typeof data\.count === 'number'/);
+});
+
+// ================= getTodayData (paket hari ini + potongan riwayat) =================
+
+test('getTodayData: bagian hari ini tetap sekolah, lateForBanner & pelanggaran ikut dibatasi', () => {
+  const s = loadServer();
+  const guru = s.as('guru', { action: 'getTodayData' });
+  assert.equal(guru.status, 'success');
+  assert.equal(guru.todayLate.length, LATE_ROWS.filter((r) => isHariIni(r[0])).length, 'hari ini tetap seluruh sekolah');
+  guru.lateForBanner.filter((l) => !isHariIni(l.timestamp)).forEach((l) => {
+    assert.equal(l.logged_by, 'Pak Anwar', 'riwayat banner milik orang lain bocor');
+  });
+  guru.todayPelanggaran.forEach((p) => assert.equal(p.logged_by, 'Pak Anwar'));
+
+  // Dipanggil lagi setelah cache terisi oleh admin: tetap dibatasi.
+  s.as('admin', { action: 'getTodayData' });
+  const guruLagi = s.as('guru', { action: 'getTodayData' });
+  guruLagi.lateForBanner.filter((l) => !isHariIni(l.timestamp)).forEach((l) => assert.equal(l.logged_by, 'Pak Anwar'));
+});
+
+// ================= PENEGAKAN DI SERVER, BUKAN DI BROWSER =================
+
+test('Code.gs: penyaringan cakupan terjadi di server & cache tetap disimpan mentah', () => {
+  const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  const blok = code.split("if (action === 'getLogs')")[1].split("if (action === 'getTeachers')")[0];
+  assert.match(blok, /scopeLateLogsForUser\(logsRaw, sessionUser\)/, 'getLogs wajib menyaring per pengguna');
+  assert.match(blok, /cache\.put\('today_logs', JSON\.stringify\(logsRaw\), 60\)/, 'yang di-cache harus daftar mentah');
+  assert.doesNotMatch(blok, /cache\.put\('today_logs', result/, 'jangan cache hasil yang sudah difilter per orang');
+
+  const pelBlok = code.split("if (action === 'getPelanggaran')")[1].split("if (action === 'getPelanggaranCountForStudent')")[0];
+  assert.match(pelBlok, /scopePelanggaranForUser\(pelanggaran, sessionUser\)/);
+});
+
+test('Utils.gs: OWN tetap memakai mekanisme nama pencatat yang sudah ada', () => {
+  const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
+  const blok = utils.split('function ownsRow(')[1].split('\n}')[0];
+  assert.match(blok, /row && row\)?\.?logged_by|logged_by/, 'kepemilikan dibaca dari kolom Dicatat_Oleh');
+  assert.match(blok, /sessionUser && sessionUser\.name/, 'dibandingkan dengan nama pemilik sesi, mekanisme yang sudah ada');
+  // Nama kosong tidak pernah "memiliki" baris apa pun.
+  const s = loadServer();
+  const ownsRow = vm.runInContext('ownsRow', s.sandbox);
+  assert.equal(ownsRow({ logged_by: '' }, { name: '' }), false);
+  assert.equal(ownsRow({ logged_by: 'Bu Kartina' }, { name: 'Bu Kartina' }), true);
+  assert.equal(ownsRow({ logged_by: 'Bu Kartina' }, { name: 'Pak Anwar' }), false);
+});
+
+// ================= EXPORT TIDAK IKUT BERUBAH =================
+
+test('Export tetap bekerja seperti sebelumnya setelah pembatasan cakupan ini', () => {
+  const s = loadServer();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const params = { action: 'exportData', jenis: 'keterlambatan', start: iso(start), end: iso(now), format: 'pdf' };
+
+  const wali = s.as('wali', params);
+  assert.equal(wali.status, 'success');
+  assert.equal(wali.report.scopeLabel, 'XI A');
+  assert.ok(!JSON.stringify(wali.report.rows).includes('XI B'), 'export wali kelas tetap kelasnya sendiri');
+
+  const guru = s.as('guru', params);
+  assert.equal(guru.status, 'error', 'guru biasa tetap tidak punya akses export');
+
+  const admin = s.as('admin', params);
+  assert.equal(admin.status, 'success');
+  assert.ok(admin.report.total >= 5, 'admin tetap mengekspor seluruh sekolah');
+});
