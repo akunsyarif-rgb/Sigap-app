@@ -2,6 +2,22 @@
 // Titik masuk utama Web App: doPost dan doGet menangani semua permintaan
 // dari index.html. Logika keamanan (checkToken, sesi) ada di Auth.gs/Utils.gs.
 
+// ===== Penanda versi backend =====
+// Repo ini TIDAK pernah men-deploy Apps Script otomatis (lihat CLAUDE.md), dan
+// dua cara deploy yang gagal sama-sama DIAM: kode disimpan di editor tapi
+// deployment-nya tidak dibuatkan versi baru, atau "New deployment" ditekan
+// sehingga URL Web App-nya berganti sementara config.js masih menunjuk yang
+// lama. Gejalanya identik dengan "kodenya salah": perilaku lama tetap jalan.
+//
+// Penanda ini membuat pertanyaan "versi mana yang sedang dilayani?" bisa
+// dijawab tanpa menebak — buka API_URL + '?token=<API_TOKEN>' di browser,
+// lalu cocokkan `version` di bawah dengan yang ada di file ini.
+// NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
+// diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
+// digembok API_TOKEN seperti seluruh endpoint lain.
+var BACKEND_VERSION = '2026-08-24-rbac-scope';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedPelanggaran', 'adminOnlyAuditLog'];
+
 // ===== doPost =====
 
 function doPost(e) {
@@ -692,9 +708,11 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var cache = CacheService.getScriptCache();
 
-  // Status publik, tidak perlu sesi — dipakai untuk cek API hidup
+  // Status publik, tidak perlu sesi — dipakai untuk cek API hidup, DAN untuk
+  // memastikan deployment yang sedang dilayani memang versi yang baru
+  // di-push (lihat BACKEND_VERSION di atas).
   if (!action) {
-    return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
+    return jsonOut({ status: 'active', message: 'SIGAP API Ready', version: BACKEND_VERSION, features: BACKEND_FEATURES });
   }
 
   // ---- Daftar nama guru untuk pencarian di layar Login. SENGAJA tidak butuh

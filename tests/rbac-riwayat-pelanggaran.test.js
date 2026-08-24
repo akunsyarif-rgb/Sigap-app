@@ -351,6 +351,24 @@ test('Utils.gs: OWN tetap memakai mekanisme nama pencatat yang sudah ada', () =>
   assert.equal(ownsRow({ logged_by: 'Bu Kartina' }, { name: 'Pak Anwar' }), false);
 });
 
+test('Status ping: memuat penanda versi backend, tetap digembok API_TOKEN', () => {
+  const s = loadServer();
+  const ping = s.call({ token: 'TOKEN-OK' });
+  assert.equal(ping.status, 'active');
+  assert.equal(typeof ping.version, 'string');
+  assert.ok(ping.version.length > 0, 'versi harus terisi supaya deploy bisa diverifikasi');
+  assert.ok(ping.features.includes('scopedLogs'), 'penanda menyebut perbaikan cakupan ini');
+
+  // Tanpa token API tetap ditolak — penanda tidak boleh jadi endpoint terbuka.
+  const tanpaToken = s.call({});
+  assert.equal(tanpaToken.status, 'error');
+  assert.match(tanpaToken.message, /Unauthorized/);
+  assert.equal(tanpaToken.version, undefined);
+
+  // Penanda tidak boleh membocorkan apa pun selain label versi & daftar fitur.
+  assert.deepEqual(Object.keys(ping).sort(), ['features', 'message', 'status', 'version']);
+});
+
 // ================= EXPORT TIDAK IKUT BERUBAH =================
 
 test('Export tetap bekerja seperti sebelumnya setelah pembatasan cakupan ini', () => {
