@@ -186,11 +186,16 @@
            // wali kelas — itu sengaja, lihat statistik.js.
            const canSeeClassDetail = roleConfig.canViewRanking || !!(user && user.waliKelas);
 
-           // Menu 'rekap' cuma statis untuk admin/bk_kesiswaan di config.js —
-           // untuk guru yang kebetulan wali kelas, ditambahkan di sini secara
-           // runtime (bukan per-role, tapi per-orang, tergantung user.waliKelas).
-           const effectiveMenus = roleKey === 'guru' && user && user.waliKelas && !roleConfig.menus.includes('rekap')
-               ? [...roleConfig.menus, 'rekap']
+           // Menu 'rekap' & 'export' cuma statis untuk admin/bk_kesiswaan di
+           // config.js — untuk guru yang kebetulan wali kelas, ditambahkan di
+           // sini secara runtime (bukan per-role, tapi per-orang, tergantung
+           // user.waliKelas). Guru biasa non-wali-kelas tidak dapat keduanya,
+           // dan server menegakkan hal yang sama sendiri (getPelanggaranUpacara
+           // untuk rekap, resolveExportAccess untuk export) — menu yang tidak
+           // muncul di sini BUKAN pengamanannya.
+           const waliKelasExtraMenus = ['rekap', 'export'].filter(m => !roleConfig.menus.includes(m));
+           const effectiveMenus = roleKey === 'guru' && user && user.waliKelas && waliKelasExtraMenus.length
+               ? [...roleConfig.menus, ...waliKelasExtraMenus]
                : roleConfig.menus;
 
            // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
@@ -764,6 +769,48 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           // ---- Export Data (laporan PDF/Excel) ----
+           // Server yang menentukan isi laporan: hak akses, kelas yang boleh
+           // ikut, periode, dan kolom apa saja yang keluar (aksi 'exportData'
+           // di Code.gs). Di sini TIDAK ada penyaringan tambahan dan TIDAK ada
+           // data lain dari state aplikasi yang ikut ditempel ke berkas — yang
+           // dibungkus persis apa yang server kirim.
+           const handleExportData = (payload, callback) => {
+               const query = [
+                   'action=exportData',
+                   'jenis=' + encodeURIComponent(payload.jenis || ''),
+                   'kelas=' + encodeURIComponent(payload.kelas || ''),
+                   'start=' + encodeURIComponent(payload.start || ''),
+                   'end=' + encodeURIComponent(payload.end || ''),
+                   'format=' + encodeURIComponent(payload.format || ''),
+                   'token=' + API_TOKEN,
+                   'sessionToken=' + sessionToken,
+               ].join('&');
+               fetch(`${API_URL}?${query}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status !== 'success' || !data.report) {
+                           callback(false, data.message || 'Gagal membuat laporan.');
+                           return;
+                       }
+                       if (!data.report.total) {
+                           // Tidak ada data BUKAN error server — dan tidak ada
+                           // berkas kosong yang diunduh diam-diam.
+                           callback(false, 'Tidak ada data pada periode & cakupan ini.');
+                           return;
+                       }
+                       try {
+                           const filename = generateExportFile(data.report, payload.format, payload.start, payload.end);
+                           callback(true, `✓ ${filename} berhasil dibuat (${data.report.total} baris).`);
+                       } catch (err) {
+                           // Pesan sengaja umum: detail teknis tidak dibawa ke
+                           // layar guru, dan isi data tidak pernah ikut pesan error.
+                           callback(false, 'Gagal menyiapkan berkas di perangkat ini. Coba format satunya.');
+                       }
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleAddUpacara = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranUpacara', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
@@ -847,6 +894,14 @@
                                )}
                                {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />
+                               )}
+                               {activeTab === 'export' && effectiveMenus.includes('export') && canAccessExport(roleKey, user.waliKelas) && (
+                                   <ExportTab
+                                       isBk={roleKey === 'admin' || roleKey === 'bk_kesiswaan'}
+                                       waliKelas={user.waliKelas || ''}
+                                       classes={students.map(s => s.class)}
+                                       onGenerate={handleExportData}
+                                   />
                                )}
                                {activeTab === 'upacara' && effectiveMenus.includes('upacara') && (
                                    <UpacaraTab students={students} upacaraList={upacaraList} onAddUpacara={handleAddUpacara} isOsis={roleKey === 'osis'} canSeeRekap={roleKey === 'admin' || roleKey === 'bk_kesiswaan' || roleKey === 'osis'} />

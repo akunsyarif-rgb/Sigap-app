@@ -1103,6 +1103,93 @@ function doGet(e) {
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // ---- Export Data: laporan siap unduh (PDF/Excel) ----
+  // Google Spreadsheet tetap ADMIN-ONLY; ini jalan resmi bagi yang berwenang
+  // untuk mengambil rekap TANPA dibukakan akses ke Sheet-nya.
+  //
+  // Urutannya WAJIB seperti di bawah dan tidak boleh dibalik:
+  //   sesi valid (sudah dicek di atas) -> rate limit -> OTORISASI ->
+  //   VALIDASI FILTER -> baru baca sheet -> susun laporan -> catat Audit Log.
+  // Artinya: tidak ada satu baris data pun yang dibaca (apalagi dikirim ke
+  // browser) sebelum server memutuskan pemanggil memang berhak atas jenis
+  // laporan + kelas + periode yang diminta. Nilai `kelas` dari klien TIDAK
+  // dipercaya — lihat resolveExportAccess() di Utils.gs.
+  if (action === 'exportData') {
+    if (!checkExportRateLimit(e.parameter.sessionToken)) {
+      return jsonOut({ status: 'error', message: 'Terlalu banyak permintaan export. Coba lagi beberapa menit lagi.' });
+    }
+
+    var exportJenis = String(e.parameter.jenis || '').trim();
+    var exportFormat = String(e.parameter.format || '').toLowerCase().trim();
+    if (exportFormat !== 'pdf' && exportFormat !== 'xlsx') exportFormat = '-';
+    // Parameter mentah cuma dipakai untuk keperluan pesan/Audit Log saat
+    // permintaan DITOLAK — dipotong pendek supaya teks bebas dari klien tidak
+    // bisa membanjiri baris Audit Log.
+    var rawPeriode = String(e.parameter.start || '-').slice(0, 10) + ' - ' + String(e.parameter.end || '-').slice(0, 10);
+
+    var exportAccess = resolveExportAccess(sessionUser, exportJenis, e.parameter.kelas);
+    if (!exportAccess.allowed) {
+      logAudit(sessionUser, 'Export Data Ditolak', buildExportAuditDetail(exportJenis || '-', rawPeriode, String(e.parameter.kelas || '-').slice(0, 40), exportFormat, 0, 'ditolak'));
+      return jsonOut({ status: 'error', message: exportAccess.message });
+    }
+
+    var exportPeriod = validateExportPeriod(e.parameter.start, e.parameter.end);
+    if (!exportPeriod.valid) {
+      logAudit(sessionUser, 'Export Data Ditolak', buildExportAuditDetail(exportJenis, rawPeriode, exportAccess.scopeLabel, exportFormat, 0, 'filter tidak valid'));
+      return jsonOut({ status: 'error', message: exportPeriod.message });
+    }
+    if (exportFormat === '-') {
+      logAudit(sessionUser, 'Export Data Ditolak', buildExportAuditDetail(exportJenis, exportPeriod.label, exportAccess.scopeLabel, '-', 0, 'format tidak dikenali'));
+      return jsonOut({ status: 'error', message: 'Format laporan tidak dikenali.' });
+    }
+
+    var exportDef = EXPORT_JENIS[exportJenis];
+    var exportRows;
+    if (exportDef.special === 'rekap') {
+      // Rekap Siswa = agregat empat kategori, bukan sheet tersendiri.
+      var rekapSources = {};
+      var rekapJenis = ['keterlambatan', 'pelanggaran', 'surat', 'upacara'];
+      for (var rj = 0; rj < rekapJenis.length; rj++) {
+        var rekapDef = EXPORT_JENIS[rekapJenis[rj]];
+        var rekapSheet = ss.getSheetByName(rekapDef.sheet);
+        rekapSources[rekapJenis[rj]] = rekapSheet ? getRowsSince(rekapSheet, exportPeriod.start, rekapDef.numCols) : [];
+      }
+      exportRows = buildRekapRows(rekapSources, exportAccess.kelasFilter, exportPeriod.start, exportPeriod.end);
+    } else {
+      var exportSheet = ss.getSheetByName(exportDef.sheet);
+      // getRowsSince = binary search ke baris pertama dalam periode, jadi
+      // biaya bacanya tidak ikut membengkak seiring panjang riwayat sheet.
+      var exportRaw = exportSheet ? getRowsSince(exportSheet, exportPeriod.start, exportDef.numCols) : [];
+      exportRows = buildExportRows(exportJenis, exportRaw, exportAccess.kelasFilter, exportPeriod.start, exportPeriod.end);
+    }
+
+    if (exportRows.length > EXPORT_MAX_ROWS) {
+      logAudit(sessionUser, 'Export Data Gagal', buildExportAuditDetail(exportJenis, exportPeriod.label, exportAccess.scopeLabel, exportFormat, exportRows.length, 'melebihi batas baris'));
+      return jsonOut({ status: 'error', message: 'Data terlalu banyak (' + exportRows.length + ' baris, batas ' + EXPORT_MAX_ROWS + '). Persempit periode atau pilih satu kelas.' });
+    }
+
+    var exportNow = new Date();
+    logAudit(sessionUser, exportRows.length ? 'Export Data' : 'Export Data Kosong',
+      buildExportAuditDetail(exportJenis, exportPeriod.label, exportAccess.scopeLabel, exportFormat, exportRows.length, exportRows.length ? 'berhasil' : 'tidak ada data'));
+
+    return jsonOut({
+      status: 'success',
+      report: {
+        jenis: exportJenis,
+        jenisLabel: exportDef.label,
+        judul: exportDef.judul,
+        sekolah: EXPORT_SEKOLAH,
+        columns: exportDef.columns,
+        rows: exportRows,
+        total: exportRows.length,
+        periodeLabel: exportPeriod.label,
+        scopeLabel: exportAccess.scopeLabel,
+        format: exportFormat,
+        dibuatPada: formatExportDate(exportNow) + ' ' + formatExportTime(exportNow),
+      },
+    });
+  }
+
   return jsonOut({ status: 'active', message: 'SIGAP API Ready' });
 }
 function debugBannerData() {

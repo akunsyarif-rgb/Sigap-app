@@ -107,7 +107,7 @@ Admin dan BK/Kesiswaan melihat semua kelas. Wali kelas hanya melihat kelas perwa
 - Daftar **siswa yang sering terlambat** (minimal 3 kali) dalam jendela waktu yang bisa dipilih: 1 minggu, 2 minggu, 3 minggu, atau sebulan.
 - Ringkasan kelas dan jenis kasus terbanyak.
 - **Mode Ranking** (kelas mana kasusnya paling banyak) hanya tersedia untuk BK/Kesiswaan dan Admin. Guru biasa mendapat mode "Per Kelas" urut A–Z. Ini disengaja agar perbandingan antar kelas tidak jadi bahan saling melabeli.
-- **Unduh data (CSV)** — bisa dibuka di Excel — tersedia untuk Admin.
+- **Unduh data (CSV)** — bisa dibuka di Excel — tersedia untuk Admin. Untuk laporan yang lebih rapi (PDF siap cetak / Excel dengan kop & periode), lihat menu **Export Data** di 3.11.
 
 ### 3.8 Bimbingan Khusus — Untuk BK/Kesiswaan & Admin
 
@@ -124,6 +124,28 @@ Satu halaman berisi tiga kelompok pengaturan:
 ### 3.10 Audit Log — Jejak Siapa Melakukan Apa
 
 Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/menghapus catatan, kapan, dan atas siswa siapa. Bisa dicari. Hanya Admin dan BK/Kesiswaan yang bisa membukanya. Fungsinya seperti **buku tamu yang tidak bisa dihapus** — kalau ada catatan yang hilang atau berubah, ketahuan siapa yang melakukannya.
+
+### 3.11 Export Data — Laporan PDF & Excel Tanpa Membuka Spreadsheet
+
+Google Spreadsheet tetap **hanya boleh dibuka Admin**. Supaya guru/BK tidak perlu dibukakan akses ke sana hanya untuk mengambil rekap, ada menu **Export Data** (ada di tombol "Lainnya"):
+
+1. Pilih **jenis data**: Keterlambatan, Pelanggaran, Surat/Izin, Pelanggaran Upacara, Bimbingan Khusus (khusus Admin/BK), atau Rekap Siswa (gabungan semuanya per siswa).
+2. Pilih **kelas**: semua kelas atau satu kelas. Untuk wali kelas, kolom ini sudah terkunci ke kelas perwaliannya — tidak perlu memilih.
+3. Pilih **periode**: dari tanggal — sampai tanggal (maksimal satu tahun sekali unduh).
+4. Pilih **format**: PDF (siap cetak, lengkap dengan kop sekolah, judul, periode, cakupan, tanggal cetak, dan jumlah record) atau Excel (.xlsx, satu baris per kejadian, siap diolah lagi).
+5. Tekan **Generate & Download**.
+
+Siapa boleh mengekspor apa:
+
+| Peran | Boleh export? | Cakupan |
+| --- | --- | --- |
+| Admin | Ya, semua jenis | Semua kelas |
+| BK/Kesiswaan | Ya, semua jenis | Semua kelas |
+| Wali kelas | Ya, kecuali Bimbingan Khusus | Hanya kelas perwaliannya |
+| Guru biasa (bukan wali kelas) | Tidak | — |
+| OSIS | Tidak | — |
+
+Batasan ini diperiksa **di server**, bukan sekadar menyembunyikan tombol: kalau permintaan diubah-ubah dari luar aplikasi agar meminta kelas lain, permintaannya ditolak. Berkas laporan hanya memuat kolom yang memang diperlukan (tanpa NISN) dan **setiap pembuatan laporan — berhasil maupun ditolak — tercatat di Audit Log**.
 
 ### 3.11 Kenyamanan Pakai
 

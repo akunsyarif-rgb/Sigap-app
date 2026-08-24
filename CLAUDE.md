@@ -262,7 +262,7 @@ check existing row-index comments before touching sheet read/write code.
 3. Injects the transformed result as one `<script>` tag.
 
 File load order (`index.html`'s `files` array):
-`config.js → helpers.js → ui-common.js → admin.js → beranda-riwayat.js → statistik.js → gerbang.js → pelanggaran-bimbingan-upacara.js → rekap-kelas.js → app.js`
+`config.js → helpers.js → export-format.js → ui-common.js → admin.js → beranda-riwayat.js → statistik.js → gerbang.js → pelanggaran-bimbingan-upacara.js → rekap-kelas.js → export-data.js → app.js`
 
 - **`config.js`** — `API_URL`/`API_TOKEN` (sent from every client; there is no
   way to truly hide this in a bundler-less static-JS app), the `ROLES` map
@@ -280,10 +280,20 @@ File load order (`index.html`'s `files` array):
   routing between tabs. Also computes runtime-only access rules not expressible
   as static role config — e.g. Rekap Kelas access for a `guru` who is a wali
   kelas is granted per-person here, not via `ROLES` in `config.js`.
+- **`export-format.js`** — pure, dependency-free builders for the Export Data
+  feature: a minimal PDF writer (Helvetica/Helvetica-Bold, no embedding, own
+  xref table) and a minimal XLSX writer (ZIP with stored — uncompressed —
+  entries, inline strings). Deliberately hand-rolled instead of pulling
+  jsPDF/SheetJS from a CDN: there is no build step, so a ~1 MB library would
+  be paid on **every** app open, not just on export. Don't add such a
+  dependency without re-reading that trade-off. Byte-level structure is
+  covered by `tests/export-frontend.test.js` (it re-parses the ZIP and walks
+  the PDF xref) — if you touch these writers, that suite is what proves the
+  files still open.
 - Remaining files (`gerbang.js`, `beranda-riwayat.js`,
   `pelanggaran-bimbingan-upacara.js`, `rekap-kelas.js`, `statistik.js`,
-  `admin.js`) are one file per feature tab/group of tabs, named after what
-  they contain.
+  `admin.js`, `export-data.js`) are one file per feature tab/group of tabs,
+  named after what they contain.
 
 **Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
 constant appended as `?v=` to every fetched file. **Bump this on every deploy
@@ -297,6 +307,39 @@ this pattern (major-version pin, not exact patch — unverifiable exact patches
 risk 404s from unpkg; not `latest` — risks silent breaking upgrades) when
 touching these `<script>` tags.
 
+### Export Data: who may export what
+
+`exportData` (a `doGet` action) is the only path that hands a report file's
+contents to the browser. Google Sheets stays admin-only; this replaces
+"just give the teacher access to the Sheet".
+
+- admin / bk_kesiswaan → every report type, any class (or all classes)
+- **guru who is a wali kelas** → their own class only, and **not** Bimbingan
+  Khusus (that one stays admin/BK-only, mirroring `getBimbingan`)
+- plain guru (not a wali kelas) → no export at all. There is no teaching-schedule
+  mapping in this system, so there is no data-backed way to give them a class
+  scope — don't invent one to make the feature easier.
+- osis → rejected
+
+Enforcement lives in `resolveExportAccess()` (Utils.gs), not in the menus: the
+client's `kelas` parameter is never trusted — a wali kelas asking for another
+class is **rejected**, not silently corrected. The handler order in `Code.gs`
+is load-bearing and asserted by `tests/export-backend.test.js`: session →
+export rate limit → authorization → filter validation → *only then* read
+sheets. Report columns are fixed per report type in `EXPORT_JENIS` (Utils.gs);
+users pick a report, never columns. NISN, `Foto_URL`, and `Dicatat_Oleh_ID`
+are deliberately excluded from every export (Rekap Siswa still *groups* by
+NISN — duplicate student names must not merge — it just doesn't emit it).
+Every attempt, successful or rejected, is written to `Audit_Log` with
+metadata only (jenis/periode/cakupan/format/row count/status) — never student
+names or note contents.
+
+Note the pre-existing asymmetry: `getAuditLog` is admin **+ BK/Kesiswaan**
+(`isBkRole`), unchanged by this feature — so BK/Kesiswaan can see export audit
+rows too. Tightening that to admin-only is a one-line change in `Code.gs` plus
+dropping `'auditlog'` from `bk_kesiswaan` in `config.js`, but it removes an
+existing capability, so it wasn't done unilaterally.
+
 ### Tests
 
 `tests/render-smoke.test.js` renders each top-level tab component with a
@@ -304,3 +347,8 @@ fake `React`/`document`/`fetch` shim (no jsdom) and asserts it doesn't throw —
 this is where real render bugs typically surface, per its own header comment.
 It requires `@babel/core` (a devDependency) to transform JSX before running.
 `tests/password.test.js` covers the hashing/migration logic in `Utils.gs`/`Auth.gs`.
+`tests/export-backend.test.js` loads `Utils.gs`+`Auth.gs`+`Code.gs` into a vm with
+stubbed Apps Script services and calls `doGet()` for real — that's where export
+authorization, scope tampering, filter validation, and audit logging are pinned
+down. `tests/export-frontend.test.js` covers the PDF/XLSX writers byte-for-byte
+plus the Export tab's UI gating.

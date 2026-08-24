@@ -19,6 +19,7 @@ const ROOT = path.join(__dirname, '..');
 const FILES = [
   'config.js',
   'helpers.js',
+  'export-format.js',
   'ui-common.js',
   'admin.js',
   'beranda-riwayat.js',
@@ -26,6 +27,7 @@ const FILES = [
   'gerbang.js',
   'pelanggaran-bimbingan-upacara.js',
   'rekap-kelas.js',
+  'export-data.js',
   'app.js',
 ];
 
