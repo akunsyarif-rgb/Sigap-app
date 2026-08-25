@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-izin-konteks-persetujuan';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok'];
+var BACKEND_VERSION = '2026-08-25-izin-kapasitas-piket-vs-bk';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin'];
 
 // ===== doPost =====
 
@@ -722,7 +722,13 @@ function doPost(e) {
     // benar-benar keluar (Waktu_Keluar diisi di sini, bukan saat disetujui). ----
     if (action === 'verifikasiIzinKeluar') {
       var verNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, verNow)) {
+      // Kapasitas (bukan cuma boolean) dihitung SEKALI di sini dan dipakai
+      // baik untuk gerbang otorisasi maupun jejak Audit Log — supaya
+      // "Guru Piket" vs "BK/Kesiswaan (pengambilalihan)" tidak pernah bisa
+      // berselisih antara keduanya. Server TIDAK PERNAH membaca kapasitas
+      // dari klien (data.kapasitas, kalaupun dikirim, diabaikan total).
+      var verKapasitas = izinKapasitasVerifikasi(ss, sessionUser, verNow);
+      if (!verKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa memverifikasi.' });
       }
       var verSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -741,17 +747,28 @@ function doPost(e) {
       verValues[16] = verNow; // Waktu_Keluar
       verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7]));
+      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas)));
       return jsonOut({ status: 'success', izinStatus: verValues[7] });
     }
 
     // ---- Langkah 3 (hanya untuk tujuan "kembali"): siswa kembali ke sekolah.
     // Yang menandai TIDAK harus orang yang memberi izin — cukup petugas yang
     // sedang berwenang saat itu, sehingga pergantian guru piket di hari yang
-    // sama tidak menghalangi. ----
+    // sama tidak menghalangi.
+    //
+    // Status hasilnya langsung IZIN_STATUS_SELESAI, BUKAN singgah dulu di
+    // 'Kembali' menunggu aksi kedua. Keputusan produk (audit UX "Tutup
+    // transaksi"): satu tap ini SUDAH administrasi lengkap — Waktu_Kembali +
+    // siapa yang mencatat tetap terisi di baris yang sama, jadi tidak ada
+    // informasi yang hilang, cuma tidak ada lagi klik kedua yang menunggu
+    // guru piket. 'Selesai' di sini TIDAK ambigu dengan hasil 'Pulang': jalur
+    // pulang sudah final di statusnya sendiri (lihat 'tandaiPulangIzinKeluar'
+    // & verifikasi tujuan pulang), dan kolom Tujuan tetap membedakan
+    // "kembali ke sekolah" vs "pulang" di baris yang sama-sama 'Selesai'. ----
     if (action === 'tandaiKembaliIzinKeluar') {
       var kbNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, kbNow)) {
+      var kbKapasitas = izinKapasitasVerifikasi(ss, sessionUser, kbNow);
+      if (!kbKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa kembali.' });
       }
       var kbSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -759,20 +776,20 @@ function doPost(e) {
       if (!kbFound) {
         return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
       }
-      // Siswa 'Pulang' & siswa yang sudah 'Kembali' ditolak di sini — bukan
+      // Siswa 'Pulang' & siswa yang sudah 'Selesai' ditolak di sini — bukan
       // sekadar tombolnya disembunyikan di layar.
       if (kbFound.data.status !== IZIN_STATUS_DI_LUAR) {
         return jsonOut({ status: 'error', message: izinTolakTransisi(kbFound.data.status, 'kembali') });
       }
       var kbValues = kbFound.values.slice();
-      kbValues[7] = IZIN_STATUS_KEMBALI;
+      kbValues[7] = IZIN_STATUS_SELESAI;
       kbValues[17] = kbNow;
       kbValues[18] = sessionUser.name;
       kbValues[19] = sessionUser.id;
       kbSheet.getRange(kbFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([kbValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_KEMBALI));
-      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_KEMBALI });
+      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_SELESAI + ' | kapasitas=' + izinKapasitasLabel(kbKapasitas)));
+      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
     }
 
     // ---- Langkah 3b: siswa yang TERNYATA tidak kembali (pulang dari kegiatan).
@@ -786,7 +803,8 @@ function doPost(e) {
     // Berlaku juga untuk izin individual, karena kasusnya sama saja di lapangan.
     if (action === 'tandaiPulangIzinKeluar') {
       var plgNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, plgNow)) {
+      var plgKapasitas = izinKapasitasVerifikasi(ss, sessionUser, plgNow);
+      if (!plgKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa pulang.' });
       }
       var plgSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -801,34 +819,20 @@ function doPost(e) {
       plgValues[7] = IZIN_STATUS_PULANG;
       plgSheet.getRange(plgFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([plgValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah)'));
+      logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
     }
 
-    // ---- Langkah 4: penutupan administratif. 'Kembali' (siswa balik) dan
-    // 'Pulang' (siswa tidak balik) adalah dua HASIL yang berbeda; keduanya
-    // ditutup jadi 'Selesai'. Transaksi 'Selesai' tidak bisa diubah aksi mana
-    // pun lagi. ----
-    if (action === 'selesaikanIzinKeluar') {
-      var slsNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, slsNow)) {
-        return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menutup transaksi izin.' });
-      }
-      var slsSheet = ss.getSheetByName(IZIN_SHEET_NAME);
-      var slsFound = slsSheet ? findIzinRowById(slsSheet, data.id) : null;
-      if (!slsFound) {
-        return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
-      }
-      if (slsFound.data.status !== IZIN_STATUS_KEMBALI && slsFound.data.status !== IZIN_STATUS_PULANG) {
-        return jsonOut({ status: 'error', message: izinTolakTransisi(slsFound.data.status, 'selesai') });
-      }
-      var slsValues = slsFound.values.slice();
-      slsValues[7] = IZIN_STATUS_SELESAI;
-      slsSheet.getRange(slsFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([slsValues]);
-      clearIzinCache();
-      logAudit(sessionUser, 'Selesaikan Izin Keluar', buildIzinAuditDetail(slsFound.data, 'dari=' + slsFound.data.status));
-      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
-    }
+    // ---- 'selesaikanIzinKeluar' (penutupan administratif terpisah dari
+    // "Tandai Kembali") DIHAPUS oleh audit UX Agustus 2026: dulu dua tahap
+    // (Kembali -> "Tutup transaksi" -> Selesai) untuk hasil yang sama-sama
+    // "siswa sudah balik" ternyata tidak menambah nilai integritas apa pun —
+    // 'Kembali' sudah TIDAK terhitung transaksi terbuka (IZIN_STATUS_TERBUKA
+    // = [Menunggu Verifikasi, Sedang di Luar] saja) sejak awal, jadi klik
+    // kedua itu murni kosmetik (ganti label) sekaligus beban tambahan buat
+    // Guru Piket. 'tandaiKembaliIzinKeluar' & 'tandaiKembaliKelompok' di atas
+    // sekarang menulis IZIN_STATUS_SELESAI langsung. JANGAN menambahkan lagi
+    // aksi "tutup/selesaikan" terpisah untuk maksud yang sama. ----
 
     // ================= IZIN KELOMPOK (satu kegiatan, banyak peserta) =================
     // Tiga aksi, semuanya BEKERJA DI ATAS baris Izin_Keluar yang sama dengan izin
@@ -945,7 +949,8 @@ function doPost(e) {
     // tetap 'Menunggu Verifikasi', bukan diam-diam dianggap keluar. ----
     if (action === 'verifikasiIzinKelompok') {
       var vkNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, vkNow)) {
+      var vkKapasitas = izinKapasitasVerifikasi(ss, sessionUser, vkNow);
+      if (!vkKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa memverifikasi.' });
       }
       var vkKelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
@@ -999,7 +1004,7 @@ function doPost(e) {
       clearIzinCache();
       var vkSisa = vkPeserta.length - vkTarget.length;
       logAudit(sessionUser, 'Verifikasi Izin Kelompok',
-        buildKelompokAuditDetail(vkKel.data, 'diverifikasi=' + vkTarget.length + ' | tidak diverifikasi=' + vkSisa + ' | status=' + vkStatusBaru));
+        buildKelompokAuditDetail(vkKel.data, 'diverifikasi=' + vkTarget.length + ' | tidak diverifikasi=' + vkSisa + ' | status=' + vkStatusBaru + ' | kapasitas=' + izinKapasitasLabel(vkKapasitas)));
       return jsonOut({ status: 'success', izinStatus: vkStatusBaru, jumlahDiverifikasi: vkTarget.length });
     }
 
@@ -1011,7 +1016,8 @@ function doPost(e) {
     // Luar', dan selisihnya dicatat ke Audit Log sebagai pengecualian. ----
     if (action === 'tandaiKembaliKelompok') {
       var tkNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, tkNow)) {
+      var tkKapasitas = izinKapasitasVerifikasi(ss, sessionUser, tkNow);
+      if (!tkKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa kembali.' });
       }
       var tkKelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
@@ -1032,16 +1038,19 @@ function doPost(e) {
       for (var tk in tkMinta) {
         if (!tkDitemukan[tk]) return jsonOut({ status: 'error', message: 'Ada peserta yang bukan bagian dari kegiatan ini.' });
       }
-      // Siswa yang sudah 'Pulang'/'Kembali'/'Selesai' ditolak DI SINI juga —
-      // aksi massal tidak boleh jadi celah untuk menembus penjaga transisi yang
+      // Siswa yang sudah 'Pulang'/'Selesai' ditolak DI SINI juga — aksi
+      // massal tidak boleh jadi celah untuk menembus penjaga transisi yang
       // berlaku pada aksi per siswa.
       for (var tj = 0; tj < tkDipilih.length; tj++) {
         if (tkDipilih[tj].data.status !== IZIN_STATUS_DI_LUAR) {
           return jsonOut({ status: 'error', message: tkDipilih[tj].data.name + ': ' + izinTolakTransisi(tkDipilih[tj].data.status, 'kembali') });
         }
       }
+      // Langsung IZIN_STATUS_SELESAI, sama seperti tandaiKembaliIzinKeluar
+      // individual — satu tap rombongan ini SUDAH administrasi lengkap untuk
+      // peserta yang dicentang, tidak menunggu "Tutup transaksi" kedua.
       tkDipilih.forEach(function (p) {
-        p.values[7] = IZIN_STATUS_KEMBALI;
+        p.values[7] = IZIN_STATUS_SELESAI;
         p.values[17] = tkNow;
         p.values[18] = sessionUser.name;
         p.values[19] = sessionUser.id;
@@ -1054,7 +1063,8 @@ function doPost(e) {
         buildKelompokAuditDetail(tkKel.data,
           'kembali=' + tkDipilih.length +
           ' | belum kembali=' + tkBelum.length +
-          (tkBelum.length ? ' (' + tkBelum.map(function (p) { return p.data.name; }).join(', ') + ')' : '')));
+          (tkBelum.length ? ' (' + tkBelum.map(function (p) { return p.data.name; }).join(', ') + ')' : '') +
+          ' | kapasitas=' + izinKapasitasLabel(tkKapasitas)));
       return jsonOut({ status: 'success', jumlahKembali: tkDipilih.length, jumlahBelumKembali: tkBelum.length });
     }
 
@@ -1611,8 +1621,24 @@ function doGet(e) {
     // "peserta Seminar Bank Indonesia" tanpa menduplikasi data kegiatan.
     var namaKegiatan = {};
     kelompok.forEach(function (k) { namaKegiatan[k.id] = k.kegiatan; });
+
+    // Kapasitas "Guru Piket" vs "BK/Kesiswaan" untuk kartu — lihat audit
+    // Agustus 2026 di Utils.gs. Dihitung SEKALI di sini (piketSet dibangun
+    // sekali dari Jadwal_Piket), bukan diklaim/dikirim dari klien: kartu
+    // hanya menampilkan ulang label yang sudah ditentukan server.
+    var piketSet = buildPiketHariSet(ss);
     izinScoped = izinScoped.map(function (r) {
-      return r.kelompok_id ? Object.assign({}, r, { kegiatan: namaKegiatan[r.kelompok_id] || '' }) : r;
+      var patch = {
+        diverifikasi_kapasitas: izinKapasitasBaris(piketSet, r.diverifikasi_oleh_id, r.waktu_verifikasi),
+        dicatat_kembali_kapasitas: izinKapasitasBaris(piketSet, r.dicatat_kembali_oleh_id, r.waktu_kembali),
+      };
+      if (r.kelompok_id) patch.kegiatan = namaKegiatan[r.kelompok_id] || '';
+      return Object.assign({}, r, patch);
+    });
+    kelompok = kelompok.map(function (k) {
+      return Object.assign({}, k, {
+        diverifikasi_kapasitas: izinKapasitasBaris(piketSet, k.diverifikasi_oleh_id, k.waktu_verifikasi),
+      });
     });
 
     // Status "boleh verifikasi / boleh tandai kembali" ikut dikirim supaya

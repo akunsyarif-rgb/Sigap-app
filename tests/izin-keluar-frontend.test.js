@@ -180,7 +180,11 @@ test('status transaksi tidak pernah dikirim klien — klien hanya memanggil aksi
   assert.match(blok, /action: 'addIzinKeluar'/);
   assert.match(blok, /verifikasiIzinKeluar/);
   assert.match(blok, /tandaiKembaliIzinKeluar/);
-  assert.match(blok, /selesaikanIzinKeluar/);
+  // 'selesaikanIzinKeluar' DIHAPUS oleh audit UX Agustus 2026 — "Tandai
+  // Kembali" sekarang langsung final, tidak ada langkah "Tutup transaksi"
+  // kedua yang menunggu. Kalau nama aksi ini muncul lagi di app.js, artinya
+  // langkah kedua itu diam-diam kembali — gagalkan.
+  assert.doesNotMatch(blok, /selesaikanIzinKeluar/);
   // Tidak ada payload berisi status/nama/kelas yang dikarang klien.
   assert.doesNotMatch(blok, /status: '(Sedang di Luar|Kembali|Pulang|Selesai|Menunggu Verifikasi)'/);
   assert.doesNotMatch(blok, /class_name/);
@@ -202,7 +206,7 @@ test('IzinKeluarPanel: tombol proses hanya muncul untuk yang berwenang', () => {
   };
   const props = {
     students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izin], waliKelasMap: [],
-    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
   const teksDari = (node) => JSON.stringify(node);
 
@@ -253,7 +257,7 @@ test('layar hanya menyebut pencetakan sebagai status BETA — tidak ada integras
 test('layar persetujuan: mencatat pemberi persetujuan, tanpa klaim peran', () => {
   const props = {
     students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [], waliKelasMap: [], canVerify: false,
-    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
   // Urutan useState IzinKeluarPanel: searchQuery, pickedStudent, formStudent,
   // keperluan, tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId.
@@ -274,7 +278,7 @@ test('kartu konteks: wali kelas vs guru mapel, dihitung dari waliKelas pengguna 
   const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
   const props = {
     students: [student], izinList: [], waliKelasMap: [], canVerify: false,
-    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
   // idx 1 = pickedStudent -> kartu konteks terbuka (belum form).
   const walas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, student]));
@@ -297,7 +301,7 @@ test('form: judul menyesuaikan konteks, tapi tetap satu form yang sama (bukan du
   const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
   const props = {
     students: [student], izinList: [], waliKelasMap: [], canVerify: true,
-    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
   // idx 2 = formStudent -> form langsung terbuka (konteks sudah "dikonfirmasi").
   const formWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, undefined, student]));
@@ -339,7 +343,7 @@ const kelompokContoh = {
   id: 'KEL-1', timestamp: new Date().toISOString(), kegiatan: 'Seminar Bank Indonesia',
   tujuan: 'kembali', keperluan: 'undangan seminar', pola_kembali: 'bersama', jumlah_peserta: 4,
   jalur: 'normal', alasan_khusus: '', disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(),
-  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(),
+  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), diverifikasi_kapasitas: 'guru_piket',
 };
 const anggotaContoh = ['Ahmad', 'Budi', 'Citra', 'Deni'].map((nama, i) => ({
   id: `IZ-K${i}`, timestamp: new Date().toISOString(), nisn: `20${i}`, name: nama, class: 'XI A',
@@ -403,6 +407,29 @@ test('kelompok: "Tandai Rombongan Kembali" hanya untuk pola bersama', () => {
   assert.ok(!biasa.includes('Verifikasi Kelompok'));
 });
 
+test('KartuKelompok: jejak audit berlabel "oleh:" dan Izin Khusus tidak mengklaim Wali/Guru Mapel', () => {
+  const dasar = { peserta: anggotaContoh, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false };
+  const normal = JSON.stringify(get('KartuKelompok')({ ...dasar, kelompok: kelompokContoh }));
+  assert.ok(normal.includes('"Disetujui oleh: ","Bu Kartina"'));
+  assert.ok(normal.includes('"Diverifikasi oleh: ","Guru Piket — ","Pak Piket"'));
+
+  const khusus = JSON.stringify(get('KartuKelompok')({
+    ...dasar, kelompok: { ...kelompokContoh, jalur: 'khusus', alasan_khusus: 'wali kelas tidak tersedia', disetujui_oleh: 'Pak Piket Pagi' },
+  }));
+  assert.ok(khusus.includes('"Izin Khusus oleh: ","Pak Piket Pagi"'));
+  assert.ok(!khusus.includes('Wali Kelas'));
+  assert.ok(!khusus.includes('Guru Mapel'));
+});
+
+test('KartuKelompok: verifikasi oleh BK/Kesiswaan yang tidak piket tidak diberi label Guru Piket', () => {
+  const dasar = { peserta: anggotaContoh, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false };
+  const bk = JSON.stringify(get('KartuKelompok')({
+    ...dasar, kelompok: { ...kelompokContoh, diverifikasi_oleh: 'Bu Kepsek BK', diverifikasi_kapasitas: 'bk_kesiswaan' },
+  }));
+  assert.ok(bk.includes('"Diverifikasi oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(!bk.includes('Guru Piket'));
+});
+
 test('kelompok: konfirmasi rombongan selalu lewat centang peserta, bukan satu tap', () => {
   const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
   // Tombol di kartu membuka daftar peserta dulu ('kembali'/'verifikasi'),
@@ -425,7 +452,7 @@ test('kelompok: konfirmasi rombongan selalu lewat centang peserta, bukan satu ta
 test('kelompok: panel individual tidak ikut menampilkan peserta kegiatan', () => {
   const panelIndividual = JSON.stringify(get('IzinKeluarPanel')({
     students: [], izinList: anggotaContoh, canVerify: true, waliKelasMap: [],
-    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   }));
   assert.ok(!panelIndividual.includes('Ahmad'), 'peserta kegiatan diurus di mode Kelompok, bukan sebagai kartu lepas');
 
@@ -517,7 +544,7 @@ test('GerbangTab: badge tampil untuk Guru Piket bertugas, tersembunyi untuk guru
   const baseProps = {
     students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
     isAdminUser: false, waliKelasMap: [], izinList: menunggu3, kelompokList: [],
-    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {}, onSelesaikanIzin: () => {},
+    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {},
     onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {},
   };
 
@@ -538,7 +565,7 @@ test('GerbangTab: badge = 0 disembunyikan total, bukan menampilkan "0"', () => {
     students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
     isAdminUser: false, waliKelasMap: [], izinList: [izinBaris({ status: 'Sedang di Luar' })], kelompokList: [],
     canVerifyIzin: true, onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {},
-    onSelesaikanIzin: () => {}, onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {},
+    onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {},
     onTandaiKembaliKelompok: () => {},
   };
   const layar = JSON.stringify(get('GerbangTab')(props));
@@ -550,7 +577,7 @@ test('GerbangTab: pola "99+" untuk angka besar tanpa melebarkan tab', () => {
   const props = {
     students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
     isAdminUser: false, waliKelasMap: [], izinList: banyak, kelompokList: [], canVerifyIzin: true,
-    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {}, onSelesaikanIzin: () => {},
+    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {},
     onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {},
   };
   const layar = JSON.stringify(get('GerbangTab')(props));
@@ -591,8 +618,22 @@ test('DashboardTab: ringkasan tetap muncul untuk admin/BK walau Jadwal_Piket kos
 test('badge & ringkasan menggunakan fungsi turunan YANG SAMA (satu sumber kebenaran)', () => {
   const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
   const berandaSrc = fs.readFileSync(path.join(ROOT, 'beranda-riwayat.js'), 'utf8');
+  const helpersSrc = fs.readFileSync(path.join(ROOT, 'helpers.js'), 'utf8');
+  // Badge sakelar Gerbang memanggil penghitungnya langsung...
   assert.match(gerbangSrc, /hitungIzinMenungguVerifikasi\(izinList, kelompokList, canVerifyIzin\)/);
-  assert.match(berandaSrc, /hitungIzinMenungguVerifikasi\(izinList, kelompokList, canVerifyIzin\)/);
+  // ...Beranda lewat ringkasIzinBeranda (kartu ringkasan butuh angka lain juga:
+  // jumlah hari ini & jumlah siswa yang masih di luar)...
+  assert.match(berandaSrc, /ringkasIzinBeranda\(izinList, kelompokList, canVerifyIzin\)/);
+  // ...tapi ringkasIzinBeranda WAJIB menurunkan angka "menunggu verifikasi"-nya
+  // dari fungsi yang sama, bukan menyalin ulang aturannya. Kalau baris ini
+  // hilang, angka Beranda bisa berbeda dari badge untuk kondisi yang sama.
+  assert.match(helpersSrc, /function ringkasIzinBeranda[\s\S]*?hitungIzinMenungguVerifikasi\(izin, kelompokList, canVerify\)/);
+  // Beranda TIDAK boleh menyaring status 'Menunggu Verifikasi' sendiri —
+  // itu jalan pintas yang persis melahirkan dua sumber kebenaran.
+  assert.equal(/'Menunggu Verifikasi'/.test(berandaSrc), false,
+    'beranda-riwayat.js tidak boleh menghitung sendiri status Menunggu Verifikasi');
+  // Aturan hitungnya tetap hanya ada di SATU tempat.
+  assert.equal((helpersSrc.match(/function hitungIzinMenungguVerifikasi/g) || []).length, 1);
 });
 
 test('badge tidak butuh request API baru — data dipakai ulang dari fetch existing (getIzinKeluar)', () => {
@@ -628,4 +669,346 @@ test('regresi: Surat, Pelanggaran, Terlambat tidak tersentuh', () => {
   // File-file fitur itu di frontend juga tidak diubah oleh perubahan ini.
   const untouched = ['pelanggaran-bimbingan-upacara.js', 'admin.js', 'rekap-kelas.js', 'statistik.js', 'export-data.js', 'ui-common.js', 'Auth.gs'];
   untouched.forEach((f) => assert.ok(fs.existsSync(path.join(ROOT, f)), f + ' harus tetap ada apa adanya'));
+});
+
+// ===================================================================
+// Notifikasi Beranda yang bisa diklik + kartu ringkasan Izin Keluar
+// + pintasan Beranda -> Gerbang -> Izin Keluar.
+//
+// Yang dijaga di sini: pintasan itu MURNI navigasi. Ia tidak menambah
+// kewenangan apa pun, tidak menjalankan aksi apa pun dari Beranda, dan tidak
+// muncul untuk pengguna yang memang tidak punya pekerjaan verifikasi.
+// ===================================================================
+
+const propsBeranda = (over) => Object.assign({
+  user: { id: 'ADMIN', name: 'Admin', waliKelas: '' }, allLogs: [], pelanggaranList: [], suratList: [],
+  jadwalPiket: [], onRefresh: () => {}, loading: false, tindakLanjutList: [], canViewRanking: true, isAdmin: true,
+  onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {},
+  izinList: [], kelompokList: [], canVerifyIzin: false, onGoToIzin: () => {},
+}, over || {});
+
+test('ringkasIzinBeranda — kartu menghitung izin HARI INI (semua status), hint bawa yang menuntut tindakan', () => {
+  const izin = [
+    izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' }),
+    izinBaris({ id: 'D1', nisn: 'd1', status: 'Sedang di Luar' }),
+    izinBaris({ id: 'K1', nisn: 'k1', status: 'Kembali' }),
+    izinBaris({ id: 'S1', nisn: 's1', status: 'Selesai' }),
+  ];
+  const r = get('ringkasIzinBeranda')(izin, [], true);
+  assert.equal(r.hariIni, 4, 'kartu = jumlah izin hari ini, apa pun statusnya');
+  assert.equal(r.menunggu, 1);
+  assert.equal(r.diLuar, 1);
+  assert.equal(r.hint, '1 menunggu verifikasi');
+});
+
+test('ringkasIzinBeranda — transaksi kemarin tidak ikut kartu "hari ini", tapi yang MASIH di luar tetap terhitung', () => {
+  const kemarin = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
+  const izin = [
+    izinBaris({ id: 'D0', nisn: 'd0', status: 'Sedang di Luar', timestamp: kemarin }),
+    izinBaris({ id: 'S0', nisn: 's0', status: 'Selesai', timestamp: kemarin }),
+  ];
+  const r = get('ringkasIzinBeranda')(izin, [], true);
+  assert.equal(r.hariIni, 0);
+  // Siswa yang belum ditandai kembali sejak kemarin justru yang paling perlu terlihat.
+  assert.equal(r.diLuar, 1);
+  assert.equal(r.hint, '1 siswa di luar');
+});
+
+test('ringkasIzinBeranda — transaksi selesai/ditutup TIDAK pernah jadi hint (bukan pekerjaan)', () => {
+  const izin = [
+    izinBaris({ id: 'K1', nisn: 'k1', status: 'Kembali' }),
+    izinBaris({ id: 'P1', nisn: 'p1', status: 'Pulang', tujuan: 'pulang' }),
+    izinBaris({ id: 'S1', nisn: 's1', status: 'Selesai' }),
+  ];
+  const r = get('ringkasIzinBeranda')(izin, [], true);
+  assert.equal(r.menunggu, 0);
+  assert.equal(r.diLuar, 0);
+  assert.equal(r.hint, '', 'tiga status akhir bukan pekerjaan yang menunggu siapa pun');
+  assert.equal(r.hariIni, 3, 'tapi tetap terhitung sebagai kejadian hari ini — tidak disembunyikan');
+});
+
+test('RBAC ringkasan: guru yang tidak berwenang verifikasi tidak dapat angka "menunggu verifikasi"', () => {
+  const izin = [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })];
+  const r = get('ringkasIzinBeranda')(izin, [], false);
+  assert.equal(r.menunggu, 0, 'canVerify=false -> selalu 0, sama dengan aturan badge');
+  assert.equal(r.hint, '', 'dan tidak ada hint yang memberi kesan dia harus memverifikasi');
+  // Kartu ringkasannya tetap jujur: izinnya memang ada hari ini.
+  assert.equal(r.hariIni, 1);
+});
+
+test('Beranda: kartu ringkasan keempat "Izin Keluar" tampil bersama tiga kartu lama', () => {
+  const layar = JSON.stringify(get('DashboardTab')(propsBeranda({
+    izinList: [izinBaris({ id: 'D1', nisn: 'd1', status: 'Sedang di Luar' })],
+  })));
+  ['Terlambat', 'Surat', 'Pelanggaran', 'Izin Keluar'].forEach((label) => {
+    assert.ok(layar.includes('"label":"' + label + '"'), 'kartu ringkasan ' + label + ' harus ada');
+  });
+  assert.ok(layar.includes('"hint":"1 siswa di luar"'));
+});
+
+test('Beranda: notifikasi izin menunggu verifikasi BISA DIKLIK dan memanggil onGoToIzin', () => {
+  let dipanggil = 0;
+  const tree = get('DashboardTab')(propsBeranda({
+    izinList: [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })],
+    canVerifyIzin: true,
+    onGoToIzin: () => { dipanggil++; },
+  }));
+  const layar = JSON.stringify(tree);
+  assert.match(layar, /"children":\[1," izin keluar menunggu verifikasi"\]/);
+  assert.ok(layar.includes('Perlu diproses'), 'kartu tindakan menyebut statusnya');
+  assert.ok(layar.includes('Lihat'), 'ada ajakan tindakan');
+  const tombol = findAll(tree, (n) => n.type === 'button' && typeof n.props.onClick === 'function' &&
+    JSON.stringify(n).includes('izin keluar menunggu verifikasi'))[0];
+  assert.ok(tombol, 'notifikasi harus berupa elemen yang bisa diklik');
+  tombol.props.onClick();
+  assert.equal(dipanggil, 1);
+});
+
+test('Beranda: notifikasi TIDAK muncul untuk yang tidak berwenang memverifikasi', () => {
+  const layar = JSON.stringify(get('DashboardTab')(propsBeranda({
+    izinList: [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })],
+    canVerifyIzin: false,
+  })));
+  assert.ok(!layar.includes('izin keluar menunggu verifikasi'));
+  assert.ok(!layar.includes('Perlu diproses'));
+});
+
+test('Beranda: tanpa menu Gerbang, notifikasi tampil sebagai kabar — bukan tombol buntu', () => {
+  const tree = get('DashboardTab')(propsBeranda({
+    izinList: [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })],
+    canVerifyIzin: true, onGoToIzin: null,
+  }));
+  const layar = JSON.stringify(tree);
+  assert.ok(layar.includes('izin keluar menunggu verifikasi'));
+  const tombol = findAll(tree, (n) => n.type === 'button' && JSON.stringify(n).includes('izin keluar menunggu verifikasi'))[0];
+  assert.ok(!tombol, 'tidak boleh ada tombol yang tidak menuju ke mana-mana');
+});
+
+test('Beranda TIDAK menjalankan aksi izin apa pun — Beranda meringkas, Gerbang memproses', () => {
+  const beranda = fs.readFileSync(path.join(ROOT, 'beranda-riwayat.js'), 'utf8');
+  ['verifikasiIzinKeluar', 'tandaiKembaliIzinKeluar', 'tandaiPulangIzinKeluar', 'selesaikanIzinKeluar',
+    'onVerifikasi', 'onTandaiKembali', 'onSelesaikan'].forEach((needle) => {
+    assert.ok(!beranda.includes(needle), 'beranda-riwayat.js tidak boleh memicu ' + needle);
+  });
+});
+
+test('routing pintasan: App membuka Gerbang di mode Izin Keluar, tanpa kewenangan ikut berpindah', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  // Pintasan = ganti tab + mode saja.
+  assert.match(app, /const goToIzinKeluar = \(\) => \{ setGerbangMode\('izin'\); setActiveTab\('scan'\); \};/);
+  // Diteruskan ke Beranda hanya kalau pengguna memang punya menu Gerbang.
+  assert.match(app, /onGoToIzin=\{effectiveMenus\.includes\('scan'\) \? goToIzinKeluar : null\}/);
+  // GerbangTab menerimanya sebagai mode AWAL.
+  assert.match(app, /initialMode=\{gerbangMode\}/);
+  // Pindah tab lewat BottomNav mengembalikan Gerbang ke mode normal — tidak nyangkut.
+  assert.match(app, /const navigateTab = \(tab\) => \{ setGerbangMode\('terlambat'\); setActiveTab\(tab\); \};/);
+  assert.match(app, /<BottomNav[^>]*setActiveTab=\{navigateTab\}/);
+  // canVerifyIzin TETAP datang dari server; pintasan tidak menyentuhnya.
+  assert.ok(!/goToIzinKeluar[\s\S]{0,200}canVerify/.test(app), 'pintasan tidak boleh menyentuh canVerifyIzin');
+});
+
+test('GerbangTab: initialMode="izin" membuka layar langsung di Izin Keluar', () => {
+  const props = {
+    students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
+    isAdminUser: true, waliKelasMap: [], izinList: [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })],
+    kelompokList: [], canVerifyIzin: true, onCreateIzin: () => {}, onVerifikasiIzin: () => {},
+    onTandaiKembaliIzin: () => {}, onTandaiPulangIzin: () => {},
+    onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {}, myWaliKelas: '',
+  };
+  assert.ok(findComponent(get('GerbangTab')(Object.assign({ initialMode: 'izin' }, props)), 'IzinKeluarTab'),
+    'datang dari pintasan -> panel Izin Keluar yang terbuka');
+  assert.ok(!findComponent(get('GerbangTab')(props), 'IzinKeluarTab'),
+    'tanpa pintasan, Gerbang tetap terbuka di Catat Terlambat seperti sebelumnya');
+  // Nilai lain diabaikan — initialMode bukan saluran untuk memaksa mode sembarangan.
+  assert.ok(!findComponent(get('GerbangTab')(Object.assign({ initialMode: 'surat' }, props)), 'IzinKeluarTab'));
+});
+
+test('GerbangTab: tombol verifikasi tetap tidak muncul untuk yang tidak berwenang, walau datang lewat pintasan', () => {
+  const props = {
+    students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
+    isAdminUser: false, waliKelasMap: [], izinList: [izinBaris({ id: 'M1', nisn: 'm1', status: 'Menunggu Verifikasi' })],
+    kelompokList: [], canVerifyIzin: false, onCreateIzin: () => {}, onVerifikasiIzin: () => {},
+    onTandaiKembaliIzin: () => {}, onTandaiPulangIzin: () => {},
+    onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {}, myWaliKelas: '',
+    initialMode: 'izin',
+  };
+  const layar = JSON.stringify(get('IzinKeluarPanel')({
+    students: props.students, izinList: props.izinList, canVerify: false, waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, myWaliKelas: '',
+  }));
+  assert.ok(!layar.includes('Verifikasi & Siswa Keluar'));
+  assert.ok(!layar.includes('Tutup transaksi'));
+  assert.ok(layar.includes('Menunggu diverifikasi Guru Piket yang bertugas.'));
+  assert.ok(findComponent(get('GerbangTab')(props), 'IzinKeluarTab'), 'layarnya tetap boleh dilihat, aksinya yang tidak ada');
+});
+
+test('Gerbang tetap memakai BADGE/ANGKA — bukan kalimat panjang di sakelarnya', () => {
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  assert.match(gerbangSrc, /\{izinBadge > 99 \? '99\+' : izinBadge\}/);
+  // Sakelar Gerbang tidak boleh berubah jadi kalimat.
+  assert.ok(!/izinBadge \+ ' izin/.test(gerbangSrc));
+  assert.ok(!gerbangSrc.includes('izin keluar menunggu verifikasi'),
+    'kalimat panjang itu milik kartu Beranda, sakelar Gerbang cukup angka');
+});
+
+test('Izin Keluar tetap mode ketiga di Gerbang — tidak ada entri BottomNav baru', () => {
+  const cfg = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+  assert.ok(!cfg.includes("'izin'"), "config.js tidak boleh punya menu/nav 'izin'");
+  assert.ok(!cfg.includes('izinkeluar'));
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  assert.match(gerbangSrc, /setMode\('izin'\)/);
+});
+
+test('audit UX Agustus 2026: "Tutup transaksi" DIHAPUS — Tandai Kembali langsung final, satu langkah', () => {
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const appSrc = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  // Istilah UI-nya sendiri hilang total dari gerbang.js — bukan diganti
+  // sinonim yang masih berarti klik kedua. (app.js masih boleh MENYEBUT
+  // istilah lama di komentar yang menjelaskan penghapusannya — yang
+  // diperiksa di sini adalah tidak ada lagi JSX/teks tombol untuknya.)
+  assert.ok(!gerbangSrc.includes('Tutup transaksi'));
+  assert.ok(!gerbangSrc.includes('Tutup Transaksi'));
+  // Aksi & handler yang dulu menutup transaksi terpisah sudah tidak ada.
+  assert.ok(!/onSelesaikan\b/.test(gerbangSrc));
+  assert.ok(!/handleSelesaikanIzin|onSelesaikanIzin/.test(appSrc));
+  assert.ok(!/selesaikanIzinKeluar/.test(appSrc));
+  // Tandai Kembali tetap satu-satunya tombol untuk siswa "Sedang di Luar" —
+  // dan pesan konfirmasinya sekarang bilang transaksinya sudah selesai,
+  // bukan "silakan tutup transaksi berikutnya".
+  assert.match(gerbangSrc, /runAction\(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai\.'\)/);
+  // Kartu "Selesai Hari Ini" tidak lagi punya tombol aksi apa pun — cuma
+  // menampilkan status akhirnya.
+  const blokSelesai = gerbangSrc.split('Selesai Hari Ini ({selesaiHariIni.length})')[1].split('Kartu konteks')[0];
+  assert.ok(!/<button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol aksi');
+  assert.ok(!/<Button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol aksi');
+});
+
+test('status "Kembali" legacy tidak pernah ditampilkan mentah — dibaca sebagai Selesai', () => {
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  assert.match(gerbangSrc, /izin\.status === 'Kembali' \? 'Selesai' : izin\.status/);
+});
+
+// ===================================================================
+// Konteks pemberi persetujuan di KARTU (Wali Kelas / Guru Mapel / Izin
+// Khusus) — helpers.js izinPeranPersetujuan/izinPeranLabel, dan bagaimana
+// KartuIzinKeluar merender jejak auditnya. Bukan role, bukan klaim jadwal
+// mengajar: MURNI dihitung ulang di klien dari kelas siswa vs peta wali
+// kelas sekolah, persis prinsip yang sama dengan konteksUntuk() (dipakai
+// SEBELUM submit) — lihat helpers.js untuk detail lengkapnya.
+// ===================================================================
+
+const waliByClassFixture = { 'xi a': 'Jefri Tulak, S. Pd. K.' };
+
+test('izinPeranPersetujuan: nama disetujui_oleh cocok wali kelas kelasnya -> wali_kelas', () => {
+  const izin = { class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal' };
+  assert.equal(get('izinPeranPersetujuan')(izin, waliByClassFixture), 'wali_kelas');
+  assert.equal(get('izinPeranLabel')('wali_kelas'), 'Wali Kelas');
+});
+
+test('izinPeranPersetujuan: nama disetujui_oleh BUKAN wali kelas kelas itu -> guru_mapel', () => {
+  const izin = { class: 'XI A', disetujui_oleh: 'Adi Aris M.', jalur: 'normal' };
+  assert.equal(get('izinPeranPersetujuan')(izin, waliByClassFixture), 'guru_mapel');
+  assert.equal(get('izinPeranLabel')('guru_mapel'), 'Guru Mapel');
+});
+
+test('izinPeranPersetujuan: kelas belum punya wali kelas di peta -> guru_mapel (bukan error, bukan wali_kelas)', () => {
+  const izin = { class: 'XII C', disetujui_oleh: 'Siapa Saja', jalur: 'normal' };
+  assert.equal(get('izinPeranPersetujuan')(izin, waliByClassFixture), 'guru_mapel');
+});
+
+test('izinPeranPersetujuan: jalur khusus TIDAK PERNAH dilabeli Wali Kelas/Guru Mapel', () => {
+  // Bahkan kalau nama petugas piket KEBETULAN sama dengan wali kelas kelas
+  // itu — jalur khusus tetap bukan persetujuan wali kelas/guru mapel biasa,
+  // itulah intinya jalur khusus dipakai (guru yang menangani tidak tersedia).
+  const izin = { class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'khusus' };
+  assert.equal(get('izinPeranPersetujuan')(izin, waliByClassFixture), 'khusus');
+});
+
+test('KartuIzinKeluar: kartu Wali Kelas menampilkan "Disetujui oleh: Wali Kelas — Nama • jam"', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Menunggu Verifikasi',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  // JSX pecah tiap {ekspresi} jadi elemen array sendiri — dicek sebagai
+  // urutan token JSON yang berdekatan, bukan satu string gabungan.
+  assert.ok(layar.includes('"Disetujui oleh: ","Wali Kelas"," — ","Jefri Tulak, S. Pd. K."'));
+});
+
+test('KartuIzinKeluar: kartu Guru Mapel menampilkan "Disetujui oleh: Guru Mapel — Nama • jam"', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Adi Aris M.', jalur: 'normal', status: 'Menunggu Verifikasi',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Disetujui oleh: ","Guru Mapel"," — ","Adi Aris M."'));
+});
+
+test('KartuIzinKeluar: Izin Khusus TIDAK mengklaim persetujuan Wali Kelas/Guru Mapel', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Pak Piket Pagi', jalur: 'khusus', alasan_khusus: 'wali kelas sedang rapat',
+    status: 'Sedang di Luar',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Izin Khusus oleh: ","Pak Piket Pagi"'));
+  assert.ok(!layar.includes('Wali Kelas'));
+  assert.ok(!layar.includes('Guru Mapel'));
+  // Alasan tetap tersimpan & tampil (sudah ada, harus tetap ada).
+  assert.ok(layar.includes('wali kelas sedang rapat'));
+});
+
+// ===================================================================
+// Audit: kapasitas verifikasi (Guru Piket vs BK/Kesiswaan) — bug yang
+// diperbaiki adalah kartu SEBELUMNYA menulis "Guru Piket" untuk SEMUA
+// verifikasi tanpa syarat, sehingga akun BK/Kesiswaan yang mengambil alih
+// TANPA sedang piket tercatat seolah-olah dia memang piket hari itu.
+// Label yang benar SUDAH ditentukan server (izin.diverifikasi_kapasitas /
+// izin.dicatat_kembali_kapasitas, dari getIzinKeluar — lihat
+// tests/izin-keluar.test.js untuk pembuktian otorisasi & kapasitas
+// sungguhan lewat doPost/doGet) — kartu MURNI menampilkan ulang.
+// ===================================================================
+
+test('KartuIzinKeluar: kapasitas Guru Piket ditampilkan apa adanya (dari server)', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Selesai',
+    diverifikasi_oleh: 'Pak Piket Pagi', dicatat_kembali_oleh: 'Bu Piket Siang', waktu_kembali: new Date().toISOString(),
+    diverifikasi_kapasitas: 'guru_piket', dicatat_kembali_kapasitas: 'guru_piket',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","Guru Piket — ","Pak Piket Pagi"'));
+  assert.ok(layar.includes('"Kembali dicatat oleh: ","Guru Piket — ","Bu Piket Siang"'));
+});
+
+test('KartuIzinKeluar: BK/Kesiswaan yang mengambil alih TIDAK tercatat sebagai Guru Piket', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Selesai',
+    diverifikasi_oleh: 'Bu Kepsek BK', dicatat_kembali_oleh: 'Bu Kepsek BK', waktu_kembali: new Date().toISOString(),
+    diverifikasi_kapasitas: 'bk_kesiswaan', dicatat_kembali_kapasitas: 'bk_kesiswaan',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(layar.includes('"Kembali dicatat oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(!layar.includes('Guru Piket'), 'BK yang tidak piket tidak boleh diberi label Guru Piket');
+});
+
+test('KartuIzinKeluar: kapasitas kosong (data lama) tidak menebak label apa pun', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Sedang di Luar',
+    diverifikasi_oleh: 'Pak Piket Lama', diverifikasi_kapasitas: '',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","","Pak Piket Lama"'), 'tanpa prefix kapasitas — bukan diam-diam diberi salah satu label');
+  assert.ok(!layar.includes('Guru Piket'));
+  assert.ok(!layar.includes('BK/Kesiswaan'));
+});
+
+test('izinKapasitasLabel: pemetaan kode -> label, kode tak dikenal -> string kosong', () => {
+  assert.equal(get('izinKapasitasLabel')('guru_piket'), 'Guru Piket');
+  assert.equal(get('izinKapasitasLabel')('bk_kesiswaan'), 'BK/Kesiswaan');
+  assert.equal(get('izinKapasitasLabel')(''), '');
+  assert.equal(get('izinKapasitasLabel')(undefined), '');
+});
+
+test('IzinKeluarPanel meneruskan waliByClass ke setiap KartuIzinKeluar (bukan cuma sebagian bucket)', () => {
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const jumlah = (gerbangSrc.match(/<KartuIzinKeluar key=\{izin\.id\} izin=\{izin\} waliByClass=\{waliByClass\}/g) || []).length;
+  assert.equal(jumlah, 3, 'ketiga bucket (Menunggu/Di Luar/Selesai) harus meneruskan waliByClass yang sama');
 });

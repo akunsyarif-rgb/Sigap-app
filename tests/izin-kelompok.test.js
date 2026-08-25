@@ -115,9 +115,9 @@ function loadServer(opts) {
     Master_Siswa: makeSheet(['NISN', 'Nama', 'Kelas'], SISWA),
     Master_Guru: makeSheet(['ID', 'Nama', 'Hash', 'Role', 'Jabatan', 'Status', 'Kelas_Wali', 'Salt'],
       Object.keys(USERS).map((k) => [USERS[k].id, USERS[k].name, '', USERS[k].role, '', 'aktif', USERS[k].waliKelas, ''])),
-    Jadwal_Piket: makeSheet(['Hari', 'Guru_ID'], options.tanpaJadwalPiket ? [] : [
+    Jadwal_Piket: makeSheet(['Hari', 'Guru_ID'], options.tanpaJadwalPiket ? [] : (options.jadwalPiketRows || [
       [HARI_INI, 'G10'], [HARI_INI, 'G11'], [HARI_LAIN, 'G12'],
-    ]),
+    ])),
     Izin_Keluar: makeSheet(IZIN_HEADER, []),
     Izin_Kelompok: makeSheet(KELOMPOK_HEADER, []),
     Log_Gerbang: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Alasan', 'Dicatat_Oleh'], []),
@@ -377,10 +377,12 @@ test('kembali bersama: hanya siswa yang dicentang berubah, sisanya tetap di luar
   assert.equal(res.jumlahBelumKembali, 1);
 
   const status = s.statusPeserta(buat.id);
-  assert.equal(Object.values(status).filter((v) => v === 'Kembali').length, 7);
+  // Selesai langsung, satu langkah — bukan singgah dulu di 'Kembali'
+  // menunggu penutupan administratif terpisah (dihapus, audit UX Agustus 2026).
+  assert.equal(Object.values(status).filter((v) => v === 'Selesai').length, 7);
   assert.equal(status['Deni'], 'Sedang di Luar', 'yang belum kembali TIDAK boleh ikut berubah');
   // Siapa yang mencatat kembali tersimpan per siswa.
-  s.peserta(buat.id).filter((p) => p.status === 'Kembali').forEach((p) => {
+  s.peserta(buat.id).filter((p) => p.status === 'Selesai').forEach((p) => {
     assert.equal(p.row[18], 'Bu Piket Siang');
     assert.ok(p.row[17], 'waktu kembali terisi');
   });
@@ -407,7 +409,7 @@ test('sisa rombongan bisa ditandai kembali menyusul', () => {
   const susulan = s.post('piketSiang', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: [deni.id] });
   assert.equal(susulan.status, 'success');
   assert.equal(susulan.jumlahBelumKembali, 0);
-  Object.values(s.statusPeserta(buat.id)).forEach((st) => assert.equal(st, 'Kembali'));
+  Object.values(s.statusPeserta(buat.id)).forEach((st) => assert.equal(st, 'Selesai'));
 });
 
 test('pola individual: tiap peserta ditandai kembali sendiri lewat aksi izin individual', () => {
@@ -417,11 +419,12 @@ test('pola individual: tiap peserta ditandai kembali sendiri lewat aksi izin ind
 
   const ahmad = s.peserta(buat.id).find((p) => p.name === 'Ahmad');
   // Aksi per siswa yang SUDAH ADA — tidak ada jalur baru untuk pola individual.
+  // Langsung Selesai (satu langkah), sama seperti izin individual biasa.
   const res = s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: ahmad.id });
-  assert.equal(res.izinStatus, 'Kembali');
+  assert.equal(res.izinStatus, 'Selesai');
 
   const status = s.statusPeserta(buat.id);
-  assert.equal(status['Ahmad'], 'Kembali');
+  assert.equal(status['Ahmad'], 'Selesai');
   assert.equal(Object.values(status).filter((v) => v === 'Sedang di Luar').length, 7,
     'menandai satu siswa tidak boleh menyentuh anggota lain');
 });
@@ -453,12 +456,15 @@ test('satu peserta pulang, sisanya kembali — status masing-masing berdiri send
   assert.equal(res.jumlahKembali, 7);
 
   const status = s.statusPeserta(buat.id);
+  // Deni final di 'Pulang' (tidak pernah butuh penutupan terpisah), sisanya
+  // final di 'Selesai' — dua hasil berbeda, dua kata status berbeda, TAPI
+  // keduanya sudah FINAL dalam satu langkah masing-masing.
   assert.equal(status['Deni'], 'Pulang');
-  assert.equal(Object.values(status).filter((v) => v === 'Kembali').length, 7);
+  assert.equal(Object.values(status).filter((v) => v === 'Selesai').length, 7);
 
-  // Pulang -> Selesai (penutupan administratif), lalu terkunci.
-  assert.equal(s.post('bk', { action: 'selesaikanIzinKeluar', id: deni.id }).izinStatus, 'Selesai');
+  // Sudah terkunci — tidak ada aksi lanjutan apa pun untuk Deni.
   assert.equal(s.post('bk', { action: 'tandaiKembaliIzinKeluar', id: deni.id }).status, 'error');
+  assert.equal(s.post('bk', { action: 'tandaiPulangIzinKeluar', id: deni.id }).status, 'error');
 });
 
 test('tandai pulang butuh kewenangan piket & hanya dari status Sedang di Luar', () => {
@@ -680,12 +686,11 @@ test('izin INDIVIDUAL tetap bekerja penuh berdampingan dengan kelompok', () => {
   const s = loadServer();
   const kelompok = rombonganDiLuar(s);
 
-  // Alur individual lengkap: setuju -> verifikasi -> kembali -> selesai.
+  // Alur individual lengkap: setuju -> verifikasi -> kembali (langsung final).
   const individu = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2001', tujuan: 'kembali', keperluan: 'ke puskesmas' });
   assert.equal(individu.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: individu.id }).izinStatus, 'Sedang di Luar');
-  assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: individu.id }).izinStatus, 'Kembali');
-  assert.equal(s.post('bk', { action: 'selesaikanIzinKeluar', id: individu.id }).izinStatus, 'Selesai');
+  assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: individu.id }).izinStatus, 'Selesai');
 
   // Baris individual tidak punya kunci kegiatan, dan rombongan tidak tersentuh.
   const barisIndra = s.izinRows().find((r) => String(r[1]) === '2001');
@@ -797,4 +802,71 @@ test('alur kelompok normal tetap berjalan utuh setelah audit Izin Khusus ini (re
   assert.equal(buat.status, 'success');
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKelompok', id: buat.id }).status, 'success');
+});
+
+// ============================================================
+// 21. KAPASITAS VERIFIKASI KELOMPOK: "Guru Piket" vs "BK/Kesiswaan"
+//
+// Sama seperti izin individual (lihat blok audit di izin-keluar.test.js) —
+// verifikasiIzinKelompok & tandaiKembaliKelompok memakai gerbang otorisasi
+// yang SAMA (izinKapasitasVerifikasi, Utils.gs), jadi bug & perbaikannya
+// juga sama: BK/Kesiswaan yang mengambil alih TANPA sedang piket tidak
+// boleh tercatat seolah-olah dia Guru Piket.
+// ============================================================
+
+test('kelompok: BK/Kesiswaan yang TIDAK piket tetap boleh verifikasi sebagai backup, tercatat BK/Kesiswaan', () => {
+  const s = loadServer(); // fixture default: Bu BK (G01) tidak ada di Jadwal_Piket
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('bk', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'success', 'BK tetap boleh mengambil alih walau tidak piket');
+
+  const kel = s.get('admin', { action: 'getIzinKeluar' }).kelompok.find((k) => k.id === buat.id);
+  assert.equal(kel.diverifikasi_kapasitas, 'bk_kesiswaan', 'TIDAK boleh tercatat guru_piket');
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Verifikasi Izin Kelompok').pop();
+  assert.match(String(aksi[4]), /kapasitas=BK\/Kesiswaan/);
+});
+
+test('kelompok: BK/Kesiswaan yang SEDANG piket -> tercatat Guru Piket', () => {
+  const s = loadServer({ jadwalPiketRows: [[HARI_INI, 'G10'], [HARI_INI, 'G11'], [HARI_INI, 'G01'], [HARI_LAIN, 'G12']] });
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('bk', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'success');
+
+  const kel = s.get('admin', { action: 'getIzinKeluar' }).kelompok.find((k) => k.id === buat.id);
+  assert.equal(kel.diverifikasi_kapasitas, 'guru_piket');
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Verifikasi Izin Kelompok').pop();
+  assert.match(String(aksi[4]), /kapasitas=Guru Piket/);
+});
+
+test('kelompok: Tandai Rombongan Kembali oleh BK yang tidak piket tercatat BK/Kesiswaan per peserta', () => {
+  const s = loadServer();
+  const buat = rombonganDiLuar(s);
+  const semua = s.peserta(buat.id);
+  const res = s.post('bk', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: semua.map((p) => p.id) });
+  assert.equal(res.status, 'success');
+
+  const izinAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin.filter((i) => i.kelompok_id === buat.id);
+  assert.equal(izinAdmin.length, 8);
+  izinAdmin.forEach((i) => assert.equal(i.dicatat_kembali_kapasitas, 'bk_kesiswaan'));
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Tandai Rombongan Kembali').pop();
+  assert.match(String(aksi[4]), /kapasitas=BK\/Kesiswaan/);
+});
+
+test('kelompok: wali kelas yang tidak piket tetap ditolak memverifikasi kegiatan (tidak diperlonggar oleh audit ini)', () => {
+  const s = loadServer();
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('wali', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'error');
+});
+
+test('kelompok: client mencoba memalsukan kapasitas tetap diabaikan, server yang menentukan', () => {
+  const s = loadServer();
+  const buat = rombonganDiLuar(s);
+  const res = s.post('bk', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: s.peserta(buat.id).map((p) => p.id), kapasitas: 'guru_piket' });
+  assert.equal(res.status, 'success');
+  const izinAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin.filter((i) => i.kelompok_id === buat.id);
+  izinAdmin.forEach((i) => assert.equal(i.dicatat_kembali_kapasitas, 'bk_kesiswaan', 'klaim klien diabaikan'));
 });

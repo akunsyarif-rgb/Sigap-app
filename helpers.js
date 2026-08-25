@@ -406,6 +406,104 @@
            return individual + kelompokMenunggu;
        }
 
+       // Ringkasan Izin Keluar untuk kartu ke-4 di Beranda. Sengaja dipisah
+       // dari hitungIzinMenungguVerifikasi (yang tetap jadi SATU sumber angka
+       // badge) dan justru MEMANGGILNYA, supaya angka "menunggu verifikasi"
+       // di kartu Beranda, di kalimat notifikasi, dan di badge sakelar Gerbang
+       // tidak akan pernah berbeda.
+       //
+       // Tiga angka, tiga satuan yang berbeda dan masing-masing diberi label
+       // sesuai satuannya — jangan disatukan:
+       //   hariIni  = jumlah SISWA yang punya baris izin hari ini (apa pun
+       //              statusnya, termasuk yang sudah selesai/ditutup). Sejajar
+       //              dengan tiga kartu lain di Beranda yang juga "hari ini".
+       //   menunggu = jumlah PEKERJAAN verifikasi yang menunggu pengguna ini
+       //              (kegiatan kelompok dihitung SATU, sama dengan badge) —
+       //              0 kalau pengguna memang tidak berwenang memverifikasi.
+       //   diLuar   = jumlah SISWA yang saat ini masih di luar sekolah, tanpa
+       //              batas tanggal: siswa yang belum ditandai kembali dari
+       //              kemarin justru kondisi yang paling perlu terlihat.
+       //
+       // Transaksi 'Kembali'/'Pulang'/'Selesai' TIDAK pernah masuk `menunggu`
+       // maupun `diLuar` — keduanya adalah "pekerjaan/keadaan berjalan", bukan
+       // penghitung riwayat. Riwayatnya tetap utuh dan tetap bisa ditelusuri
+       // di menu Riwayat sesuai cakupan yang sudah ada.
+       function ringkasIzinBeranda(izinList, kelompokList, canVerify) {
+           const izin = izinList || [];
+           const today = new Date();
+           const hariIni = izin.filter(i => isSameDay(parseTimestamp(i.timestamp), today)).length;
+           const menunggu = hitungIzinMenungguVerifikasi(izin, kelompokList, canVerify);
+           const diLuar = izin.filter(i => i.status === 'Sedang di Luar').length;
+           // Satu keterangan kecil saja — yang paling menuntut tindakan lebih
+           // dulu. Dashboard tidak dipadati dengan semua angka sekaligus.
+           const hint = menunggu > 0
+               ? menunggu + ' menunggu verifikasi'
+               : (diLuar > 0 ? diLuar + ' siswa di luar' : '');
+           return { hariIni: hariIni, menunggu: menunggu, diLuar: diLuar, hint: hint };
+       }
+
+       // ===== Izin Keluar: label peran di jejak audit kartu =====
+       // "Disetujui oleh: Wali Kelas — Nama" vs "Disetujui oleh: Guru Mapel —
+       // Nama" pada KARTU transaksi (Gerbang), bukan cuma di baris Audit Log
+       // (yang admin-only dan sudah menghitungnya sendiri di server lewat
+       // izinKonteksPersetujuan(), Utils.gs). Baris Izin_Keluar TIDAK
+       // menyimpan konteks itu sebagai kolom (keputusan yang sudah ada —
+       // server cuma menuliskannya ke detail Audit Log), jadi label kartu ini
+       // MURNI DIHITUNG ULANG di klien dari data yang sudah ada di layar:
+       // kelas siswa (izin.class) dicocokkan ke peta wali kelas sekolah
+       // (waliByClass, sudah dibangun dari getLoginUsers/waliKelasMap) lalu
+       // dibandingkan ke NAMA yang tercatat menyetujui (izin.disetujui_oleh).
+       //
+       // Ini BUKAN klaim jadwal mengajar dan BUKAN role — sama seperti
+       // konteksUntuk() di gerbang.js (dipakai SEBELUM submit, untuk kartu
+       // konteks), cuma versi baca-belakangan untuk transaksi yang sudah
+       // tersimpan. Server tidak pernah dipercaya membawa nilai ini balik;
+       // dihitung ulang di dua tempat secara independen (audit log & kartu)
+       // dari fakta yang sama (kelas siswa + peta wali kelas), bukan
+       // saling mewarisi.
+       //
+       // Jalur khusus (Izin Khusus) SENGAJA tidak pernah dilabeli Wali
+       // Kelas/Guru Mapel — Disetujui_Oleh pada baris itu adalah petugas
+       // piket yang mengambil keputusan pengecualian, bukan guru yang
+       // menangani siswa (yang justru sedang tidak tersedia, itulah kenapa
+       // jalur khusus dipakai).
+       function izinPeranPersetujuan(izin, waliByClass) {
+           if (!izin) return '';
+           if (izin.jalur === 'khusus') return 'khusus';
+           const wali = (waliByClass || {})[normalizeClass(izin.class)];
+           const namaWali = String(wali || '').trim();
+           const namaPersetuju = String(izin.disetujui_oleh || '').trim();
+           return (namaWali && namaWali === namaPersetuju) ? 'wali_kelas' : 'guru_mapel';
+       }
+
+       function izinPeranLabel(peran) {
+           if (peran === 'wali_kelas') return 'Wali Kelas';
+           if (peran === 'guru_mapel') return 'Guru Mapel';
+           return '';
+       }
+
+       // ===== Izin Keluar: kapasitas verifikasi (audit Agustus 2026) =====
+       // "Diverifikasi oleh: Guru Piket — Nama" vs "Diverifikasi oleh:
+       // BK/Kesiswaan — Nama". Bug yang diperbaiki: kartu sebelumnya menulis
+       // "Guru Piket" untuk SEMUA verifikasi tanpa syarat, jadi akun
+       // BK/Kesiswaan yang mengambil alih TANPA sedang piket tercatat
+       // seolah-olah dia memang petugas piket hari itu.
+       //
+       // Kapasitas SEBENARNYA sudah ditentukan & dikirim SERVER
+       // (izinKapasitasVerifikasi/izinKapasitasBaris di Utils.gs, dari sesi +
+       // Jadwal_Piket saat aksi dijalankan — bukan cuma role akun, dan bukan
+       // klaim klien) sebagai izin.diverifikasi_kapasitas /
+       // izin.dicatat_kembali_kapasitas / kelompok.diverifikasi_kapasitas.
+       // Fungsi ini MURNI pemetaan kode -> label tampilan, tidak menghitung
+       // ulang otorisasi apa pun — kalau field ini kosong (baris belum
+       // diverifikasi/ditandai kembali, atau data lama sebelum kolom ini
+       // ada), kartu tidak menampilkan label sama sekali.
+       function izinKapasitasLabel(kapasitas) {
+           if (kapasitas === 'guru_piket') return 'Guru Piket';
+           if (kapasitas === 'bk_kesiswaan') return 'BK/Kesiswaan';
+           return '';
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {

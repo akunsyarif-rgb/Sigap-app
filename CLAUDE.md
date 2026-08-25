@@ -368,25 +368,51 @@ home anyway). Sheet `Izin_Keluar`, 20 columns, positions significant — see
 ("Izin Keluar · BETA"), not a new BottomNav entry (nav space is already full —
 see the long note on `ROLES` in `config.js`) and not a new role.
 
-The school's two-step procedure is kept as two steps and must stay that way:
+The school's two-step *approval* procedure is kept as two steps and must stay
+that way:
 
 ```
-Guru pemberi persetujuan -> persetujuan | addIzinKeluar     -> "Menunggu Verifikasi"
-Guru Piket         -> verifikasi    |  verifikasiIzinKeluar -> "Sedang di Luar" / "Pulang"
-siswa kembali                       |  tandaiKembaliIzinKeluar -> "Kembali"
-penutupan                           |  selesaikanIzinKeluar -> "Selesai"
+Guru pemberi persetujuan -> persetujuan | addIzinKeluar        -> "Menunggu Verifikasi"
+Guru Piket         -> verifikasi    |  verifikasiIzinKeluar     -> "Sedang di Luar" / "Pulang"
+siswa kembali                       |  tandaiKembaliIzinKeluar  -> "Selesai" (final, one step)
 ```
 
 `Waktu_Keluar` is stamped at **verification**, never at approval — one approval
 is never treated as the whole procedure.
 
-Five statuses, no overlap: `Menunggu Verifikasi`, `Sedang di Luar`, `Kembali`,
-`Pulang`, `Selesai`. **The client never sends a status.** It calls an action;
-the server derives the next status from the row's *current* status plus the
-stored `tujuan`, so an impossible order (Pulang then Kembali, Kembali twice,
-anything at all on a `Selesai` row) is rejected server-side. The UI's three
-buckets (Menunggu Verifikasi / Sedang di Luar / Selesai Hari Ini) are a
-*grouping* of those five, not a second status model.
+**UX audit, August 2026: the separate closing step is gone.** It used to be
+`tandaiKembaliIzinKeluar` -> `Kembali`, then a *second* action
+(`selesaikanIzinKeluar`, UI label "Tutup transaksi") to close `Kembali`/`Pulang`
+into `Selesai`. That extra tap added no integrity: `Kembali` was **never**
+counted as an open transaction (`IZIN_STATUS_TERBUKA` was always just
+`[Menunggu Verifikasi, Sedang di Luar]`), so the close step only relabeled a
+row that already behaved as finished — pure cosmetic load on Guru Piket.
+`selesaikanIzinKeluar` **no longer exists as an action.**
+`tandaiKembaliIzinKeluar` now writes `Selesai` directly, in the same call that
+stamps `Waktu_Kembali` and the recorder's name — nothing is lost, there's just
+no second click. `tandaiPulangIzinKeluar` and "verify with tujuan pulang" were
+already one-shot-final at `Pulang`; that didn't change, it just no longer has
+a closing step waiting after it either.
+
+Five status *values* still exist (`Menunggu Verifikasi`, `Sedang di Luar`,
+`Kembali`, `Pulang`, `Selesai`) but the **normal flow only ever produces
+four**: `Menunggu Verifikasi` -> `Sedang di Luar` -> `Selesai` (student came
+back), or `Menunggu Verifikasi` -> `Pulang` (student didn't). `IZIN_STATUS_KEMBALI`
+is kept as a read-only constant purely so a pre-audit row that happens to
+still hold literal `'Kembali'` in the sheet doesn't break anything — no code
+path writes it anymore, and the "Selesai Hari Ini" bucket in the UI reads any
+leftover `'Kembali'` row as `'Selesai'` for display rather than showing a
+label that implies a pending action. `Selesai` (came back) and `Pulang`
+(didn't) are told apart by the **`Tujuan`** column, not by the `Status` value —
+don't collapse those two columns into one source of truth.
+
+**The client never sends a status.** It calls an action; the server derives
+the next status from the row's *current* status plus the stored `tujuan`, so
+an impossible order (acting twice, acting on a row that's already `Selesai`
+or `Pulang`) is rejected server-side. The UI's three buckets (Menunggu
+Verifikasi / Sedang di Luar / Selesai Hari Ini) are a *grouping* for display,
+not a second status model — and the "Selesai Hari Ini" bucket no longer has
+any action button on it at all, just the final status label.
 
 Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
 (`Utils.gs`), with hidden buttons never being the gate:
@@ -416,11 +442,72 @@ Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
   `jalur=khusus` already says the wali kelas/guru mapel wasn't available). A
   `konteks` field in the request body, if sent at all, is **never read** —
   don't add code that reads `data.konteks` for anything, gating or otherwise.
+
+  **The same label is shown again later, on the transaction's own card**
+  (Gerbang, `KartuIzinKeluar`/`KartuKelompok` in `gerbang.js`) — "Disetujui
+  oleh: Wali Kelas — Nama • jam" / "Disetujui oleh: Guru Mapel — Nama • jam".
+  `Izin_Keluar` does **not** store the konteks as a column (unchanged
+  decision — see above), so this card-time label is a **third, independent**
+  recomputation, not a read of the audit-log value: `izinPeranPersetujuan()`
+  in `helpers.js` matches `izin.class` against the school's current wali-kelas
+  map and compares the resolved name to `izin.disetujui_oleh`. Same caveat as
+  everywhere else this technique is used: it reflects *today's* wali-kelas
+  assignment, not whatever was true at approval time, and it is a display
+  label, never a gate. Jalur `khusus` is never labeled Wali Kelas/Guru Mapel
+  here either — the card says "Izin Khusus oleh: Nama" instead, so a piket
+  officer's exception decision can never read as a real teacher's approval.
+  `Diverifikasi oleh:` and `Kembali dicatat oleh:` are prefixed with
+  whichever **capacity** the actor actually used — "Guru Piket —" or
+  "BK/Kesiswaan —" (audit August 2026, see the capacity bullet below for
+  why this stopped being a hardcoded "Guru Piket —"). `KartuKelompok` shows
+  the same "Disetujui oleh:"/"Izin Khusus oleh:" + "Diverifikasi oleh:
+  {kapasitas} —" wording but **without** a Wali Kelas/Guru Mapel label — one
+  activity can span students from multiple classes, so there is no single
+  class to match against.
 - **verify / mark returned / close** → the Guru Piket **on duty today**, read
   from the existing `Jadwal_Piket` sheet, plus admin/BK (also the fallback
   when `Jadwal_Piket` is empty, otherwise nobody could verify at all).
   Re-evaluated *per action*, so a shift change on the same day just works and
   whoever marks a student back need not be who approved or verified.
+
+  **Capacity, not just a boolean (audit August 2026).** `canVerifyIzin()`
+  used to short-circuit `true` for any admin/BK account regardless of
+  `Jadwal_Piket`, and every card/audit line hardcoded "Guru Piket —" for
+  *any* successful verification — so a BK/Kesiswaan account stepping in
+  *without* being on duty today read on the card as if they were the actual
+  piket teacher. The **permission** didn't change (BK/admin still may act
+  as a backup even when not on duty — required so the school isn't locked
+  out when `Jadwal_Piket` is empty or the scheduled teacher is unavailable),
+  only the **label** did. `izinKapasitasVerifikasi(ss, sessionUser, now)` in
+  `Utils.gs` is the new single source of truth: it checks `isPiketBertugas`
+  **first** — so a BK/Kesiswaan (or admin) account that also happens to be
+  on duty today is labeled `guru_piket`, same as any other teacher on the
+  roster — and only falls back to `bk_kesiswaan` (admin bundled under the
+  same label, matching how `isBkRole` already treats them as one authority
+  tier everywhere else in this feature) when not on duty; anyone else gets
+  `null`. `canVerifyIzin()` is now a thin wrapper (`!== null`) over the same
+  function, so the boolean gate and the capacity label can never disagree.
+  This capacity is computed **server-side only** — request bodies may carry
+  a `kapasitas`/`role` field, but no handler ever reads one.
+
+  The capacity actually used for `verifikasiIzinKeluar`,
+  `tandaiKembaliIzinKeluar`, `tandaiPulangIzinKeluar`,
+  `verifikasiIzinKelompok`, and `tandaiKembaliKelompok` is appended to their
+  Audit Log line (`kapasitas=Guru Piket` / `kapasitas=BK/Kesiswaan`) — an
+  authoritative, point-in-time record immune to later `Jadwal_Piket` edits.
+  The **card-facing** label is a *separate*, best-effort computation:
+  `getIzinKeluar` builds a `{hari|guruId}` set from `Jadwal_Piket` once
+  (`buildPiketHariSet`) and, for every row already written, re-derives
+  `diverifikasi_kapasitas` / `dicatat_kembali_kapasitas` (and
+  `kelompok.diverifikasi_kapasitas`) from the stored actor id + action
+  timestamp (`izinKapasitasBaris`) — same caveat as the Wali Kelas/Guru
+  Mapel label: it reflects *today's* `Jadwal_Piket`, not necessarily what
+  was true when the row was written. A guru id not found on duty for that
+  weekday is assumed `bk_kesiswaan` **without** a `Master_Guru` role lookup
+  — `canVerifyIzin`'s own guarantee (no other path grants access) makes that
+  safe, and avoids a second bulk read on every `getIzinKeluar` call. Izin
+  Khusus's own `Disetujui_Oleh`/"Izin Khusus oleh:" label is untouched by
+  any of this — it never claimed Guru Piket in the first place.
 - **Izin Khusus** (`jalur: 'khusus'`) → same authority as verify, and the
   `Alasan_Khusus` is mandatory. It does **not** forge anyone else's
   approval: `Disetujui_Oleh` holds the piket teacher's own name, `Jalur` is
@@ -444,6 +531,58 @@ Riwayat gets an `izin` category that is **read-only**: izin has its own status
 flow in Gerbang, it does not go through `editEntry`/`deleteEntry`, and
 `getSheetForCategory()` deliberately doesn't know the category so a hand-rolled
 edit/delete request is rejected too.
+
+#### "Tandai Kembali" — one step, final (formerly "vs Tutup transaksi")
+
+`selesaikanIzinKeluar` / "Tutup transaksi" is **removed** (UX audit, August
+2026) — see the state-machine note above for why the old two-step close added
+no integrity. `tandaiKembaliIzinKeluar` now does the whole job in one call:
+
+| | `tandaiKembaliIzinKeluar` (current) |
+| --- | --- |
+| means | the **event** (student is back) **and** the administration closing, together |
+| from → to | `Sedang di Luar` → `Selesai` |
+| writes | `Waktu_Kembali` + who recorded it (cols R/S/T) **and** `Status` = `Selesai` |
+| authority | piket on duty today + admin/BK |
+
+Nothing is deleted or invented: `Pulang` (student who was never coming back)
+is already final at `Pulang` with `Waktu_Kembali` staying empty — it never
+needed a second action either, before or after this change. `Selesai` (came
+back) and `Pulang` (didn't) refuse every action once reached — same lock as
+before, just reached in one hop instead of two. Authority is **never
+ownership** — the teacher who approved is not the transaction's owner, and a
+later piket shift can mark it kembali even if an earlier one verified.
+`tests/izin-keluar.test.js` pins the one-step transition, column by column.
+
+The **group-member gap from before is now closed as a side effect**: group
+`tandaiKembaliKelompok` writes `Selesai` directly too (same change, same
+reasoning), so members marked back together no longer rest at an
+intermediate `Kembali` waiting for a close step that never existed for
+groups in the first place.
+
+#### Beranda: Izin Keluar summary + clickable notification
+
+Beranda now carries **four** summary cards (Terlambat / Surat / Pelanggaran /
+Izin Keluar, laid out 2×2 — four across truncates the labels at 360px) and the
+"N izin keluar menunggu verifikasi" line is a **button** that jumps to Gerbang →
+Izin Keluar.
+
+All of it is client-side derivation over data already fetched — **no new
+endpoint, no new backend field, no second `getIzinKeluar` call**.
+`ringkasIzinBeranda()` (helpers.js) is the only new function and it *calls*
+`hitungIzinMenungguVerifikasi()` rather than re-implementing the rule, so the
+Beranda number and the Gerbang badge can never disagree; a test fails if
+beranda-riwayat.js filters `'Menunggu Verifikasi'` itself.
+
+The shortcut is **navigation only**: `goToIzinKeluar()` in app.js sets
+`gerbangMode='izin'` + `activeTab='scan'`, GerbangTab reads `initialMode` as its
+*initial* state, and `navigateTab` resets it so Gerbang doesn't stick in Izin
+Keluar mode. No authority travels with it — `canVerifyIzin` still comes from the
+server and every action is re-checked by `canVerifyIzin()` in Utils.gs. The
+notification is gated on that same `canVerifyIzin`, so a teacher with no
+verification authority never sees a prompt implying they should act; the summary
+card still shows the honest count. Gerbang's switch keeps its **badge/number**
+— don't turn it into a sentence, that's the Beranda card's job.
 
 #### Izin Kelompok (one activity, many students)
 
@@ -537,6 +676,28 @@ Every attempt, successful or rejected, is written to `Audit_Log` with
 metadata only (jenis/periode/cakupan/format/row count/status) — never student
 names or note contents.
 
+The `izin` report (Izin Keluar / Pulang) reads `Izin_Keluar` **as it is** — 21
+columns, no new sheet, no new field, `level: 'umum'` so it inherits the exact
+scope rules above. Excluded on purpose: NISN (same rule as every other report),
+`ID_Izin`/`*_Oleh_ID`/`ID_Kelompok` (internal identifiers, same class as
+`Dicatat_Oleh_ID`), and `Waktu_Verifikasi` — the last one **only** because it is
+always byte-identical to `Waktu_Keluar` (both stamped in the same call), so
+printing it twice just squeezes the other columns. The verifier's *name* is
+still there. The activity name from `Izin_Kelompok` is not joined in — one
+sheet, one report.
+
+At 14 columns it is by far the widest report, which surfaced a latent bug in the
+PDF writer: `pdfColumnWidths` split the page purely proportionally, so short
+columns lost and dates printed as `14/01/2..` — truncation that reads as *wrong
+data*, not merely cramped. Two fixes, both in `export-format.js`: reports with
+more than `PDF_WIDE_COLS` (10) columns drop to 7pt (existing 6–7 column reports
+are byte-identical, and a test pins that), and column widths now first try to fit
+every cell whole, falling back to the old proportional split only when the
+content genuinely can't fit. Don't reintroduce long enum labels in export `map`
+functions for this reason — `izinTujuanLabel`/`izinJalurLabel` return one word
+each ("Kembali"/"Pulang", "Normal"/"Khusus") on purpose; the column header
+carries the meaning.
+
 `getAuditLog` is **admin-only** (`isAdminRole`). It used to be admin +
 BK/Kesiswaan (`isBkRole`); it was tightened when export landed, because the
 Audit Log now also carries every export attempt — it is an oversight trail over
@@ -569,3 +730,15 @@ also what pins down "no printer assumptions".
 creation, partial verification, rombongan return with a student left outside,
 one member going home while the rest return, cross-activity id tampering, and
 that the individual flow still works beside it).
+The Beranda notification/summary, its RBAC gating, the Gerbang badge, the
+Beranda→Gerbang routing, the one-step "Tandai Kembali" close (column-by-column,
+including that `selesaikanIzinKeluar` no longer exists), the card-level
+"Disetujui oleh: Wali Kelas/Guru Mapel/Izin Khusus" labels, and the
+"Guru Piket" vs "BK/Kesiswaan" verification-capacity audit (every combination
+in the acceptance list — on-duty guru/wali/BK all label `guru_piket`,
+off-duty BK/admin fall back to `bk_kesiswaan`, off-duty guru/wali are
+rejected outright, OSIS is rejected, a client-sent `kapasitas` is ignored,
+and multiple same-day piket teachers each verify independently) live in
+those same two izin files; Export Izin Keluar is in `tests/export-backend.test.js`
+(scope, tampering, leaked identifiers, audit) and `tests/export-frontend.test.js`
+(14-column PDF/XLSX, and that narrow reports keep their old font size).

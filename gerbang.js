@@ -69,14 +69,20 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onSelesaikanIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
            // Daftar riwayat per-kategori yang dulu ada di sini (dengan filter
            // kelas & sort) dihapus karena mengulang menu Riwayat — kalau perlu
            // cek "siapa di kelas X izin/sakit hari ini", arahnya ke Riwayat.
-           const [mode, setMode] = useState('terlambat');
+           // initialMode HANYA nilai awal, bukan mode yang dikendalikan dari
+           // luar: dipakai pintasan "Lihat" di Beranda supaya layar ini terbuka
+           // langsung di Izin Keluar. GerbangTab di-unmount saat pindah tab,
+           // jadi nilai ini terbaca lagi setiap kali datang dari pintasan; App
+           // membersihkannya kalau pengguna pindah tab lewat BottomNav biasa,
+           // supaya Gerbang tidak "nyangkut" di mode Izin Keluar selamanya.
+           const [mode, setMode] = useState(initialMode === 'izin' ? 'izin' : 'terlambat');
            const [searchQuery, setSearchQuery] = useState('');
            const [pickerStudent, setPickerStudent] = useState(null);
            const [suratStudent, setSuratStudent] = useState(null);
@@ -175,7 +181,7 @@
                        <IzinKeluarTab
                            students={students} izinList={izinList} kelompokList={kelompokList} canVerify={canVerifyIzin} waliKelasMap={waliKelasMap}
                            onCreateIzin={onCreateIzin} onVerifikasi={onVerifikasiIzin}
-                           onTandaiKembali={onTandaiKembaliIzin} onSelesaikan={onSelesaikanIzin}
+                           onTandaiKembali={onTandaiKembaliIzin}
                            onTandaiPulang={onTandaiPulangIzin}
                            onCreateKelompok={onCreateKelompok} onVerifikasiKelompok={onVerifikasiKelompok}
                            onTandaiKembaliKelompok={onTandaiKembaliKelompok}
@@ -402,8 +408,14 @@
        // ulang tiap render membuat React memperlakukannya sebagai tipe baru dan
        // membongkar-pasang seluruh kartunya. `children` diisi tombol aksi yang
        // relevan untuk kelompok status tempat kartu ini tampil.
-       function KartuIzinKeluar({ izin, children }) {
+       function KartuIzinKeluar({ izin, waliByClass, children }) {
            const jam = (v) => (v ? parseTimestamp(v).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
+           // Label peran murni tampilan, dihitung ulang di klien dari data yang
+           // sudah ada di layar (izinPeranPersetujuan, helpers.js) — lihat
+           // catatan panjang di sana. Jalur khusus TIDAK pernah diberi label
+           // Wali Kelas/Guru Mapel: itu petugas piket yang mengambil keputusan
+           // pengecualian, bukan guru yang menangani siswa.
+           const peran = izinPeranPersetujuan(izin, waliByClass);
            return (
                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-2">
                    <div className="flex items-start justify-between gap-2">
@@ -427,16 +439,31 @@
                        </div>
                    )}
                    <div className="text-[10px] text-slate-500 space-y-0.5">
-                       <div>Disetujui: {izin.disetujui_oleh || '-'} • {jam(izin.waktu_persetujuan)}</div>
-                       {izin.diverifikasi_oleh && <div>Diverifikasi: {izin.diverifikasi_oleh} • {jam(izin.waktu_verifikasi)}</div>}
-                       {izin.dicatat_kembali_oleh && <div>Kembali dicatat: {izin.dicatat_kembali_oleh} • {jam(izin.waktu_kembali)}</div>}
+                       {peran === 'khusus' ? (
+                           <div>Izin Khusus oleh: {izin.disetujui_oleh || '-'} • {jam(izin.waktu_persetujuan)}</div>
+                       ) : (
+                           <div>Disetujui oleh: {izinPeranLabel(peran)} — {izin.disetujui_oleh || '-'} • {jam(izin.waktu_persetujuan)}</div>
+                       )}
+                       {/* "Guru Piket" vs "BK/Kesiswaan" — label yang SEBENARNYA
+                           dipakai bukan diklaim, dihitung server (getIzinKeluar,
+                           dari Jadwal_Piket saat aksi dijalankan). Lihat audit
+                           Agustus 2026 di Utils.gs: BK/Kesiswaan yang mengambil
+                           alih TANPA sedang piket tidak boleh tercatat seolah
+                           Guru Piket. Kapasitas kosong (baris lama/belum
+                           terisi) -> tanpa prefix, bukan menebak salah satu. */}
+                       {izin.diverifikasi_oleh && (
+                           <div>Diverifikasi oleh: {izinKapasitasLabel(izin.diverifikasi_kapasitas) ? izinKapasitasLabel(izin.diverifikasi_kapasitas) + ' — ' : ''}{izin.diverifikasi_oleh} • {jam(izin.waktu_verifikasi)}</div>
+                       )}
+                       {izin.dicatat_kembali_oleh && (
+                           <div>Kembali dicatat oleh: {izinKapasitasLabel(izin.dicatat_kembali_kapasitas) ? izinKapasitasLabel(izin.dicatat_kembali_kapasitas) + ' — ' : ''}{izin.dicatat_kembali_oleh} • {jam(izin.waktu_kembali)}</div>
+                       )}
                    </div>
                    {children}
                </div>
            );
        }
 
-       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, onSelesaikan, waliKelasMap, myWaliKelas }) {
+       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, waliKelasMap, myWaliKelas }) {
            const [searchQuery, setSearchQuery] = useState('');
            // Siswa yang baru dipilih dari pencarian, SEBELUM konteks persetujuan
            // dikonfirmasi — kartu kecil "Anda wali kelas siswa ini" / "Siswa ini
@@ -570,7 +597,7 @@
                    <div className="space-y-2.5">
                        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Menunggu Verifikasi ({menunggu.length})</h3>
                        {menunggu.length > 0 ? menunggu.map((izin) => (
-                           <KartuIzinKeluar key={izin.id} izin={izin}>
+                           <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                {canVerify ? (
                                    <Button onClick={() => runAction(onVerifikasi, izin, 'Terverifikasi.')} disabled={busyId === izin.id} size="compact" className="w-full">
                                        {busyId === izin.id ? 'Memproses...' : 'Verifikasi & Siswa Keluar'}
@@ -587,9 +614,9 @@
                    <div className="space-y-2.5">
                        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Sedang di Luar ({diLuar.length})</h3>
                        {diLuar.length > 0 ? diLuar.map((izin) => (
-                           <KartuIzinKeluar key={izin.id} izin={izin}>
+                           <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                {canVerify ? (
-                                   <Button onClick={() => runAction(onTandaiKembali, izin, 'Ditandai kembali.')} disabled={busyId === izin.id} size="compact" variant="secondary" className="w-full">
+                                   <Button onClick={() => runAction(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai.')} disabled={busyId === izin.id} size="compact" variant="secondary" className="w-full">
                                        {busyId === izin.id ? 'Memproses...' : 'Tandai Kembali'}
                                    </Button>
                                ) : (
@@ -599,20 +626,20 @@
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} text="Tidak ada siswa yang sedang di luar." />}
                    </div>
 
-                   {/* ③ Selesai Hari Ini — Kembali, Pulang, dan yang sudah ditutup. */}
+                   {/* ③ Selesai Hari Ini — 'Selesai' (siswa sudah ditandai kembali)
+                       dan 'Pulang' (siswa memang tidak balik) sama-sama KEADAAN
+                       FINAL dalam satu langkah: begitu "Tandai Kembali" ditekan
+                       atau siswa ditandai pulang, tidak ada aksi administratif
+                       kedua yang menunggu — tidak ada tombol di sini, cuma status
+                       akhirnya. Kolom Tujuan (badge "Kembali ke sekolah"/"Pulang"
+                       di atas kartu) yang tetap membedakan keduanya, bukan
+                       kalimat di sini. */}
                    {selesaiHariIni.length > 0 && (
                        <div className="space-y-2.5">
                            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Selesai Hari Ini ({selesaiHariIni.length})</h3>
                            {selesaiHariIni.map((izin) => (
-                               <KartuIzinKeluar key={izin.id} izin={izin}>
-                                   <div className="flex items-center justify-between gap-2">
-                                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{izin.status}</span>
-                                       {canVerify && izin.status !== 'Selesai' && (
-                                           <button onClick={() => runAction(onSelesaikan, izin, 'Transaksi ditutup.')} disabled={busyId === izin.id} className="text-[10px] font-bold text-sky-dim hover:underline disabled:opacity-40">
-                                               {busyId === izin.id ? 'Memproses...' : 'Tutup transaksi'}
-                                           </button>
-                                       )}
-                                   </div>
+                               <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
+                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{izin.status === 'Kembali' ? 'Selesai' : izin.status}</div>
                                </KartuIzinKeluar>
                            ))}
                        </div>
@@ -780,8 +807,18 @@
                        </div>
                    )}
                    <div className="text-[10px] text-slate-500 space-y-0.5">
-                       <div>Disetujui: {kelompok.disetujui_oleh || '-'} • {jam(kelompok.waktu_persetujuan)}</div>
-                       {kelompok.diverifikasi_oleh && <div>Diverifikasi: {kelompok.diverifikasi_oleh} • {jam(kelompok.waktu_verifikasi)}</div>}
+                       {/* Kegiatan bisa melibatkan siswa lintas kelas, jadi tidak
+                           ada satu "kelas" untuk dicocokkan ke peta wali kelas —
+                           label Wali Kelas/Guru Mapel (lihat KartuIzinKeluar)
+                           sengaja tidak dipaksakan di sini. */}
+                       {kelompok.jalur === 'khusus' ? (
+                           <div>Izin Khusus oleh: {kelompok.disetujui_oleh || '-'} • {jam(kelompok.waktu_persetujuan)}</div>
+                       ) : (
+                           <div>Disetujui oleh: {kelompok.disetujui_oleh || '-'} • {jam(kelompok.waktu_persetujuan)}</div>
+                       )}
+                       {kelompok.diverifikasi_oleh && (
+                           <div>Diverifikasi oleh: {izinKapasitasLabel(kelompok.diverifikasi_kapasitas) ? izinKapasitasLabel(kelompok.diverifikasi_kapasitas) + ' — ' : ''}{kelompok.diverifikasi_oleh} • {jam(kelompok.waktu_verifikasi)}</div>
+                       )}
                        {kelompok.tujuan === 'kembali' && (
                            <div>Pola kembali: {kelompok.pola_kembali === 'individual' ? 'Individual' : 'Bersama'}</div>
                        )}
@@ -1164,7 +1201,7 @@
                        <IzinKeluarPanel
                            students={props.students} izinList={props.izinList} canVerify={props.canVerify} waliKelasMap={props.waliKelasMap}
                            onCreateIzin={props.onCreateIzin} onVerifikasi={props.onVerifikasi}
-                           onTandaiKembali={props.onTandaiKembali} onSelesaikan={props.onSelesaikan}
+                           onTandaiKembali={props.onTandaiKembali}
                            myWaliKelas={props.myWaliKelas}
                        />
                    )}

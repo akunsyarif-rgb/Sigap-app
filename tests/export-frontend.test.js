@@ -472,3 +472,83 @@ test('App: menu Export muncul untuk wali kelas, tidak untuk guru biasa', () => {
   const osis = masuk({ id: 'S99', name: 'Ketua OSIS', role: 'osis', jabatan: '', waliKelas: '' });
   assert.deepEqual(osis, ['upacara'], 'OSIS tetap hanya punya satu menu');
 });
+
+// ===== Laporan Izin Keluar (14 kolom) =====
+// Laporan terlebar yang ada. Yang diperiksa: penulis PDF & XLSX tetap
+// menghasilkan berkas yang bisa dibuka, dan kolom yang sempit dipotong —
+// bukan tumpang tindih atau merusak strukturnya.
+
+const laporanIzin = (over) => report(Object.assign({
+  jenis: 'izin',
+  jenisLabel: 'Izin Keluar',
+  judul: 'LAPORAN IZIN KELUAR / PULANG',
+  columns: ['Tanggal', 'Nama', 'Kelas', 'Keperluan', 'Tujuan', 'Jalur', 'Alasan Khusus', 'Status',
+    'Disetujui Oleh', 'Jam Setuju', 'Verifikator', 'Jam Keluar', 'Jam Kembali', 'Pencatat Kembali'],
+  rows: [
+    // Nama & kelas sengaja sepanjang data sungguhan — laporan ini yang paling
+    // rawan terpotong, jadi fixture-nya tidak boleh lebih pendek dari kenyataan.
+    ['14/01/2026', 'Muhammad Rizki Ramadhan', 'XI MIPA 3', 'kontrol ke puskesmas', 'Kembali', 'Normal', '', 'Selesai',
+      'Bu Kartina Dewi', '09:00', 'Pak Piket Pagi', '09:05', '11:30', 'Bu Piket Siang'],
+    ['15/01/2026', 'Siti Nurhaliza', 'XI IPS 1', 'dijemput orang tua', 'Pulang', 'Normal', '', 'Pulang',
+      'Pak Anwar', '10:00', 'Pak Piket Pagi', '10:10', '', ''],
+  ],
+  total: 2,
+}, over || {}));
+
+test('PDF laporan Izin Keluar: 14 kolom tetap menghasilkan berkas yang sah', () => {
+  const bytes = get('buildPdfBytes')(laporanIzin());
+  const text = asLatin1(bytes);
+  assert.match(text, /^%PDF-1\.4/);
+  assert.match(text, /%%EOF\s*$/);
+  assert.match(text, /LAPORAN IZIN KELUAR \/ PULANG/);
+  // Semua judul kolom tercetak UTUH — bukan sekadar awalannya.
+  laporanIzin().columns.forEach((c) => assert.ok(text.includes('(' + c + ') Tj'), 'judul kolom "' + c + '" terpotong/hilang'));
+  // Dan isi yang tidak boleh salah baca kalau terpotong: tanggal, nama, kelas.
+  ['14/01/2026', 'Muhammad Rizki Ramadhan', 'XI MIPA 3', '15/01/2026', 'Siti Nurhaliza', 'XI IPS 1']
+    .forEach((v) => assert.ok(text.includes('(' + v + ') Tj'), 'isi "' + v + '" terpotong — tanggal/nama/kelas yang terpotong = data salah baca'));
+});
+
+test('XLSX laporan Izin Keluar: 14 kolom & sel kosong tidak merusak arsip', () => {
+  const files = readZip(get('buildXlsxBytes')(laporanIzin()));
+  const sheet = files['xl/worksheets/sheet1.xml'];
+  assert.ok(sheet, 'sheet1.xml harus ada');
+  assert.match(sheet, /Pencatat Kembali/);
+  assert.match(sheet, /Muhammad Rizki Ramadhan/);
+  // Kolom ke-14 = N (A..N), jadi rentangnya harus mencapai N.
+  assert.match(sheet, /N\d+/);
+});
+
+test('laporan Izin Keluar tidak membawa asumsi pencetakan apa pun', () => {
+  const fmt = fs.readFileSync(path.join(ROOT, 'export-format.js'), 'utf8');
+  const exp = fs.readFileSync(path.join(ROOT, 'export-data.js'), 'utf8');
+  // PDF memang punya MediaBox (itu wajib ada di format PDF), tapi tidak boleh
+  // ada asumsi PERANGKAT cetak di mana pun.
+  [/bluetooth/i, /esc[-\/]?pos/i, /airprint/i, /window\.print/i, /thermal/i, /58mm/i, /80mm/i]
+    .forEach((pola) => {
+      assert.ok(!pola.test(fmt), 'export-format.js memuat asumsi printer: ' + pola);
+      assert.ok(!pola.test(exp), 'export-data.js memuat asumsi printer: ' + pola);
+    });
+});
+
+test('laporan sempit (<=10 kolom) tetap memakai ukuran huruf lama — laporan existing tidak berubah', () => {
+  const text = asLatin1(get('buildPdfBytes')(report()));
+  // 8.5 = PDF_FONT_SIZE, ukuran yang dipakai laporan 6-7 kolom sejak awal.
+  assert.match(text, /\/F1 8\.5 Tf/);
+  assert.ok(!/\/F1 7 Tf/.test(text), 'laporan sempit tidak boleh ikut mengecil');
+  // Laporan lebar yang mengecil.
+  const lebar = asLatin1(get('buildPdfBytes')(laporanIzin()));
+  assert.match(lebar, /\/F1 7 Tf/);
+});
+
+test('kolom yang isinya sangat panjang tetap dipotong — bukan meluber keluar halaman', () => {
+  const panjang = report({
+    rows: [['08/01/2026', 'Rahma', 'XI A', 'Atribut', 'Teguran Lisan', 'x'.repeat(400), 'Bu Kartina']],
+    total: 1,
+  });
+  const text = asLatin1(get('buildPdfBytes')(panjang));
+  assert.ok(!text.includes('x'.repeat(400)), 'isi raksasa harus dipotong');
+  assert.match(text, /x+\.\./);
+  // Tanggal & nama di baris yang sama tetap utuh.
+  assert.ok(text.includes('(08/01/2026) Tj'));
+  assert.ok(text.includes('(Rahma) Tj'));
+});

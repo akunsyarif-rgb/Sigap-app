@@ -18,6 +18,11 @@
            { key: 'pelanggaran', label: 'Pelanggaran', level: 'umum' },
            { key: 'surat', label: 'Surat/Izin', level: 'umum' },
            { key: 'upacara', label: 'Pelanggaran Upacara', level: 'umum' },
+           // Izin Keluar ikut aturan yang sama dengan jenis 'umum' lain:
+           // admin/BK semua kelas, wali kelas hanya kelas perwaliannya, guru
+           // biasa tidak dapat menu Export sama sekali. Tidak ada aturan
+           // cakupan baru yang dibuat untuknya.
+           { key: 'izin', label: 'Izin Keluar', level: 'umum' },
            { key: 'bimbingan', label: 'Bimbingan Khusus', level: 'bk' },
            { key: 'rekap', label: 'Rekap Siswa (gabungan)', level: 'umum' },
        ];

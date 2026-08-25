@@ -439,6 +439,41 @@ var EXPORT_JENIS = {
     columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Catatan', 'Dicatat Oleh'],
     map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[6])]; },
   },
+  // Izin Keluar / Pulang. Memakai sheet Izin_Keluar APA ADANYA (21 kolom,
+  // IZIN_HEADERS) — tidak ada kolom, sheet, atau field baru yang dibuat untuk
+  // export ini, dan tidak ada satu pun nilai yang dikarang: semuanya kolom
+  // yang memang sudah ditulis alur transaksinya.
+  //
+  // Yang SENGAJA tidak ikut, dan alasannya:
+  // - NISN (kolom B) : sama seperti SEMUA laporan lain di berkas ini —
+  //   identitas siswa di dalam berkas cukup Nama + Kelas (lihat catatan
+  //   panjang di atas). Konsisten, bukan pengecualian untuk izin.
+  // - ID_Izin (E), Disetujui_Oleh_ID (L), Diverifikasi_Oleh_ID (O),
+  //   Dicatat_Kembali_Oleh_ID (T), ID_Kelompok (U) : pengenal internal,
+  //   sekelas Dicatat_Oleh_ID yang juga sudah dikecualikan di mana-mana.
+  // - Waktu_Verifikasi (P) : bukan dihilangkan karena tidak penting, tapi
+  //   karena SELALU sama persis dengan Waktu_Keluar (Q) — keduanya distempel
+  //   pada detik yang sama oleh verifikasiIzinKeluar (dan oleh addIzinKeluar
+  //   pada jalur khusus). Menampilkan dua kolom berisi jam yang identik cuma
+  //   mempersempit kolom lain di PDF. Nama petugas verifikasinya TETAP ikut.
+  // - Timestamp (A) : nilainya sama dengan Waktu_Persetujuan (M) — dipakai
+  //   sekali sebagai kolom 'Tanggal' + 'Jam Persetujuan'.
+  izin: {
+    label: 'Izin Keluar', judul: 'LAPORAN IZIN KELUAR / PULANG', sheet: 'Izin_Keluar',
+    numCols: 21, tsIndex: 0, classIndex: 3, level: 'umum',
+    columns: [
+      'Tanggal', 'Nama', 'Kelas', 'Keperluan', 'Tujuan', 'Jalur', 'Alasan Khusus', 'Status',
+      'Disetujui Oleh', 'Jam Setuju', 'Verifikator', 'Jam Keluar', 'Jam Kembali', 'Pencatat Kembali',
+    ],
+    map: function (r) {
+      return [
+        formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[5]),
+        izinTujuanLabel(r[6]), izinJalurLabel(r[8]), asText(r[9]), asText(r[7]),
+        asText(r[10]), formatExportTime(r[12]), asText(r[13]), formatExportTime(r[16]),
+        formatExportTime(r[17]), asText(r[18]),
+      ];
+    },
+  },
   // Rekap Siswa BUKAN sheet baru: ini agregat dari empat sheet di atas
   // (kategori yang boleh dilihat pemanggil), dihitung server-side.
   rekap: {
@@ -679,12 +714,24 @@ var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah s
 var IZIN_COL_STATUS = 8; // kolom H (1-based)
 var IZIN_COL_KELOMPOK = 21; // kolom U (1-based)
 
-// Lima status, tidak tumpang tindih. 'Kembali' & 'Pulang' adalah HASIL AKHIR
-// yang berbeda (siswa balik ke sekolah vs tidak balik), 'Selesai' adalah
-// penutupan administratif atas keduanya.
+// Lima nilai status, tidak tumpang tindih — tapi ALUR NORMALNYA cuma
+// melewati EMPAT: Menunggu Verifikasi -> Sedang di Luar -> Selesai (siswa
+// balik), atau Menunggu Verifikasi -> Pulang (siswa tidak balik). Keduanya
+// FINAL dalam satu langkah, tidak ada penutupan administratif kedua.
+//
+// IZIN_STATUS_KEMBALI masih ada sebagai KONSTANTA (dibaca, bukan ditulis)
+// murni untuk baris lama yang sempat singgah di situ sebelum audit UX
+// Agustus 2026 menghapus langkah "Tutup transaksi" — lihat riwayat git kalau
+// perlu konteksnya. Kode BARU tidak pernah menulis status ini lagi:
+// tandaiKembaliIzinKeluar & tandaiKembaliKelompok di Code.gs sekarang
+// menulis IZIN_STATUS_SELESAI langsung, termasuk Waktu_Kembali + pencatatnya
+// di baris yang sama — tidak ada data yang hilang, cuma tidak ada lagi klik
+// kedua. 'Selesai' (siswa balik) dan 'Pulang' (siswa tidak balik) tetap
+// dibedakan lewat kolom Tujuan, BUKAN lewat nilai Status — jangan menyatukan
+// dua kolom itu jadi satu sumber kebenaran.
 var IZIN_STATUS_MENUNGGU = 'Menunggu Verifikasi';
 var IZIN_STATUS_DI_LUAR = 'Sedang di Luar';
-var IZIN_STATUS_KEMBALI = 'Kembali';
+var IZIN_STATUS_KEMBALI = 'Kembali'; // legacy — lihat komentar di atas, tidak ditulis lagi
 var IZIN_STATUS_PULANG = 'Pulang';
 var IZIN_STATUS_SELESAI = 'Selesai';
 // Status "masih berjalan" — selama salah satu ini masih menempel pada seorang
@@ -738,6 +785,32 @@ function izinKonteksLabel(konteks) {
   return konteks === IZIN_KONTEKS_WALI_KELAS ? 'Wali Kelas' : 'Guru Mapel';
 }
 
+// Label untuk laporan Export. Nilai yang tersimpan di sheet tetap 'kembali'/
+// 'pulang' dan 'normal'/'khusus' apa adanya — ini MURNI pemanis baca di
+// berkas laporan, tidak mengubah apa pun yang tertulis di Izin_Keluar dan
+// tidak dipakai di jalur transaksi mana pun. Nilai yang tidak dikenali
+// dikembalikan apa adanya, bukan dipaksa jadi salah satu label.
+//
+// Sengaja SATU KATA. Laporan izin adalah laporan terlebar yang ada (14 kolom)
+// dan lebar tiap kolom di PDF dibagi menurut isi terpanjangnya
+// (pdfColumnWidths, export-format.js): label sepanjang "Kembali ke sekolah"
+// di kolom yang cuma perlu membedakan dua nilai akan merampas ruang kolom
+// Nama sampai nama siswa terpotong jadi "R..". Judul kolomnya ("Tujuan",
+// "Jalur") yang menjelaskan artinya.
+function izinTujuanLabel(tujuan) {
+  var t = String(tujuan == null ? '' : tujuan).trim().toLowerCase();
+  if (t === IZIN_TUJUAN_KEMBALI) return 'Kembali';
+  if (t === IZIN_TUJUAN_PULANG) return 'Pulang';
+  return asText(tujuan);
+}
+
+function izinJalurLabel(jalur) {
+  var j = String(jalur == null ? '' : jalur).trim().toLowerCase();
+  if (j === IZIN_JALUR_NORMAL) return 'Normal';
+  if (j === IZIN_JALUR_KHUSUS) return 'Khusus';
+  return asText(jalur);
+}
+
 // ===== Siapa "Guru Piket" hari ini =====
 // TIDAK ada role baru: kewenangan piket dibaca dari Jadwal_Piket yang sudah
 // dipakai Beranda ("Guru Piket Hari Ini") dan dikelola admin lewat menu
@@ -763,12 +836,83 @@ function isPiketBertugas(ss, sessionUser, now) {
   return false;
 }
 
+// ===== Kapasitas verifikasi: Guru Piket vs BK/Kesiswaan (audit Agustus 2026) =====
+// Bug yang diperbaiki: sebelum ini, akun BK/Kesiswaan (atau admin) SELALU
+// boleh memverifikasi terlepas dari Jadwal_Piket, dan kartu/Audit Log
+// menuliskan "Guru Piket" untuk semua verifikasi tanpa membedakan — seorang
+// BK yang mengambil alih TANPA sedang piket tercatat seolah-olah dia memang
+// petugas piket hari itu. Keputusan produk TIDAK berubah (BK/admin tetap
+// boleh bertindak sebagai backup walau tidak piket, supaya sekolah tidak
+// terkunci kalau Jadwal_Piket kosong/piket berhalangan) — yang diperbaiki
+// HANYA kejujuran labelnya.
+//
+// Kapasitas ditentukan dari SESI + Jadwal_Piket HARI INI, bukan cuma role
+// akun: piket dicek LEBIH DULU, jadi guru biasa/wali kelas/BK/admin yang
+// KEBETULAN terjadwal piket hari ini semuanya bertindak sebagai "Guru Piket"
+// — persis kewenangan yang sudah ada sejak awal (isPiketBertugas), cuma
+// sekarang diberi nama eksplisit. Kalau tidak piket, baru jatuh ke BK/admin
+// sebagai kapasitas cadangan/pengambilalihan. Guru biasa & wali kelas yang
+// TIDAK piket tetap ditolak sepenuhnya, sama seperti sebelumnya.
+var IZIN_KAPASITAS_PIKET = 'guru_piket';
+var IZIN_KAPASITAS_BK = 'bk_kesiswaan';
+
+function izinKapasitasVerifikasi(ss, sessionUser, now) {
+  if (!sessionUser || isOsisRole(sessionUser.role)) return null;
+  if (isPiketBertugas(ss, sessionUser, now)) return IZIN_KAPASITAS_PIKET;
+  if (isBkRole(sessionUser.role)) return IZIN_KAPASITAS_BK; // admin + bk_kesiswaan, backup/pengambilalihan
+  return null;
+}
+
+function izinKapasitasLabel(kapasitas) {
+  if (kapasitas === IZIN_KAPASITAS_PIKET) return 'Guru Piket';
+  if (kapasitas === IZIN_KAPASITAS_BK) return 'BK/Kesiswaan';
+  return '';
+}
+
 // Kewenangan VERIFIKASI (dan penandaan "Kembali", dan jalur Izin Khusus).
 // Satu fungsi supaya ketiga aksi itu tidak pernah bisa jadi berbeda diam-diam.
+// Boolean-nya TIDAK berubah oleh audit kapasitas di atas — cuma dibangun di
+// atas fungsi yang sama supaya keduanya tidak pernah bisa berselisih.
 function canVerifyIzin(ss, sessionUser, now) {
-  if (!sessionUser || isOsisRole(sessionUser.role)) return false;
-  if (isBkRole(sessionUser.role)) return true; // admin + bk_kesiswaan
-  return isPiketBertugas(ss, sessionUser, now);
+  return izinKapasitasVerifikasi(ss, sessionUser, now) !== null;
+}
+
+// ===== Kapasitas HISTORIS untuk baris yang sudah tersimpan (tampilan kartu) =====
+// getIzinKeluar memakai ini untuk melabeli "Diverifikasi oleh:"/"Kembali
+// dicatat oleh:" pada SETIAP baris tanpa memindai Jadwal_Piket berulang per
+// baris — piketSet dibangun SEKALI (buildPiketHariSet) lalu dicocokkan ke
+// {hari dari timestamp aksi, id pelaku}.
+//
+// guruId yang TIDAK ketemu piket pada hari itu diasumsikan BK/Kesiswaan
+// (bukan dicek ulang lewat role Master_Guru): canVerifyIzin() menjamin itu
+// SATU-SATUNYA jalan lain untuk lolos otorisasi saat baris itu ditulis, jadi
+// kesimpulannya valid tanpa perlu pencarian role tambahan. Sama seperti label
+// Wali Kelas/Guru Mapel, ini cerminan Jadwal_Piket YANG BERLAKU SEKARANG,
+// bukan snapshot historis — kalau jadwal piket diubah sesudahnya, label lama
+// bisa ikut bergeser. Baris tanpa pelaku/timestamp (belum diverifikasi/belum
+// ditandai kembali) mengembalikan '' — TIDAK ditampilkan di kartu.
+function buildPiketHariSet(ss) {
+  var set = {};
+  var sheet = ss.getSheetByName('Jadwal_Piket');
+  if (!sheet) return set;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return set;
+  var rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var hari = String(rows[i][0]).trim();
+    var guruId = String(rows[i][1]).trim();
+    if (hari && guruId) set[hari + '|' + guruId] = true;
+  }
+  return set;
+}
+
+function izinKapasitasBaris(piketSet, guruId, timestamp) {
+  var id = String(guruId || '').trim();
+  if (!id || !timestamp) return '';
+  var d = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  if (isNaN(d.getTime())) return '';
+  var hari = hariPiketServer(d);
+  return (piketSet && piketSet[hari + '|' + id]) ? IZIN_KAPASITAS_PIKET : IZIN_KAPASITAS_BK;
 }
 
 // ===== Transisi status: DIVALIDASI DI SERVER =====
