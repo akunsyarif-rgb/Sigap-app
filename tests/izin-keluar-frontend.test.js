@@ -228,3 +228,35 @@ test('layar hanya menyebut pencetakan sebagai status BETA — tidak ada integras
     assert.doesNotMatch(semua, pola, 'tidak boleh ada asumsi perangkat/media cetak: ' + pola);
   });
 });
+
+test('layar persetujuan: mencatat pemberi persetujuan, tanpa klaim peran', () => {
+  const props = {
+    students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [], waliKelasMap: [], canVerify: false,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+  };
+  // stateOverrides idx 1 = formStudent -> form persetujuan terbuka.
+  const layar = JSON.stringify(get('IzinKeluarPanel')(props));
+
+  assert.ok(!layar.includes('Persetujuan Izin'), 'form belum terbuka, jadi judulnya belum tampil');
+
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const form = gerbang.split('{formStudent && (')[1];
+  assert.match(form, />Persetujuan Izin</);
+  assert.match(form, /Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini\./);
+  assert.match(form, /'Setujui Izin'/);
+  assert.match(form, />Batal</);
+});
+
+test('tidak ada isian yang meminta guru mengaku sebagai Guru Mapel / Wali Kelas', () => {
+  const src = ['gerbang.js', 'app.js'].map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  // Komentar dibuang dulu: menjelaskan KENAPA jadwal mengajar tidak ada justru
+  // hal yang diinginkan — yang dilarang adalah mekanismenya, bukan penjelasannya.
+  const kode = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  [/setPeran|peran:|sebagaiGuru|klaimPeran/, /jadwalMengajar|Jadwal_Mengajar|getJadwalMengajar/].forEach((pola) => {
+    assert.doesNotMatch(kode, pola, 'tidak boleh ada klaim/validasi peran mengajar: ' + pola);
+  });
+  // Penjelasannya sendiri HARUS ada — supaya tidak ada yang mengira ini kelupaan.
+  assert.match(src, /tidak punya data jadwal mengajar|tidak menyimpan jadwal mengajar/i);
+  const blokKirim = src.split("action: 'addIzinKeluar'")[1].split('};')[0];
+  assert.doesNotMatch(blokKirim, /peran|role|waliKelas/, 'payload persetujuan tidak membawa klaim peran');
+});

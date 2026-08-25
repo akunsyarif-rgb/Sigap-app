@@ -361,11 +361,18 @@
        // BERSTATUS untuk siswa yang meninggalkan lingkungan sekolah, dan baru
        // tertutup setelah siswa kembali (atau memang pulang).
        //
-       // Prosedur sekolah dipertahankan utuh: persetujuan Walas/Guru Mapel dulu
-       // (status "Menunggu Verifikasi"), baru verifikasi Guru Piket. Tombol di
-       // layar ini cuma mengikuti apa yang server izinkan — SEMUA kewenangan
+       // Prosedur sekolah dipertahankan utuh: persetujuan guru dulu (status
+       // "Menunggu Verifikasi"), baru verifikasi Guru Piket. Tombol di layar
+       // ini cuma mengikuti apa yang server izinkan — SEMUA kewenangan
        // ditegakkan ulang di server (canVerifyIzin di Utils.gs), jadi
        // menyembunyikan tombol di sini bukan pengamanannya.
+       //
+       // Yang dicatat pada tahap persetujuan adalah "guru yang memberikan
+       // persetujuan" — identitasnya diambil dari sesi login, bukan diklaim
+       // lewat isian. SIGAP TIDAK menyimpan jadwal mengajar per jam, jadi layar
+       // ini TIDAK PERNAH meminta guru memilih/mengaku sebagai "Guru Mapel jam
+       // ini" atau "Wali Kelas" sekadar untuk lolos validasi — klaim seperti
+       // itu tidak bisa diperiksa kebenarannya, jadi tidak ada gunanya diminta.
        //
        // Komponen terpisah dari GerbangTab supaya alur Terlambat/Surat yang
        // sudah dipakai tiap pagi tidak ikut tersentuh.
@@ -484,7 +491,7 @@
                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Izin Keluar · BETA</div>
                        <p className="text-[11px] text-amber-800 leading-relaxed">
-                           Alur tetap seperti prosedur sekolah: <strong>persetujuan Walas/Guru Mapel</strong> dulu, lalu <strong>verifikasi Guru Piket</strong>, baru siswa keluar.
+                           Alur tetap seperti prosedur sekolah: <strong>persetujuan guru</strong> dulu, lalu <strong>verifikasi Guru Piket</strong>, baru siswa keluar.
                        </p>
                        <p className="text-[11px] text-amber-800">Fitur pencetakan masih dalam tahap BETA.</p>
                    </div>
@@ -583,10 +590,18 @@
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
                                <div className="text-center">
                                    <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Buat Izin Keluar</h3>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Persetujuan Izin</h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{formStudent.name}</div>
                                    <div className="text-xs text-slate-500">{formStudent.class}</div>
                                </div>
+
+                               {/* Tidak ada isian "saya Guru Mapel / saya Wali Kelas" di
+                                   sini. SIGAP tidak punya data jadwal mengajar, jadi klaim
+                                   seperti itu tidak bisa diperiksa — yang dicatat cukup
+                                   siapa yang menyetujui (dari sesi) dan kapan. */}
+                               <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">
+                                   Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini.
+                               </p>
 
                                <div>
                                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Keperluan</label>
@@ -613,7 +628,7 @@
                                        <label className="flex items-start gap-2 cursor-pointer">
                                            <input type="checkbox" checked={jalurKhusus} onChange={(e) => setJalurKhusus(e.target.checked)} className="mt-0.5" />
                                            <span className="text-[11px] text-slate-600 leading-snug">
-                                               <strong className="text-crimson">Izin Khusus</strong> — Walas & Guru Mapel terkait tidak ada di sekolah dan keputusan harus diambil sekarang.
+                                               <strong className="text-crimson">Izin Khusus</strong> — guru yang menangani siswa ini tidak tersedia dan keputusan harus diambil sekarang.
                                            </span>
                                        </label>
                                        {jalurKhusus && (
@@ -630,7 +645,7 @@
                                {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
                                <Button onClick={submitIzin} disabled={saving || !keperluan.trim() || (jalurKhusus && !alasanKhusus.trim())} className="w-full">
-                                   {saving ? 'Menyimpan...' : (jalurKhusus ? 'Catat Izin Khusus' : 'Kirim untuk Verifikasi Piket')}
+                                   {saving ? 'Menyimpan...' : (jalurKhusus ? 'Catat Izin Khusus' : 'Setujui Izin')}
                                </Button>
                                <Button onClick={resetForm} variant="secondary" className="w-full">Batal</Button>
                            </div>

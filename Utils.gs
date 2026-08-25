@@ -636,12 +636,18 @@ function buildExportAuditDetail(jenis, periodeLabel, scopeLabel, format, total, 
 // tertutup setelah siswa kembali (atau memang pulang).
 //
 // Prosedur sekolah yang ditiru (TIDAK dipangkas jadi satu persetujuan):
-//   Walas / Guru Mapel  -> persetujuan awal
-//   Guru Piket          -> verifikasi akhir
+//   Guru yang memberikan persetujuan  -> persetujuan awal
+//   Guru Piket                        -> verifikasi akhir
 //   Siswa keluar
 // Dua tahap itu tetap dua tahap di sini: aksi 'addIzinKeluar' hanya mencatat
 // PERSETUJUAN (status 'Menunggu Verifikasi'), dan siswa baru dianggap keluar
 // setelah 'verifikasiIzinKeluar' dijalankan pihak yang berwenang.
+//
+// Istilahnya sengaja "guru yang memberikan persetujuan", BUKAN "guru mata
+// pelajaran pada jam tersebut": SIGAP tidak punya data jadwal mengajar (dan
+// tidak akan ditambahkan untuk fitur ini — jadwal aktual berubah
+// sewaktu-waktu), jadi peran seperti itu tidak bisa diverifikasi sistem. Yang
+// disimpan adalah identitas pemberi persetujuan dari SESI + waktunya.
 //
 // CETAK/SLIP: tidak ada apa pun soal printer di sini. Jenis printer, media,
 // ukuran kertas, dan cara koneksinya BELUM ditentukan sekolah, jadi tahap BETA

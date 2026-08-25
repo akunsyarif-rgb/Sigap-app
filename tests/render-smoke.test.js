@@ -116,7 +116,7 @@ const izinBase = { nisn: '111', name: 'Rahma', class: 'XI B', keperluan: 'kontro
 const izinMenunggu = { ...izinBase, id: 'IZ-1', timestamp: new Date().toISOString(), status: 'Menunggu Verifikasi' };
 const izinDiLuar = { ...izinBase, id: 'IZ-2', timestamp: new Date().toISOString(), status: 'Sedang di Luar', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString() };
 const izinKembali = { ...izinBase, id: 'IZ-3', timestamp: new Date().toISOString(), status: 'Kembali', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString(), waktu_kembali: new Date().toISOString(), dicatat_kembali_oleh: 'Bu Piket Siang' };
-const izinKhusus = { ...izinBase, id: 'IZ-4', timestamp: new Date().toISOString(), status: 'Pulang', tujuan: 'pulang', jalur: 'khusus', alasan_khusus: 'Walas & guru mapel tidak di sekolah', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString() };
+const izinKhusus = { ...izinBase, id: 'IZ-4', timestamp: new Date().toISOString(), status: 'Pulang', tujuan: 'pulang', jalur: 'khusus', alasan_khusus: 'Guru yang menangani siswa tidak di sekolah', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString() };
 const izinSemua = [izinMenunggu, izinDiLuar, izinKembali, izinKhusus];
 const izinHandlers = { onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {} };
 const manyLateLogs = [0, 10, 20].map((daysAgo) => ({ timestamp: new Date(Date.now() - daysAgo * 86400000).toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', type: 'Hujan', logged_by: 'Bu Kartina' }));
@@ -178,7 +178,7 @@ const cases = [
   ['IzinKeluarPanel (daftar kosong / prop belum datang)', { students: [student], izinList: undefined, canVerify: true, waliKelasMap: undefined, ...izinHandlers }, 'IzinKeluarPanel'],
   ['IzinKeluarPanel (hasil pencarian terbuka, siswa masih punya izin berjalan)', { students: [student], izinList: izinSemua, canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', ['Rah']],
   ['IzinKeluarPanel (form izin terbuka)', { students: [student], izinList: [], canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
-  ['IzinKeluarPanel (form izin khusus terbuka)', { students: [student], izinList: [], canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', [undefined, student, 'sakit', 'pulang', true, 'Walas tidak di sekolah']],
+  ['IzinKeluarPanel (form izin khusus terbuka)', { students: [student], izinList: [], canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', [undefined, student, 'sakit', 'pulang', true, 'Guru yang menangani siswa tidak di sekolah']],
   ['KartuIzinKeluar (menunggu verifikasi)', { izin: izinMenunggu, children: null }, 'KartuIzinKeluar'],
   ['KartuIzinKeluar (izin khusus, sudah pulang)', { izin: izinKhusus, children: null }, 'KartuIzinKeluar'],
   ['KartuIzinKeluar (sudah kembali)', { izin: izinKembali, children: null }, 'KartuIzinKeluar'],

@@ -97,18 +97,20 @@ Statusnya **BETA** karena masih tahap uji coba dan perangkat pencetakan slip bel
 
 | Langkah | Siapa | Yang terjadi di aplikasi |
 |---|---|---|
-| 1. Persetujuan | Wali kelas / guru mata pelajaran jam itu | Isi keperluan & pilih tujuan → status **Menunggu Verifikasi** |
+| 1. Persetujuan | Guru yang memberikan persetujuan | Isi keperluan & pilih tujuan → status **Menunggu Verifikasi** |
 | 2. Verifikasi | Guru piket yang bertugas hari itu | Tekan *Verifikasi* → siswa tercatat keluar |
 | 3. Siswa kembali | Guru/petugas piket yang sedang bertugas | Tekan *Tandai Kembali* → status **Kembali** |
 
-Persetujuan wali kelas/guru mapel **saja belum membuat siswa boleh keluar** — jam keluar baru dicatat saat guru piket memverifikasi.
+Persetujuan guru **saja belum membuat siswa boleh keluar** — jam keluar baru dicatat saat guru piket memverifikasi.
+
+**Kenapa tidak ada pilihan "saya Guru Mapel jam ini" atau "saya Wali Kelas"?** Karena SIGAP **tidak menyimpan jadwal mengajar guru per jam**, dan data itu memang sengaja tidak ditambahkan — jadwal sebenarnya di sekolah bisa berubah sewaktu-waktu, jadi aplikasi tidak akan pernah bisa memastikan siapa yang "seharusnya" mengajar di jam itu. Meminta guru mengaku begitu hanya akan jadi formalitas yang tidak bisa dicek kebenarannya. Jadi yang dilakukan aplikasi cukup ini: mencatat **siapa yang memberikan persetujuan** (diambil dari akun yang sedang login, bukan diketik) dan **kapan**. Di layar persetujuan tertulis apa adanya: *"Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini."* Siapa yang pantas memberi persetujuan tetap ditentukan prosedur sekolah — SIGAP mencatat, bukan menghakimi.
 
 **Dua pilihan tujuan saat izin dibuat:**
 
 - **Kembali ke sekolah** — setelah diverifikasi, siswa berstatus *Sedang di Luar* sampai ada petugas piket yang menandainya kembali. Yang menandai **tidak harus** orang yang tadi memberi izin, jadi pergantian guru piket di hari yang sama tidak jadi masalah.
 - **Pulang / tidak kembali** — setelah diverifikasi, transaksinya langsung selesai. Siswa yang izin pulang **tidak bisa** ditandai kembali, dan siswa yang sudah ditandai kembali tidak bisa ditandai kembali dua kali.
 
-**Izin Khusus (jalur pengecualian).** Kadang wali kelas dan guru mapel terkait sama-sama tidak ada di sekolah sementara kondisi siswa butuh keputusan saat itu juga. Untuk keadaan itu, guru piket yang bertugas (juga BK/Admin) bisa memakai jalur **Izin Khusus**. Aplikasi **tidak** menuliskan seolah-olah wali kelas atau guru mapel sudah menyetujui: transaksinya ditandai jelas sebagai *Izin Khusus* atas nama petugas yang mengambil keputusan, **alasan pengecualiannya wajib diisi**, dan semuanya masuk Audit Log. Jalur ini untuk keadaan yang memang tidak bisa menunggu — bukan jalan pintas kalau prosedur normal masih bisa ditempuh.
+**Izin Khusus (jalur pengecualian).** Kadang guru yang biasa menangani siswa itu tidak ada di sekolah sementara kondisi siswa butuh keputusan saat itu juga. Untuk keadaan itu, guru piket yang bertugas (juga BK/Admin) bisa memakai jalur **Izin Khusus**. Aplikasi **tidak** menuliskan seolah-olah ada guru lain yang sudah menyetujui: transaksinya ditandai jelas sebagai *Izin Khusus* atas nama petugas yang mengambil keputusan, **alasan pengecualiannya wajib diisi**, dan semuanya masuk Audit Log. Jalur ini untuk keadaan yang memang tidak bisa menunggu — bukan jalan pintas kalau prosedur normal masih bisa ditempuh.
 
 **Halaman utamanya** menampilkan tiga kelompok yang memang ditanyakan sepanjang hari: **Menunggu Verifikasi**, **Sedang di Luar**, dan **Selesai Hari Ini**. Satu siswa tidak bisa punya dua izin keluar yang berjalan bersamaan, jadi tombol yang tertekan dua kali tidak menghasilkan dua catatan.
 
@@ -243,11 +245,11 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar · BETA**.
 2. Cari dan pilih siswanya. (Kalau siswa itu masih punya izin yang berjalan, namanya tidak bisa dipilih lagi.)
 3. Isi **keperluan**, lalu pilih tujuan: **Kembali ke sekolah** atau **Pulang / tidak kembali**.
-4. Tekan **Kirim untuk Verifikasi Piket**. Statusnya jadi *Menunggu Verifikasi* — siswa **belum boleh keluar**.
+4. Tekan **Setujui Izin**. Anda tercatat sebagai pihak yang memberikan persetujuan; statusnya jadi *Menunggu Verifikasi* — siswa **belum boleh keluar**.
 5. **Guru piket** membuka layar yang sama, melihat izin itu di daftar *Menunggu Verifikasi*, lalu menekan **Verifikasi & Siswa Keluar**.
 6. Kalau tujuannya kembali ke sekolah: begitu siswa datang lagi, petugas piket yang sedang bertugas menekan **Tandai Kembali** pada namanya di daftar *Sedang di Luar*.
 
-*Kalau wali kelas dan guru mapel benar-benar tidak ada di sekolah:* guru piket mencentang **Izin Khusus** di langkah 3, mengisi **alasan pengecualian**, lalu menyimpan. Aplikasi menampilkan penegasan bahwa ini pengecualian dan akan tercatat sebagai Izin Khusus.
+*Kalau guru yang menangani siswa itu benar-benar tidak ada di sekolah:* guru piket mencentang **Izin Khusus** di langkah 3, mengisi **alasan pengecualian**, lalu menyimpan. Aplikasi menampilkan penegasan bahwa ini pengecualian dan akan tercatat sebagai Izin Khusus.
 
 ### 5.4 Mencatat Pelanggaran Tata Tertib
 
@@ -316,7 +318,7 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 - Presensi kehadiran harian lengkap seluruh kelas (SIGAP mencatat keterlambatan dan surat izin/sakit, bukan absensi tiap jam pelajaran).
 - Jurnal mengajar, tugas, penilaian, dan rapor.
 - Kas kelas, inventaris kelas, dan pencatatan prestasi siswa.
-- Jadwal pelajaran (yang ada adalah **jadwal piket guru**).
+- Jadwal pelajaran / jadwal mengajar guru per jam (yang ada adalah **jadwal piket guru**). Karena itu aplikasi juga tidak memverifikasi siapa guru mata pelajaran pada jam tertentu — lihat penjelasan di bagian Izin Keluar.
 - Aplikasi khusus siswa atau orang tua, dan pengumuman ke siswa.
 - Aplikasi Android/iOS di toko aplikasi — SIGAP dibuka lewat **browser**.
 - **Cetak slip izin keluar.** Fitur Izin Keluar masih BETA dan seluruhnya digital; jenis printer, cara koneksi, media, dan ukuran slipnya belum ditentukan sekolah, jadi belum dirancang sama sekali.

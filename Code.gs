@@ -614,14 +614,22 @@ function doPost(e) {
     // (lihat blok IZIN di Utils.gs). Semuanya berjalan di dalam script lock
     // global doPost, jadi dua permintaan bersamaan tidak bisa lolos berdua.
 
-    // ---- Langkah 1: PERSETUJUAN awal (Walas / Guru Mapel).
+    // ---- Langkah 1: PERSETUJUAN awal oleh GURU YANG MEMBERIKAN PERSETUJUAN.
     // Ini BUKAN izin keluar yang sah — hasilnya 'Menunggu Verifikasi'. Siswa
-    // baru boleh keluar setelah Guru Piket memverifikasi (langkah 2). Sistem
-    // ini tidak punya pemetaan jadwal mengajar, jadi "Guru Mapel jam ini"
-    // tidak bisa dibuktikan datanya — yang dicatat adalah SIAPA yang menyetujui
-    // (nama + ID dari sesi, bukan klaim dari klien), dan itulah kewenangan
-    // yang memang sudah ada di SIGAP. Jangan mengarang pemetaan jam mengajar
-    // hanya supaya pengecekannya terlihat lebih ketat.
+    // baru boleh keluar setelah Guru Piket memverifikasi (langkah 2).
+    //
+    // Yang direkam di sini adalah SIAPA yang memberikan persetujuan (nama + ID
+    // dari SESI, bukan klaim dari klien) dan KAPAN — tidak lebih dari itu.
+    // SIGAP memang TIDAK menyimpan jadwal mengajar per jam, dan itu keputusan
+    // yang disengaja: jadwal aktual di sekolah berubah sewaktu-waktu, sehingga
+    // "guru mata pelajaran jam ini" tidak bisa diverifikasi dari data mana pun
+    // yang dimiliki sistem ini. Karena itu:
+    //   - JANGAN membuat sheet/mapping/endpoint jadwal mengajar untuk fitur ini;
+    //   - JANGAN meminta klien mengirim klaim peran ("saya wali kelasnya",
+    //     "saya guru mapel jam ini") — klaim yang tidak bisa diperiksa hanya
+    //     menciptakan kesan aman yang palsu;
+    //   - JANGAN membuat role baru; kewenangan yang dipakai adalah yang sudah
+    //     ada di SIGAP (non-OSIS boleh menyetujui, Guru Piket memverifikasi).
     if (action === 'addIzinKeluar') {
       if (isOsisRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
@@ -642,7 +650,7 @@ function doPost(e) {
 
       // ---- Jalur khusus: hanya untuk yang berwenang memverifikasi (Guru Piket
       // bertugas hari ini / BK / Admin), dan WAJIB beralasan.
-      // Jalur ini TIDAK memalsukan persetujuan Walas/Guru Mapel: kolom
+      // Jalur ini TIDAK memalsukan persetujuan guru mana pun: kolom
       // Disetujui_Oleh diisi nama petugas piket itu sendiri dan kolom Jalur
       // ditandai 'khusus' + alasannya disimpan, sehingga transaksi ini tidak
       // pernah bisa dibaca sebagai persetujuan normal.
@@ -676,7 +684,7 @@ function doPost(e) {
       }
 
       // Jalur khusus = petugas piket menyetujui DAN memverifikasi sekaligus
-      // (itu memang keadaannya: Walas & Guru Mapel tidak ada di tempat), jadi
+      // (itu memang keadaannya: guru yang menangani siswa tidak tersedia), jadi
       // siswa langsung tercatat keluar. Jalur normal berhenti di 'Menunggu
       // Verifikasi' — dua tahap tetap dua tahap.
       var izinStatusAwal = izinJalur === IZIN_JALUR_KHUSUS ? izinStatusSetelahVerifikasi(izinTujuan) : IZIN_STATUS_MENUNGGU;

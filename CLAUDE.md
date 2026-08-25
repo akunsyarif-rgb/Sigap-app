@@ -371,7 +371,7 @@ see the long note on `ROLES` in `config.js`) and not a new role.
 The school's two-step procedure is kept as two steps and must stay that way:
 
 ```
-Walas / Guru Mapel -> persetujuan   |  addIzinKeluar      -> "Menunggu Verifikasi"
+Guru pemberi persetujuan -> persetujuan | addIzinKeluar     -> "Menunggu Verifikasi"
 Guru Piket         -> verifikasi    |  verifikasiIzinKeluar -> "Sedang di Luar" / "Pulang"
 siswa kembali                       |  tandaiKembaliIzinKeluar -> "Kembali"
 penutupan                           |  selesaikanIzinKeluar -> "Selesai"
@@ -391,18 +391,24 @@ buckets (Menunggu Verifikasi / Sedang di Luar / Selesai Hari Ini) are a
 Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
 (`Utils.gs`), with hidden buttons never being the gate:
 
-- **approve** (`addIzinKeluar`, jalur normal) → any non-OSIS teacher. There is
-  no teaching-schedule mapping in this system, so "the Guru Mapel of that
-  hour" is not provable from data — what gets recorded is *who* approved
-  (name + id from the session). Don't invent a schedule mapping to make the
-  check look stricter.
+- **approve** (`addIzinKeluar`, jalur normal) → any non-OSIS teacher, recorded
+  as *"guru yang memberikan persetujuan"*. This system deliberately holds **no
+  teaching-schedule data** and none will be added for this feature — the real
+  timetable changes at short notice, so "the teacher of that hour" is not
+  provable from anything SIGAP has. What gets recorded is *who* approved
+  (name + id from the **session**) and *when*, nothing more. Don't invent a
+  schedule sheet/mapping/endpoint, don't add a role, and don't ask the client
+  to send a role claim ("I'm the wali kelas / the teacher of this hour") — an
+  unverifiable claim only buys false confidence. The UI says the plain truth
+  instead: "Anda akan tercatat sebagai pihak yang memberikan persetujuan izin
+  ini.
 - **verify / mark returned / close** → the Guru Piket **on duty today**, read
   from the existing `Jadwal_Piket` sheet, plus admin/BK (also the fallback
   when `Jadwal_Piket` is empty, otherwise nobody could verify at all).
   Re-evaluated *per action*, so a shift change on the same day just works and
   whoever marks a student back need not be who approved or verified.
 - **Izin Khusus** (`jalur: 'khusus'`) → same authority as verify, and the
-  `Alasan_Khusus` is mandatory. It does **not** forge a Walas/Guru Mapel
+  `Alasan_Khusus` is mandatory. It does **not** forge anyone else's
   approval: `Disetujui_Oleh` holds the piket teacher's own name, `Jalur` is
   stamped `khusus`, and an exception reason sent on a *normal* row is
   discarded so a normal row can never read as an exception.

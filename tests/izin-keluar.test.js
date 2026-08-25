@@ -6,9 +6,16 @@
 // dipindah ke frontend, file ini merah.
 //
 // Prosedur yang dijaga (SAMA dengan prosedur sekolah, tidak dipangkas):
-//   Walas / Guru Mapel -> persetujuan  ->  Guru Piket -> verifikasi  ->  keluar
-// Jalur khusus (Walas & Guru Mapel tidak di sekolah) TIDAK memalsukan
+//   Guru pemberi persetujuan -> persetujuan  ->  Guru Piket -> verifikasi -> keluar
+// Jalur khusus (guru yang menangani siswa tidak tersedia) TIDAK memalsukan
 // persetujuan siapa pun: ia tercatat eksplisit sebagai 'khusus' + alasannya.
+//
+// Istilah yang dipakai adalah "guru yang memberikan persetujuan" — BUKAN "guru
+// mapel pada jam tersebut". SIGAP tidak punya data jadwal mengajar dan tidak
+// akan menambahkannya (jadwal aktual berubah sewaktu-waktu), jadi peran
+// seperti itu tidak bisa diverifikasi; yang diuji di sini adalah bahwa server
+// merekam identitas pemberi persetujuan DARI SESI, dan tidak pernah menerima
+// klaim peran dari klien.
 //
 // TIDAK ADA satu pun test di sini yang menyentuh printer/pencetakan — jenis
 // printer, media, ukuran, dan cara koneksinya memang belum ditentukan sekolah.
@@ -82,11 +89,11 @@ const USERS = {
   bk: { id: 'G01', name: 'Bu BK', role: 'bk_kesiswaan', jabatan: '', waliKelas: '' },
   // Wali kelas XI B — pemberi persetujuan jalur normal untuk anak perwaliannya.
   wali: { id: 'G02', name: 'Bu Kartina', role: 'guru', jabatan: '', waliKelas: 'XI B' },
-  // Guru mata pelajaran (bukan wali kelas, bukan piket) — pemberi persetujuan
-  // normal juga. SIGAP tidak punya pemetaan jadwal mengajar, jadi "guru mapel
-  // jam ini" memang tidak bisa dibuktikan datanya; yang dicatat siapa yang
-  // menyetujui. Lihat catatan di action addIzinKeluar (Code.gs).
-  mapel: { id: 'G03', name: 'Pak Anwar', role: 'guru', jabatan: '', waliKelas: '' },
+  // Guru biasa yang BUKAN wali kelas siswa terkait dan bukan piket — tetap sah
+  // memberikan persetujuan. SIGAP tidak punya data jadwal mengajar, jadi tidak
+  // ada peran "guru mapel jam ini" yang bisa diverifikasi; yang dicatat adalah
+  // siapa yang menyetujui. Lihat catatan di action addIzinKeluar (Code.gs).
+  pemberiIzin: { id: 'G03', name: 'Pak Anwar', role: 'guru', jabatan: '', waliKelas: '' },
   piketPagi: { id: 'G10', name: 'Pak Piket Pagi', role: 'guru', jabatan: '', waliKelas: '' },
   piketSiang: { id: 'G11', name: 'Bu Piket Siang', role: 'guru', jabatan: '', waliKelas: '' },
   // Guru yang TIDAK piket hari ini (piket di hari lain) — tidak boleh
@@ -197,11 +204,11 @@ const setujui = (s, who, nisn, tujuan, keperluan) =>
 // 1-2. ALUR NORMAL: dua tahap tetap dua tahap
 // ============================================================
 
-test('alur normal Walas -> Piket -> keluar', () => {
+test('alur normal: persetujuan wali kelas -> verifikasi Piket -> keluar', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
   assert.equal(buat.status, 'success');
-  // Persetujuan Walas SAJA belum membuat siswa boleh keluar.
+  // Persetujuan guru SAJA belum membuat siswa boleh keluar.
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   let row = s.izinById(buat.id);
   assert.equal(row[10], 'Bu Kartina', 'pemberi persetujuan tercatat');
@@ -218,10 +225,12 @@ test('alur normal Walas -> Piket -> keluar', () => {
   assert.ok(row[16], 'waktu keluar terisi saat verifikasi, bukan saat persetujuan');
 });
 
-test('alur normal Guru Mapel -> Piket -> keluar', () => {
+test('alur normal: persetujuan guru NON-wali-kelas -> verifikasi Piket -> keluar', () => {
   const s = loadServer();
-  // Guru mapel bukan wali kelas siswa ini — persetujuan tetap sah.
-  const buat = setujui(s, 'mapel', '3003', 'kembali', 'lomba di luar sekolah');
+  // Pak Anwar bukan wali kelas siswa ini dan tidak punya hubungan yang bisa
+  // dibuktikan sistem dengan jam pelajaran saat itu — persetujuannya tetap sah,
+  // dan yang tersimpan adalah namanya sebagai pemberi persetujuan.
+  const buat = setujui(s, 'pemberiIzin', '3003', 'kembali', 'lomba di luar sekolah');
   assert.equal(buat.status, 'success');
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.izinById(buat.id)[10], 'Pak Anwar');
@@ -279,7 +288,7 @@ test('yang menandai kembali TIDAK harus pemberi izin — cukup petugas berwenang
 test('pergantian Guru Piket hari yang sama: keduanya berwenang, yang bukan piket tidak', () => {
   const s = loadServer();
   const a = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  const b = setujui(s, 'mapel', '2002', 'kembali', 'urusan keluarga');
+  const b = setujui(s, 'pemberiIzin', '2002', 'kembali', 'urusan keluarga');
 
   // Shift pagi memverifikasi transaksi pertama...
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id }).status, 'success');
@@ -304,7 +313,7 @@ test('Izin Khusus: hanya petugas berwenang, dan tidak memalsukan persetujuan sia
   const khusus = s.post('piketPagi', {
     action: 'addIzinKeluar', nisn: '3003', tujuan: 'pulang',
     keperluan: 'sakit, harus segera dijemput', jalur: 'khusus',
-    alasan_khusus: 'Wali kelas & guru mapel tidak ada di sekolah, siswa demam tinggi',
+    alasan_khusus: 'Guru yang menangani siswa tidak ada di sekolah, siswa demam tinggi',
   });
   assert.equal(khusus.status, 'success');
   // Jalur khusus = petugas piket menyetujui sekaligus memverifikasi, jadi
@@ -315,7 +324,7 @@ test('Izin Khusus: hanya petugas berwenang, dan tidak memalsukan persetujuan sia
   assert.equal(row[8], 'khusus', 'jalur ditandai eksplisit');
   assert.equal(row[10], 'Pak Piket Pagi', 'pemberi persetujuan = petugas piket itu sendiri');
   assert.equal(row[13], 'Pak Piket Pagi', 'pemberi verifikasi = orang yang sama');
-  // Tidak ada nama Walas/Guru Mapel yang ditempelkan di baris ini.
+  // Tidak ada nama guru lain yang ditempelkan seolah ikut menyetujui.
   assert.ok(!JSON.stringify(row).includes('Bu Kartina'));
   assert.ok(!JSON.stringify(row).includes('Pak Anwar'));
 });
@@ -331,14 +340,14 @@ test('Izin Khusus WAJIB mencatat alasan pengecualian', () => {
 
   const oke = s.post('piketPagi', {
     action: 'addIzinKeluar', nisn: '3003', tujuan: 'pulang', keperluan: 'sakit',
-    jalur: 'khusus', alasan_khusus: 'Walas & guru mapel tidak di tempat',
+    jalur: 'khusus', alasan_khusus: 'Guru yang menangani siswa tidak di tempat',
   });
-  assert.equal(s.izinById(oke.id)[9], 'Walas & guru mapel tidak di tempat');
+  assert.equal(s.izinById(oke.id)[9], 'Guru yang menangani siswa tidak di tempat');
 });
 
 test('Izin Khusus tertutup untuk yang tidak berwenang, dan alasan tidak menempel di jalur normal', () => {
   const s = loadServer();
-  const tolak = s.post('mapel', {
+  const tolak = s.post('pemberiIzin', {
     action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'x',
     jalur: 'khusus', alasan_khusus: 'saya buru-buru',
   });
@@ -347,7 +356,7 @@ test('Izin Khusus tertutup untuk yang tidak berwenang, dan alasan tidak menempel
 
   // Alasan pengecualian yang dikirim pada transaksi NORMAL tidak disimpan —
   // kalau ikut tersimpan, baris normal bisa terbaca seolah pengecualian.
-  const normal = s.post('mapel', {
+  const normal = s.post('pemberiIzin', {
     action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol',
     jalur: 'normal', alasan_khusus: 'ini bukan pengecualian',
   });
@@ -389,7 +398,7 @@ test('guru non-piket boleh MENYETUJUI tapi tidak boleh memverifikasi/menutup', (
 test('admin & BK selalu berwenang memverifikasi, termasuk saat Jadwal_Piket kosong', () => {
   const s = loadServer({ tanpaJadwalPiket: true });
   const a = setujui(s, 'wali', '1001');
-  const b = setujui(s, 'mapel', '2002');
+  const b = setujui(s, 'pemberiIzin', '2002');
   assert.equal(s.post('admin', { action: 'verifikasiIzinKeluar', id: a.id }).status, 'success');
   assert.equal(s.post('bk', { action: 'verifikasiIzinKeluar', id: b.id }).status, 'success');
   // Tanpa jadwal piket, guru biasa memang tidak punya kewenangan itu.
@@ -443,7 +452,7 @@ test('double submit tidak membuat transaksi ganda', () => {
 
   // Juga saat siswanya sudah di luar (bukan cuma saat menunggu verifikasi).
   s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: pertama.id });
-  const ketiga = setujui(s, 'mapel', '1001', 'pulang', 'dijemput');
+  const ketiga = setujui(s, 'pemberiIzin', '1001', 'pulang', 'dijemput');
   assert.equal(ketiga.status, 'error');
   assert.match(ketiga.message, /masih di luar/i);
   assert.equal(s.izinRows().length, jumlahAwal + 1);
@@ -464,7 +473,7 @@ test('double submit tidak membuat transaksi ganda', () => {
 
 test('nama, kelas, dan status dari klien tidak dipercaya', () => {
   const s = loadServer();
-  const buat = s.post('mapel', {
+  const buat = s.post('pemberiIzin', {
     action: 'addIzinKeluar', nisn: '1001',
     name: 'Nama Karangan', class_name: 'XII C', // diabaikan — diambil dari Master_Siswa
     status: 'Sedang di Luar',                    // diabaikan — status ditentukan server
@@ -528,12 +537,12 @@ test('Izin Khusus tercatat sebagai jalur khusus + alasannya di Audit_Log', () =>
   const s = loadServer();
   s.post('piketPagi', {
     action: 'addIzinKeluar', nisn: '3003', tujuan: 'pulang', keperluan: 'sakit',
-    jalur: 'khusus', alasan_khusus: 'Walas & guru mapel tidak ada di sekolah',
+    jalur: 'khusus', alasan_khusus: 'Guru yang menangani siswa tidak ada di sekolah',
   });
   const baris = s.auditRows().find((r) => r[3] === 'Izin Keluar Khusus');
   assert.ok(baris, 'aksi jalur khusus tidak boleh tercatat dengan nama yang sama seperti jalur normal');
   assert.match(String(baris[4]), /jalur=khusus/);
-  assert.match(String(baris[4]), /Walas & guru mapel tidak ada di sekolah/);
+  assert.match(String(baris[4]), /Guru yang menangani siswa tidak ada di sekolah/);
   assert.equal(baris[1], 'Pak Piket Pagi');
 });
 
@@ -566,13 +575,13 @@ test('getIzinKeluar: transaksi BERJALAN terlihat semua guru (petugas piket harus
 
   // Pak Anwar bukan wali kelas XII C dan bukan yang menyetujui, tapi transaksi
   // ini masih berjalan — sama seperti "hari ini seluruh sekolah" pada alur gerbang.
-  const daftar = ringkas(s.get('mapel', { action: 'getIzinKeluar' }).izin);
+  const daftar = ringkas(s.get('pemberiIzin', { action: 'getIzinKeluar' }).izin);
   assert.ok(daftar.includes('Citra/XII C/Sedang di Luar'));
 });
 
 test('getIzinKeluar: riwayat TERTUTUP tidak memperluas hak baca guru biasa', () => {
   const s = loadServer();
-  const daftar = ringkas(s.get('mapel', { action: 'getIzinKeluar' }).izin);
+  const daftar = ringkas(s.get('pemberiIzin', { action: 'getIzinKeluar' }).izin);
   // Dua baris fixture dari hari-hari sebelumnya (sudah Selesai) tidak boleh ikut.
   assert.ok(!daftar.includes('Rahma/XI B/Selesai'));
   assert.ok(!daftar.includes('Citra/XII C/Selesai'));
@@ -591,7 +600,7 @@ test('getIzinKeluar: wali kelas melihat riwayat kelasnya, bukan kelas lain', () 
 test('getIzinKeluar: cache mentah & global — daftar satu guru tidak bocor ke guru lain', () => {
   const s = loadServer();
   // Guru biasa memanggil DULU (mengisi cache), baru admin.
-  const guru = s.get('mapel', { action: 'getIzinKeluar' });
+  const guru = s.get('pemberiIzin', { action: 'getIzinKeluar' });
   const adm = s.get('admin', { action: 'getIzinKeluar' });
   assert.ok(guru.izin.length < adm.izin.length, 'hasil guru biasa lebih sempit');
   assert.equal(adm.izin.length, IZIN_FIXTURE.length, 'admin tidak menerima sisa hasil filter guru');
@@ -635,4 +644,52 @@ test('penanda versi backend ikut naik & menyebut fitur baru', () => {
   assert.ok(ping.features.includes('izinKeluar'), 'status ping harus bisa membedakan deployment lama & baru');
   // Fitur lama tidak boleh hilang dari daftar.
   ['exportData', 'scopedLogs', 'adminOnlyAuditLog'].forEach((f) => assert.ok(ping.features.includes(f)));
+});
+
+// ============================================================
+// 16. TIDAK ADA MEKANISME JADWAL MENGAJAR — dan tidak boleh ada
+// ============================================================
+// Keputusan yang disengaja: jadwal mengajar aktual berubah sewaktu-waktu, jadi
+// "guru mata pelajaran pada jam tersebut" TIDAK bisa diverifikasi sistem ini.
+// Yang direkam cukup identitas pemberi persetujuan (dari sesi) + waktunya.
+// Test ini yang menahan supaya nanti tidak ada yang "melengkapi" fitur ini
+// dengan sheet/mapping/endpoint jadwal mengajar atau role baru.
+
+test('server tidak punya sheet/mapping/endpoint jadwal mengajar', () => {
+  const src = ['Utils.gs', 'Code.gs'].map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  [/Jadwal_Mengajar/i, /jadwalMengajar/i, /jam_?mengajar/i, /getJadwalMengajar/i, /mapel[A-Z_]/].forEach((pola) => {
+    assert.doesNotMatch(src, pola, 'tidak boleh ada mekanisme jadwal mengajar: ' + pola);
+  });
+  // Kewenangan piket tetap dari mekanisme yang SUDAH ADA, bukan yang baru.
+  assert.match(src, /getSheetByName\('Jadwal_Piket'\)/);
+});
+
+test('persetujuan tidak membaca klaim peran apa pun dari klien', () => {
+  const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  const blok = code.split("if (action === 'addIzinKeluar')")[1].split("if (action === 'verifikasiIzinKeluar')")[0];
+  // Satu-satunya field yang dibaca dari body permintaan.
+  const dibaca = [...new Set((blok.match(/data\.[a-zA-Z_]+/g) || []))].sort();
+  assert.deepEqual(dibaca, ['data.alasan_khusus', 'data.jalur', 'data.keperluan', 'data.nisn', 'data.tujuan']);
+  // Identitas pemberi persetujuan datang dari SESI, bukan dari klien.
+  assert.match(blok, /sessionUser\.name/);
+  assert.match(blok, /sessionUser\.id/);
+});
+
+test('klaim peran yang tetap dikirim klien tidak mengubah apa pun', () => {
+  const s = loadServer();
+  // Guru biasa mengaku-ngaku wali kelas / guru mapel jam itu. Tidak ada
+  // pengaruhnya: hasilnya sama persis dengan permintaan tanpa klaim apa pun,
+  // dan yang tersimpan tetap identitas sesinya.
+  const buat = s.post('pemberiIzin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol',
+    peran: 'wali_kelas', role: 'admin', sebagai: 'Guru Mapel', jamKe: 3, waliKelas: 'XI B',
+  });
+  assert.equal(buat.status, 'success');
+  const row = s.izinById(buat.id);
+  assert.equal(row[10], 'Pak Anwar', 'pemberi persetujuan tetap dari sesi');
+  assert.equal(row[11], 'G03');
+  assert.equal(row[7], 'Menunggu Verifikasi', 'klaim peran tidak mempercepat satu langkah pun');
+  // Tidak ada satu pun klaim itu yang ikut tersimpan ke baris.
+  assert.ok(!JSON.stringify(row).includes('wali_kelas'));
+  assert.ok(!JSON.stringify(row).includes('Guru Mapel'));
 });
