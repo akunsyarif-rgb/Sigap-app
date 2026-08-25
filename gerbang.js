@@ -138,6 +138,12 @@
                });
            };
 
+           // Badge sakelar Izin Keluar — "pekerjaan yang menunggu SAYA", bukan
+           // penghitung seluruh transaksi. Lihat hitungIzinMenungguVerifikasi
+           // (helpers.js) untuk aturan lengkapnya & kenapa fungsi yang sama
+           // dipakai lagi di ringkasan Beranda (DashboardTab).
+           const izinBadge = hitungIzinMenungguVerifikasi(izinList, kelompokList, canVerifyIzin);
+
            return (
                <div className="space-y-5 animate-rise">
                    {/* Mode ketiga (Izin Keluar) menumpang sakelar yang SUDAH ADA di
@@ -148,9 +154,20 @@
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 mt-6">
                        <button onClick={() => setMode('terlambat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
                        <button onClick={() => setMode('surat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
-                       <button onClick={() => setMode('izin')} className={`py-2.5 px-2 rounded-xl text-xs font-bold transition leading-tight ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
+                       <button onClick={() => setMode('izin')} className={`relative py-2.5 px-2 rounded-xl text-xs font-bold transition leading-tight ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
                            Izin Keluar
                            <span className={`block text-[8px] font-bold uppercase tracking-widest mt-0.5 ${mode === 'izin' ? 'text-white/80' : 'text-amber-600'}`}>Beta</span>
+                           {/* Badge = pekerjaan yang menunggu SAYA (Menunggu
+                               Verifikasi yang memang boleh saya proses), BUKAN
+                               total transaksi izin keluar — "Sedang di Luar"
+                               sengaja tidak dihitung, itu kondisi operasional
+                               bukan pekerjaan baru. count=0 -> badge disembunyikan
+                               total, bukan menampilkan "0". */}
+                           {izinBadge > 0 && (
+                               <span className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold leading-none shadow-sm ${mode === 'izin' ? 'bg-white text-sky' : 'bg-crimson text-white'}`}>
+                                   {izinBadge > 99 ? '99+' : izinBadge}
+                               </span>
+                           )}
                        </button>
                    </div>
 

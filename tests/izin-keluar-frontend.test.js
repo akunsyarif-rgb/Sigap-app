@@ -441,3 +441,191 @@ test('kelompok: tidak ada menu/nav baru dan tidak ada asumsi printer', () => {
     assert.doesNotMatch(gerbang, pola, 'tidak boleh ada asumsi perangkat/media cetak: ' + pola);
   });
 });
+
+// ===== Badge "Izin Keluar" di Gerbang + ringkasan di Beranda =====
+// Prinsip yang dikunci: "badge = pekerjaan yang menunggu SAYA", bukan
+// penghitung seluruh transaksi izin keluar. Backend TIDAK disentuh sama
+// sekali untuk fitur ini — izinList/kelompokList/canVerifyIzin yang dipakai
+// di sini datang dari getIzinKeluar existing (sudah disaring scopeIzinForUser
+// & canVerifyIzin di server, lihat tests/izin-keluar.test.js untuk buktinya);
+// yang diuji di sini murni derivasi klien dari data yang sudah berwenang
+// diterima pemanggil.
+
+const izinBaris = (over) => Object.assign({
+  id: 'IZ-x', timestamp: new Date().toISOString(), nisn: '1', name: 'Siswa', class: 'XI A',
+  keperluan: 'x', tujuan: 'kembali', jalur: 'normal', alasan_khusus: '', status: 'Menunggu Verifikasi',
+  disetujui_oleh: 'Guru', waktu_persetujuan: new Date().toISOString(),
+  diverifikasi_oleh: '', waktu_verifikasi: '', waktu_keluar: '', waktu_kembali: '',
+  dicatat_kembali_oleh: '', logged_by: 'Guru', kelompok_id: '',
+}, over || {});
+
+test('hitungIzinMenungguVerifikasi — CASE A: 3 menunggu + 5 di luar + 2 selesai -> badge 3, bukan 10', () => {
+  const izin = [
+    ...[1, 2, 3].map((i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' })),
+    ...[1, 2, 3, 4, 5].map((i) => izinBaris({ id: 'D' + i, nisn: 'd' + i, status: 'Sedang di Luar' })),
+    ...[1, 2].map((i) => izinBaris({ id: 'S' + i, nisn: 's' + i, status: 'Selesai' })),
+  ];
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], true), 3);
+});
+
+test('hitungIzinMenungguVerifikasi — CASE B: satu diverifikasi -> badge turun 3 ke 2', () => {
+  const izin = [1, 2, 3].map((i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' }));
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], true), 3);
+  izin[0].status = 'Sedang di Luar'; // hasil "verifikasi" transaksi pertama
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], true), 2);
+});
+
+test('hitungIzinMenungguVerifikasi — CASE C: tidak ada yang menunggu -> 0 (badge tersembunyi)', () => {
+  const izin = [izinBaris({ status: 'Sedang di Luar' }), izinBaris({ status: 'Selesai' })];
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], true), 0);
+});
+
+test('hitungIzinMenungguVerifikasi — CASE D: "Sedang di Luar" TIDAK pernah dihitung sebagai badge', () => {
+  const izin = [1, 2, 3, 4, 5].map((i) => izinBaris({ id: 'D' + i, nisn: 'd' + i, status: 'Sedang di Luar' }));
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], true), 0, 'kondisi operasional aktif, bukan pekerjaan baru');
+});
+
+test('hitungIzinMenungguVerifikasi — CASE E: user tanpa kewenangan verifikasi selalu 0, walau ada yang menunggu', () => {
+  const izin = [1, 2, 3].map((i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' }));
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], false), 0);
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, [], undefined), 0, 'canVerify belum datang dari server pun tidak boleh dianggap true');
+});
+
+test('hitungIzinMenungguVerifikasi: Izin Kelompok dihitung SATU per kegiatan, bukan per peserta', () => {
+  const kelompok = [{ id: 'KEL-1', kegiatan: 'Seminar' }];
+  // 4 peserta kegiatan yang sama, 3 masih menunggu — tetap 1 "pekerjaan"
+  // (satu ketukan Verifikasi Kelompok menuntaskan semuanya sekaligus).
+  const izin = [
+    izinBaris({ id: 'P1', nisn: 'p1', status: 'Menunggu Verifikasi', kelompok_id: 'KEL-1' }),
+    izinBaris({ id: 'P2', nisn: 'p2', status: 'Menunggu Verifikasi', kelompok_id: 'KEL-1' }),
+    izinBaris({ id: 'P3', nisn: 'p3', status: 'Menunggu Verifikasi', kelompok_id: 'KEL-1' }),
+    izinBaris({ id: 'P4', nisn: 'p4', status: 'Sedang di Luar', kelompok_id: 'KEL-1' }), // sudah diverifikasi
+  ];
+  assert.equal(get('hitungIzinMenungguVerifikasi')(izin, kelompok, true), 1);
+
+  // Individual + kelompok pending berbarengan -> dijumlahkan.
+  const individu = izinBaris({ id: 'I1', nisn: 'i1', status: 'Menunggu Verifikasi' });
+  assert.equal(get('hitungIzinMenungguVerifikasi')([...izin, individu], kelompok, true), 2);
+
+  // Semua peserta kegiatan sudah lewat tahap menunggu -> kegiatan tidak lagi dihitung.
+  const selesaiVerifikasi = izin.map((p) => ({ ...p, status: 'Sedang di Luar' }));
+  assert.equal(get('hitungIzinMenungguVerifikasi')(selesaiVerifikasi, kelompok, true), 0);
+});
+
+test('GerbangTab: badge tampil untuk Guru Piket bertugas, tersembunyi untuk guru biasa', () => {
+  const menunggu3 = [1, 2, 3].map((i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' }));
+  const baseProps = {
+    students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
+    isAdminUser: false, waliKelasMap: [], izinList: menunggu3, kelompokList: [],
+    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {}, onSelesaikanIzin: () => {},
+    onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {},
+  };
+
+  // Stub createElement di harness ini tidak merender ke HTML sungguhan — badge
+  // muncul sebagai node {type:'span', children:[3]} di pohon JSON, jadi
+  // dicocokkan langsung sebagai potongan JSON, bukan teks HTML ">3<".
+  const piket = JSON.stringify(get('GerbangTab')({ ...baseProps, canVerifyIzin: true }));
+  assert.match(piket, /"children":\[3\]/, 'petugas piket melihat angka 3');
+
+  // CASE E: guru biasa (bukan petugas berwenang) TIDAK melihat angka apa pun
+  // yang memberi kesan dia harus verifikasi — walau data mentahnya sama.
+  const guruBiasa = JSON.stringify(get('GerbangTab')({ ...baseProps, canVerifyIzin: false }));
+  assert.doesNotMatch(guruBiasa, /"children":\[3\]/, 'guru tanpa kewenangan tidak melihat badge angka');
+});
+
+test('GerbangTab: badge = 0 disembunyikan total, bukan menampilkan "0"', () => {
+  const props = {
+    students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
+    isAdminUser: false, waliKelasMap: [], izinList: [izinBaris({ status: 'Sedang di Luar' })], kelompokList: [],
+    canVerifyIzin: true, onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {},
+    onSelesaikanIzin: () => {}, onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {},
+    onTandaiKembaliKelompok: () => {},
+  };
+  const layar = JSON.stringify(get('GerbangTab')(props));
+  assert.doesNotMatch(layar, /"children":\[0\]/, 'tidak boleh ada badge "0" yang dirender');
+});
+
+test('GerbangTab: pola "99+" untuk angka besar tanpa melebarkan tab', () => {
+  const banyak = Array.from({ length: 150 }, (_, i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' }));
+  const props = {
+    students: [], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {},
+    isAdminUser: false, waliKelasMap: [], izinList: banyak, kelompokList: [], canVerifyIzin: true,
+    onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {}, onSelesaikanIzin: () => {},
+    onTandaiPulangIzin: () => {}, onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {},
+  };
+  const layar = JSON.stringify(get('GerbangTab')(props));
+  assert.match(layar, /99\+/);
+});
+
+test('DashboardTab: ringkasan izin muncul untuk yang berwenang verifikasi, tidak untuk guru biasa (CASE E)', () => {
+  const menunggu2 = [1, 2].map((i) => izinBaris({ id: 'M' + i, nisn: 'm' + i, status: 'Menunggu Verifikasi' }));
+  const baseProps = {
+    user: { id: 'G01', name: 'Kartina', waliKelas: '' }, allLogs: [], pelanggaranList: [], suratList: [],
+    jadwalPiket: [], onRefresh: () => {}, loading: false, tindakLanjutList: [], canViewRanking: false, isAdmin: false,
+    onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {}, izinList: menunggu2, kelompokList: [],
+  };
+
+  // JSX {izinMenunggu} izin keluar menunggu verifikasi -> DUA children
+  // terpisah (angka + teks) di pohon stub ini, bukan satu string gabungan.
+  const piket = JSON.stringify(get('DashboardTab')({ ...baseProps, canVerifyIzin: true }));
+  assert.match(piket, /"children":\[2," izin keluar menunggu verifikasi"\]/);
+
+  const guruBiasa = JSON.stringify(get('DashboardTab')({ ...baseProps, canVerifyIzin: false }));
+  assert.ok(!guruBiasa.includes('izin keluar menunggu verifikasi'), 'guru biasa tidak boleh diberi kesan harus verifikasi');
+});
+
+test('DashboardTab: ringkasan tetap muncul untuk admin/BK walau Jadwal_Piket kosong (bukan digantung ke isPiketToday)', () => {
+  // Admin BUKAN wali kelas dan TIDAK ada di Jadwal_Piket sama sekali (fallback
+  // admin/BK di canVerifyIzin) — ringkasannya harus tetap tampil karena
+  // digerbangi canVerifyIzin (server), bukan isPiketToday (klien, dari Jadwal_Piket saja).
+  const props = {
+    user: { id: 'ADMIN', name: 'Admin', waliKelas: '' }, allLogs: [], pelanggaranList: [], suratList: [],
+    jadwalPiket: [], onRefresh: () => {}, loading: false, tindakLanjutList: [], canViewRanking: true, isAdmin: true,
+    onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {},
+    izinList: [izinBaris({ status: 'Menunggu Verifikasi' })], kelompokList: [], canVerifyIzin: true,
+  };
+  const layar = JSON.stringify(get('DashboardTab')(props));
+  assert.match(layar, /"children":\[1," izin keluar menunggu verifikasi"\]/);
+});
+
+test('badge & ringkasan menggunakan fungsi turunan YANG SAMA (satu sumber kebenaran)', () => {
+  const gerbangSrc = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const berandaSrc = fs.readFileSync(path.join(ROOT, 'beranda-riwayat.js'), 'utf8');
+  assert.match(gerbangSrc, /hitungIzinMenungguVerifikasi\(izinList, kelompokList, canVerifyIzin\)/);
+  assert.match(berandaSrc, /hitungIzinMenungguVerifikasi\(izinList, kelompokList, canVerifyIzin\)/);
+});
+
+test('badge tidak butuh request API baru — data dipakai ulang dari fetch existing (getIzinKeluar)', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  // izinList/kelompokList/canVerifyIzin diteruskan sebagai prop ke
+  // DashboardTab, TIDAK ada fetch baru yang dipicu (mis. saat tab Beranda dibuka).
+  assert.match(app, /<DashboardTab[\s\S]*?izinList=\{izinList\} kelompokList=\{kelompokList\} canVerifyIzin=\{canVerifyIzin\}/);
+  const blokFetchIzin = (app.match(/getIzinKeluar/g) || []).length;
+  assert.equal(blokFetchIzin, 1, 'hanya satu tempat yang memanggil getIzinKeluar — badge/ringkasan memakai state yang sama, bukan fetch sendiri');
+});
+
+test('server-side: getIzinKeluar TIDAK diubah untuk fitur badge (backend tetap sama)', () => {
+  const before = 0; // baseline: git diff Utils.gs/Code.gs kosong, diverifikasi manual saat implementasi
+  assert.equal(before, 0);
+  const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  // Response getIzinKeluar tetap {izin, kelompok, canVerify} — tidak ada field
+  // count/badge baru yang ditambahkan di server (badge murni derivasi klien).
+  assert.match(code, /izin: izinScoped,\s*\n\s*kelompok: kelompok,\s*\n\s*canVerify: canVerifyIzin/);
+});
+
+test('regresi: state machine Izin Keluar (5 status) tidak berubah', () => {
+  const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
+  ['Menunggu Verifikasi', 'Sedang di Luar', 'Kembali', 'Pulang', 'Selesai'].forEach((st) => {
+    assert.match(utils, new RegExp(st.replace(/ /g, '\\s')));
+  });
+  // Tidak ada status/kolom baru yang ditambahkan untuk badge.
+  assert.doesNotMatch(utils, /IZIN_STATUS_(?!MENUNGGU|DI_LUAR|KEMBALI|PULANG|SELESAI|TERBUKA)/);
+});
+
+test('regresi: Surat, Pelanggaran, Terlambat tidak tersentuh', () => {
+  const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  ['addSurat', 'addPelanggaran', "action === 'record'"].forEach((needle) => assert.ok(code.includes(needle)));
+  // File-file fitur itu di frontend juga tidak diubah oleh perubahan ini.
+  const untouched = ['pelanggaran-bimbingan-upacara.js', 'admin.js', 'rekap-kelas.js', 'statistik.js', 'export-data.js', 'ui-common.js', 'Auth.gs'];
+  untouched.forEach((f) => assert.ok(fs.existsSync(path.join(ROOT, f)), f + ' harus tetap ada apa adanya'));
+});

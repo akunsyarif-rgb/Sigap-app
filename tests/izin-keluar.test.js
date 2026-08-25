@@ -800,3 +800,41 @@ test('tidak ada mapping jadwal guru mapel yang ditambahkan untuk fitur konteks i
   // sumber data baru sama sekali.
   assert.match(src, /function izinKonteksPersetujuan\(sessionUser, kelasSiswa\)/);
 });
+
+// ============================================================
+// 18. BADGE "IZIN KELUAR" DI GERBANG/BERANDA — INPUT DATA UNTUK BADGE KLIEN
+// ============================================================
+// Badge itu sendiri murni derivasi klien (hitungIzinMenungguVerifikasi,
+// helpers.js — lihat tests/izin-keluar-frontend.test.js). Yang dikunci di
+// sini adalah bahwa BAHAN badge itu (izin, kelompok, canVerify dari
+// getIzinKeluar) tetap benar untuk kasus "beberapa Guru Piket hari yang
+// sama" — tidak ada perubahan backend untuk fitur badge, jadi ini murni
+// regresi memastikan itu.
+
+test('CASE F: dua Guru Piket hari yang sama sama-sama dapat canVerify=true & angka pending yang identik', () => {
+  const s = loadServer();
+  setujui(s, 'wali', '1001'); // Menunggu Verifikasi
+  setujui(s, 'pemberiIzin', '2002'); // Menunggu Verifikasi
+
+  const lihatPagi = s.get('piketPagi', { action: 'getIzinKeluar' });
+  const lihatSiang = s.get('piketSiang', { action: 'getIzinKeluar' });
+  assert.equal(lihatPagi.canVerify, true);
+  assert.equal(lihatSiang.canVerify, true);
+
+  const pendingPagi = lihatPagi.izin.filter((i) => i.status === 'Menunggu Verifikasi').length;
+  const pendingSiang = lihatSiang.izin.filter((i) => i.status === 'Menunggu Verifikasi').length;
+  assert.equal(pendingPagi, 2);
+  assert.equal(pendingSiang, 2, 'kedua guru piket melihat bahan badge yang sama, bukan cuma salah satu dianggap berwenang');
+
+  // Guru yang bukan piket hari ini tetap canVerify=false — badge-nya nanti 0.
+  assert.equal(s.get('bukanPiket', { action: 'getIzinKeluar' }).canVerify, false);
+});
+
+test('backend getIzinKeluar tidak diubah untuk fitur badge (tetap izin/kelompok/canVerify, tanpa field count baru)', () => {
+  const s = loadServer();
+  const res = s.get('admin', { action: 'getIzinKeluar' });
+  // sessionExpiresAt ikut nempel di semua respons via jsonOut (lihat Utils.gs)
+  // — bukan sesuatu yang ditambahkan untuk fitur badge, jadi diabaikan di sini.
+  const { sessionExpiresAt, ...isi } = res;
+  assert.deepEqual(Object.keys(isi).sort(), ['canVerify', 'izin', 'kelompok', 'status'].sort());
+});

@@ -367,6 +367,45 @@
            return Object.values(map).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
        }
 
+       // ===== Izin Keluar: "pekerjaan yang menunggu SAYA" =====
+       // SATU sumber kebenaran dipakai baik oleh badge di sakelar Gerbang
+       // (gerbang.js) maupun ringkasan di Beranda (beranda-riwayat.js), supaya
+       // keduanya tidak pernah menunjukkan angka berbeda untuk kondisi yang
+       // sama. Prinsipnya: badge = pekerjaan yang menunggu tindakan, BUKAN
+       // penghitung seluruh transaksi izin keluar.
+       //
+       // Hanya status 'Menunggu Verifikasi' yang dihitung — 'Sedang di Luar'
+       // memang masih kondisi operasional aktif (makanya tetap tampil penuh di
+       // halaman Izin Keluar), tapi TIDAK butuh tindakan baru dari user sampai
+       // siswanya benar-benar kembali, jadi tidak masuk badge.
+       //
+       // Digerbangi `canVerify` — nilai yang SAMA yang sudah dikirim server
+       // lewat getIzinKeluar (canVerifyIzin() di Utils.gs, dari Jadwal_Piket +
+       // fallback admin/BK). Kalau false, hasilnya SELALU 0: begitu sebuah izin
+       // diajukan, guru pemberi persetujuan tidak punya aksi lain apa pun atas
+       // baris itu (semua aksi verifikasi/tandai kembali/dst di Code.gs
+       // menolak siapa pun selain Guru Piket bertugas/admin/BK) — jadi memang
+       // tidak ada "pekerjaan menunggu" baginya, bukan disembunyikan.
+       //
+       // izinList & kelompokList SUDAH disaring server (scopeIzinForUser) —
+       // fungsi ini murni menghitung ulang dari data yang sudah berwenang
+       // diterima pemanggil, tidak menentukan cakupan apa pun sendiri.
+       //
+       // Satu kegiatan Izin Kelompok dihitung SATU (bukan per siswa) selama
+       // masih ada minimal satu pesertanya yang 'Menunggu Verifikasi' — sesuai
+       // dengan satu ketukan "Verifikasi Kelompok" yang menuntaskan satu
+       // kegiatan sekaligus, persis seperti yang terlihat user di daftar
+       // "Menunggu Verifikasi" masing-masing panel (gerbang.js).
+       function hitungIzinMenungguVerifikasi(izinList, kelompokList, canVerify) {
+           if (!canVerify) return 0;
+           const izin = izinList || [];
+           const individual = izin.filter(i => !i.kelompok_id && i.status === 'Menunggu Verifikasi').length;
+           const kelompokMenunggu = (kelompokList || []).filter(k =>
+               izin.some(i => i.kelompok_id === k.id && i.status === 'Menunggu Verifikasi')
+           ).length;
+           return individual + kelompokMenunggu;
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {

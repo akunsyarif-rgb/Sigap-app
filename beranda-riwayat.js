@@ -54,7 +54,7 @@
            return 'Selamat Malam';
        }
 
-       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading, tindakLanjutList, canViewRanking, isAdmin, onAjukanTindakLanjut, onApproveTindakLanjut }) {
+       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading, tindakLanjutList, canViewRanking, isAdmin, onAjukanTindakLanjut, onApproveTindakLanjut, izinList, kelompokList, canVerifyIzin }) {
            const [showPiketList, setShowPiketList] = useState(false);
            const [tindakLanjutTarget, setTindakLanjutTarget] = useState(null);
            const [catatanInput, setCatatanInput] = useState('');
@@ -125,6 +125,17 @@
            const isPiketToday = piketHariIni.some(j => String(j.guruId) === String(user.id));
            const waliKelas = user.waliKelas || '';
 
+           // Ringkasan Izin Keluar — SATU BARIS awareness, bukan daftar/aksi
+           // (itu tugas menu Gerbang). Dihitung lewat fungsi yang SAMA dengan
+           // badge sakelar Gerbang (hitungIzinMenungguVerifikasi, helpers.js),
+           // supaya keduanya tidak pernah berselisih untuk kondisi yang sama.
+           // Digerbangi canVerifyIzin (dari server, BUKAN isPiketToday di atas
+           // yang cuma cocokkan Jadwal_Piket) supaya admin/BK yang berwenang
+           // verifikasi via fallback tetap dapat ringkasannya, dan guru biasa
+           // yang bukan petugas piket TIDAK melihat angka yang memberi kesan
+           // mereka harus verifikasi.
+           const izinMenunggu = hitungIzinMenungguVerifikasi(izinList, kelompokList, canVerifyIzin);
+
            // ⑥ Ringkasan kelas perwalian — dihitung dari data yang sudah di-fetch,
            // difilter ke kelas perwalian guru ini saja, minggu berjalan.
            const weekStart = startOfWeek(now);
@@ -189,6 +200,18 @@
                                    </div>
                                </div>
                            )}
+                       </div>
+                   )}
+
+                   {/* Ringkasan Izin Keluar — tidak digantung di dalam gate
+                       (piketHariIni.length > 0 || waliKelas) di atas: admin/BK
+                       yang berwenang verifikasi lewat fallback (bukan lewat
+                       Jadwal_Piket) tetap harus melihat ini walau Jadwal_Piket
+                       kosong atau mereka bukan wali kelas siapa pun. */}
+                   {izinMenunggu > 0 && (
+                       <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl px-4 py-3 flex items-center gap-2.5">
+                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-4 w-4 text-sky-dim flex-shrink-0" />
+                           <span className="text-xs text-sky-dim font-semibold">{izinMenunggu} izin keluar menunggu verifikasi</span>
                        </div>
                    )}
 
