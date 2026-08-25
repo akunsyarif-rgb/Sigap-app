@@ -343,7 +343,7 @@ const kelompokContoh = {
   id: 'KEL-1', timestamp: new Date().toISOString(), kegiatan: 'Seminar Bank Indonesia',
   tujuan: 'kembali', keperluan: 'undangan seminar', pola_kembali: 'bersama', jumlah_peserta: 4,
   jalur: 'normal', alasan_khusus: '', disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(),
-  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(),
+  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), diverifikasi_kapasitas: 'guru_piket',
 };
 const anggotaContoh = ['Ahmad', 'Budi', 'Citra', 'Deni'].map((nama, i) => ({
   id: `IZ-K${i}`, timestamp: new Date().toISOString(), nisn: `20${i}`, name: nama, class: 'XI A',
@@ -411,7 +411,7 @@ test('KartuKelompok: jejak audit berlabel "oleh:" dan Izin Khusus tidak mengklai
   const dasar = { peserta: anggotaContoh, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false };
   const normal = JSON.stringify(get('KartuKelompok')({ ...dasar, kelompok: kelompokContoh }));
   assert.ok(normal.includes('"Disetujui oleh: ","Bu Kartina"'));
-  assert.ok(normal.includes('"Diverifikasi oleh: Guru Piket — ","Pak Piket"'));
+  assert.ok(normal.includes('"Diverifikasi oleh: ","Guru Piket — ","Pak Piket"'));
 
   const khusus = JSON.stringify(get('KartuKelompok')({
     ...dasar, kelompok: { ...kelompokContoh, jalur: 'khusus', alasan_khusus: 'wali kelas tidak tersedia', disetujui_oleh: 'Pak Piket Pagi' },
@@ -419,6 +419,15 @@ test('KartuKelompok: jejak audit berlabel "oleh:" dan Izin Khusus tidak mengklai
   assert.ok(khusus.includes('"Izin Khusus oleh: ","Pak Piket Pagi"'));
   assert.ok(!khusus.includes('Wali Kelas'));
   assert.ok(!khusus.includes('Guru Mapel'));
+});
+
+test('KartuKelompok: verifikasi oleh BK/Kesiswaan yang tidak piket tidak diberi label Guru Piket', () => {
+  const dasar = { peserta: anggotaContoh, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false };
+  const bk = JSON.stringify(get('KartuKelompok')({
+    ...dasar, kelompok: { ...kelompokContoh, diverifikasi_oleh: 'Bu Kepsek BK', diverifikasi_kapasitas: 'bk_kesiswaan' },
+  }));
+  assert.ok(bk.includes('"Diverifikasi oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(!bk.includes('Guru Piket'));
 });
 
 test('kelompok: konfirmasi rombongan selalu lewat centang peserta, bukan satu tap', () => {
@@ -946,14 +955,56 @@ test('KartuIzinKeluar: Izin Khusus TIDAK mengklaim persetujuan Wali Kelas/Guru M
   assert.ok(layar.includes('wali kelas sedang rapat'));
 });
 
-test('KartuIzinKeluar: Diverifikasi & Kembali dicatat selalu berlabel "Guru Piket —"', () => {
+// ===================================================================
+// Audit: kapasitas verifikasi (Guru Piket vs BK/Kesiswaan) — bug yang
+// diperbaiki adalah kartu SEBELUMNYA menulis "Guru Piket" untuk SEMUA
+// verifikasi tanpa syarat, sehingga akun BK/Kesiswaan yang mengambil alih
+// TANPA sedang piket tercatat seolah-olah dia memang piket hari itu.
+// Label yang benar SUDAH ditentukan server (izin.diverifikasi_kapasitas /
+// izin.dicatat_kembali_kapasitas, dari getIzinKeluar — lihat
+// tests/izin-keluar.test.js untuk pembuktian otorisasi & kapasitas
+// sungguhan lewat doPost/doGet) — kartu MURNI menampilkan ulang.
+// ===================================================================
+
+test('KartuIzinKeluar: kapasitas Guru Piket ditampilkan apa adanya (dari server)', () => {
   const izin = izinBaris({
     class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Selesai',
     diverifikasi_oleh: 'Pak Piket Pagi', dicatat_kembali_oleh: 'Bu Piket Siang', waktu_kembali: new Date().toISOString(),
+    diverifikasi_kapasitas: 'guru_piket', dicatat_kembali_kapasitas: 'guru_piket',
   });
   const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
-  assert.ok(layar.includes('"Diverifikasi oleh: Guru Piket — ","Pak Piket Pagi"'));
-  assert.ok(layar.includes('"Kembali dicatat oleh: Guru Piket — ","Bu Piket Siang"'));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","Guru Piket — ","Pak Piket Pagi"'));
+  assert.ok(layar.includes('"Kembali dicatat oleh: ","Guru Piket — ","Bu Piket Siang"'));
+});
+
+test('KartuIzinKeluar: BK/Kesiswaan yang mengambil alih TIDAK tercatat sebagai Guru Piket', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Selesai',
+    diverifikasi_oleh: 'Bu Kepsek BK', dicatat_kembali_oleh: 'Bu Kepsek BK', waktu_kembali: new Date().toISOString(),
+    diverifikasi_kapasitas: 'bk_kesiswaan', dicatat_kembali_kapasitas: 'bk_kesiswaan',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(layar.includes('"Kembali dicatat oleh: ","BK/Kesiswaan — ","Bu Kepsek BK"'));
+  assert.ok(!layar.includes('Guru Piket'), 'BK yang tidak piket tidak boleh diberi label Guru Piket');
+});
+
+test('KartuIzinKeluar: kapasitas kosong (data lama) tidak menebak label apa pun', () => {
+  const izin = izinBaris({
+    class: 'XI A', disetujui_oleh: 'Jefri Tulak, S. Pd. K.', jalur: 'normal', status: 'Sedang di Luar',
+    diverifikasi_oleh: 'Pak Piket Lama', diverifikasi_kapasitas: '',
+  });
+  const layar = JSON.stringify(get('KartuIzinKeluar')({ izin, waliByClass: waliByClassFixture, children: null }));
+  assert.ok(layar.includes('"Diverifikasi oleh: ","","Pak Piket Lama"'), 'tanpa prefix kapasitas — bukan diam-diam diberi salah satu label');
+  assert.ok(!layar.includes('Guru Piket'));
+  assert.ok(!layar.includes('BK/Kesiswaan'));
+});
+
+test('izinKapasitasLabel: pemetaan kode -> label, kode tak dikenal -> string kosong', () => {
+  assert.equal(get('izinKapasitasLabel')('guru_piket'), 'Guru Piket');
+  assert.equal(get('izinKapasitasLabel')('bk_kesiswaan'), 'BK/Kesiswaan');
+  assert.equal(get('izinKapasitasLabel')(''), '');
+  assert.equal(get('izinKapasitasLabel')(undefined), '');
 });
 
 test('IzinKeluarPanel meneruskan waliByClass ke setiap KartuIzinKeluar (bukan cuma sebagian bucket)', () => {

@@ -444,8 +444,19 @@
                        ) : (
                            <div>Disetujui oleh: {izinPeranLabel(peran)} — {izin.disetujui_oleh || '-'} • {jam(izin.waktu_persetujuan)}</div>
                        )}
-                       {izin.diverifikasi_oleh && <div>Diverifikasi oleh: Guru Piket — {izin.diverifikasi_oleh} • {jam(izin.waktu_verifikasi)}</div>}
-                       {izin.dicatat_kembali_oleh && <div>Kembali dicatat oleh: Guru Piket — {izin.dicatat_kembali_oleh} • {jam(izin.waktu_kembali)}</div>}
+                       {/* "Guru Piket" vs "BK/Kesiswaan" — label yang SEBENARNYA
+                           dipakai bukan diklaim, dihitung server (getIzinKeluar,
+                           dari Jadwal_Piket saat aksi dijalankan). Lihat audit
+                           Agustus 2026 di Utils.gs: BK/Kesiswaan yang mengambil
+                           alih TANPA sedang piket tidak boleh tercatat seolah
+                           Guru Piket. Kapasitas kosong (baris lama/belum
+                           terisi) -> tanpa prefix, bukan menebak salah satu. */}
+                       {izin.diverifikasi_oleh && (
+                           <div>Diverifikasi oleh: {izinKapasitasLabel(izin.diverifikasi_kapasitas) ? izinKapasitasLabel(izin.diverifikasi_kapasitas) + ' — ' : ''}{izin.diverifikasi_oleh} • {jam(izin.waktu_verifikasi)}</div>
+                       )}
+                       {izin.dicatat_kembali_oleh && (
+                           <div>Kembali dicatat oleh: {izinKapasitasLabel(izin.dicatat_kembali_kapasitas) ? izinKapasitasLabel(izin.dicatat_kembali_kapasitas) + ' — ' : ''}{izin.dicatat_kembali_oleh} • {jam(izin.waktu_kembali)}</div>
+                       )}
                    </div>
                    {children}
                </div>
@@ -805,7 +816,9 @@
                        ) : (
                            <div>Disetujui oleh: {kelompok.disetujui_oleh || '-'} • {jam(kelompok.waktu_persetujuan)}</div>
                        )}
-                       {kelompok.diverifikasi_oleh && <div>Diverifikasi oleh: Guru Piket — {kelompok.diverifikasi_oleh} • {jam(kelompok.waktu_verifikasi)}</div>}
+                       {kelompok.diverifikasi_oleh && (
+                           <div>Diverifikasi oleh: {izinKapasitasLabel(kelompok.diverifikasi_kapasitas) ? izinKapasitasLabel(kelompok.diverifikasi_kapasitas) + ' — ' : ''}{kelompok.diverifikasi_oleh} • {jam(kelompok.waktu_verifikasi)}</div>
+                       )}
                        {kelompok.tujuan === 'kembali' && (
                            <div>Pola kembali: {kelompok.pola_kembali === 'individual' ? 'Individual' : 'Bersama'}</div>
                        )}

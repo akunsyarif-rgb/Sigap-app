@@ -115,9 +115,9 @@ function loadServer(opts) {
     Master_Siswa: makeSheet(['NISN', 'Nama', 'Kelas'], SISWA),
     Master_Guru: makeSheet(['ID', 'Nama', 'Hash', 'Role', 'Jabatan', 'Status', 'Kelas_Wali', 'Salt'],
       Object.keys(USERS).map((k) => [USERS[k].id, USERS[k].name, '', USERS[k].role, '', 'aktif', USERS[k].waliKelas, ''])),
-    Jadwal_Piket: makeSheet(['Hari', 'Guru_ID'], options.tanpaJadwalPiket ? [] : [
+    Jadwal_Piket: makeSheet(['Hari', 'Guru_ID'], options.tanpaJadwalPiket ? [] : (options.jadwalPiketRows || [
       [HARI_INI, 'G10'], [HARI_INI, 'G11'], [HARI_LAIN, 'G12'],
-    ]),
+    ])),
     Izin_Keluar: makeSheet(IZIN_HEADER, []),
     Izin_Kelompok: makeSheet(KELOMPOK_HEADER, []),
     Log_Gerbang: makeSheet(['Timestamp', 'NISN', 'Nama', 'Kelas', 'Alasan', 'Dicatat_Oleh'], []),
@@ -802,4 +802,71 @@ test('alur kelompok normal tetap berjalan utuh setelah audit Izin Khusus ini (re
   assert.equal(buat.status, 'success');
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKelompok', id: buat.id }).status, 'success');
+});
+
+// ============================================================
+// 21. KAPASITAS VERIFIKASI KELOMPOK: "Guru Piket" vs "BK/Kesiswaan"
+//
+// Sama seperti izin individual (lihat blok audit di izin-keluar.test.js) —
+// verifikasiIzinKelompok & tandaiKembaliKelompok memakai gerbang otorisasi
+// yang SAMA (izinKapasitasVerifikasi, Utils.gs), jadi bug & perbaikannya
+// juga sama: BK/Kesiswaan yang mengambil alih TANPA sedang piket tidak
+// boleh tercatat seolah-olah dia Guru Piket.
+// ============================================================
+
+test('kelompok: BK/Kesiswaan yang TIDAK piket tetap boleh verifikasi sebagai backup, tercatat BK/Kesiswaan', () => {
+  const s = loadServer(); // fixture default: Bu BK (G01) tidak ada di Jadwal_Piket
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('bk', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'success', 'BK tetap boleh mengambil alih walau tidak piket');
+
+  const kel = s.get('admin', { action: 'getIzinKeluar' }).kelompok.find((k) => k.id === buat.id);
+  assert.equal(kel.diverifikasi_kapasitas, 'bk_kesiswaan', 'TIDAK boleh tercatat guru_piket');
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Verifikasi Izin Kelompok').pop();
+  assert.match(String(aksi[4]), /kapasitas=BK\/Kesiswaan/);
+});
+
+test('kelompok: BK/Kesiswaan yang SEDANG piket -> tercatat Guru Piket', () => {
+  const s = loadServer({ jadwalPiketRows: [[HARI_INI, 'G10'], [HARI_INI, 'G11'], [HARI_INI, 'G01'], [HARI_LAIN, 'G12']] });
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('bk', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'success');
+
+  const kel = s.get('admin', { action: 'getIzinKeluar' }).kelompok.find((k) => k.id === buat.id);
+  assert.equal(kel.diverifikasi_kapasitas, 'guru_piket');
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Verifikasi Izin Kelompok').pop();
+  assert.match(String(aksi[4]), /kapasitas=Guru Piket/);
+});
+
+test('kelompok: Tandai Rombongan Kembali oleh BK yang tidak piket tercatat BK/Kesiswaan per peserta', () => {
+  const s = loadServer();
+  const buat = rombonganDiLuar(s);
+  const semua = s.peserta(buat.id);
+  const res = s.post('bk', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: semua.map((p) => p.id) });
+  assert.equal(res.status, 'success');
+
+  const izinAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin.filter((i) => i.kelompok_id === buat.id);
+  assert.equal(izinAdmin.length, 8);
+  izinAdmin.forEach((i) => assert.equal(i.dicatat_kembali_kapasitas, 'bk_kesiswaan'));
+
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Tandai Rombongan Kembali').pop();
+  assert.match(String(aksi[4]), /kapasitas=BK\/Kesiswaan/);
+});
+
+test('kelompok: wali kelas yang tidak piket tetap ditolak memverifikasi kegiatan (tidak diperlonggar oleh audit ini)', () => {
+  const s = loadServer();
+  const buat = ajukan(s, 'wali');
+  const ver = s.post('wali', { action: 'verifikasiIzinKelompok', id: buat.id });
+  assert.equal(ver.status, 'error');
+});
+
+test('kelompok: client mencoba memalsukan kapasitas tetap diabaikan, server yang menentukan', () => {
+  const s = loadServer();
+  const buat = rombonganDiLuar(s);
+  const res = s.post('bk', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: s.peserta(buat.id).map((p) => p.id), kapasitas: 'guru_piket' });
+  assert.equal(res.status, 'success');
+  const izinAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin.filter((i) => i.kelompok_id === buat.id);
+  izinAdmin.forEach((i) => assert.equal(i.dicatat_kembali_kapasitas, 'bk_kesiswaan', 'klaim klien diabaikan'));
 });

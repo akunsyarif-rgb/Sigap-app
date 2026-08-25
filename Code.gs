@@ -15,7 +15,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-izin-selesai-satu-langkah';
+var BACKEND_VERSION = '2026-08-25-izin-kapasitas-piket-vs-bk';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin'];
 
 // ===== doPost =====
@@ -722,7 +722,13 @@ function doPost(e) {
     // benar-benar keluar (Waktu_Keluar diisi di sini, bukan saat disetujui). ----
     if (action === 'verifikasiIzinKeluar') {
       var verNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, verNow)) {
+      // Kapasitas (bukan cuma boolean) dihitung SEKALI di sini dan dipakai
+      // baik untuk gerbang otorisasi maupun jejak Audit Log — supaya
+      // "Guru Piket" vs "BK/Kesiswaan (pengambilalihan)" tidak pernah bisa
+      // berselisih antara keduanya. Server TIDAK PERNAH membaca kapasitas
+      // dari klien (data.kapasitas, kalaupun dikirim, diabaikan total).
+      var verKapasitas = izinKapasitasVerifikasi(ss, sessionUser, verNow);
+      if (!verKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa memverifikasi.' });
       }
       var verSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -741,7 +747,7 @@ function doPost(e) {
       verValues[16] = verNow; // Waktu_Keluar
       verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7]));
+      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas)));
       return jsonOut({ status: 'success', izinStatus: verValues[7] });
     }
 
@@ -761,7 +767,8 @@ function doPost(e) {
     // "kembali ke sekolah" vs "pulang" di baris yang sama-sama 'Selesai'. ----
     if (action === 'tandaiKembaliIzinKeluar') {
       var kbNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, kbNow)) {
+      var kbKapasitas = izinKapasitasVerifikasi(ss, sessionUser, kbNow);
+      if (!kbKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa kembali.' });
       }
       var kbSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -781,7 +788,7 @@ function doPost(e) {
       kbValues[19] = sessionUser.id;
       kbSheet.getRange(kbFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([kbValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_SELESAI));
+      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_SELESAI + ' | kapasitas=' + izinKapasitasLabel(kbKapasitas)));
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
     }
 
@@ -796,7 +803,8 @@ function doPost(e) {
     // Berlaku juga untuk izin individual, karena kasusnya sama saja di lapangan.
     if (action === 'tandaiPulangIzinKeluar') {
       var plgNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, plgNow)) {
+      var plgKapasitas = izinKapasitasVerifikasi(ss, sessionUser, plgNow);
+      if (!plgKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa pulang.' });
       }
       var plgSheet = ss.getSheetByName(IZIN_SHEET_NAME);
@@ -811,7 +819,7 @@ function doPost(e) {
       plgValues[7] = IZIN_STATUS_PULANG;
       plgSheet.getRange(plgFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([plgValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah)'));
+      logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
     }
 
@@ -941,7 +949,8 @@ function doPost(e) {
     // tetap 'Menunggu Verifikasi', bukan diam-diam dianggap keluar. ----
     if (action === 'verifikasiIzinKelompok') {
       var vkNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, vkNow)) {
+      var vkKapasitas = izinKapasitasVerifikasi(ss, sessionUser, vkNow);
+      if (!vkKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa memverifikasi.' });
       }
       var vkKelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
@@ -995,7 +1004,7 @@ function doPost(e) {
       clearIzinCache();
       var vkSisa = vkPeserta.length - vkTarget.length;
       logAudit(sessionUser, 'Verifikasi Izin Kelompok',
-        buildKelompokAuditDetail(vkKel.data, 'diverifikasi=' + vkTarget.length + ' | tidak diverifikasi=' + vkSisa + ' | status=' + vkStatusBaru));
+        buildKelompokAuditDetail(vkKel.data, 'diverifikasi=' + vkTarget.length + ' | tidak diverifikasi=' + vkSisa + ' | status=' + vkStatusBaru + ' | kapasitas=' + izinKapasitasLabel(vkKapasitas)));
       return jsonOut({ status: 'success', izinStatus: vkStatusBaru, jumlahDiverifikasi: vkTarget.length });
     }
 
@@ -1007,7 +1016,8 @@ function doPost(e) {
     // Luar', dan selisihnya dicatat ke Audit Log sebagai pengecualian. ----
     if (action === 'tandaiKembaliKelompok') {
       var tkNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, tkNow)) {
+      var tkKapasitas = izinKapasitasVerifikasi(ss, sessionUser, tkNow);
+      if (!tkKapasitas) {
         return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa kembali.' });
       }
       var tkKelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
@@ -1053,7 +1063,8 @@ function doPost(e) {
         buildKelompokAuditDetail(tkKel.data,
           'kembali=' + tkDipilih.length +
           ' | belum kembali=' + tkBelum.length +
-          (tkBelum.length ? ' (' + tkBelum.map(function (p) { return p.data.name; }).join(', ') + ')' : '')));
+          (tkBelum.length ? ' (' + tkBelum.map(function (p) { return p.data.name; }).join(', ') + ')' : '') +
+          ' | kapasitas=' + izinKapasitasLabel(tkKapasitas)));
       return jsonOut({ status: 'success', jumlahKembali: tkDipilih.length, jumlahBelumKembali: tkBelum.length });
     }
 
@@ -1610,8 +1621,24 @@ function doGet(e) {
     // "peserta Seminar Bank Indonesia" tanpa menduplikasi data kegiatan.
     var namaKegiatan = {};
     kelompok.forEach(function (k) { namaKegiatan[k.id] = k.kegiatan; });
+
+    // Kapasitas "Guru Piket" vs "BK/Kesiswaan" untuk kartu — lihat audit
+    // Agustus 2026 di Utils.gs. Dihitung SEKALI di sini (piketSet dibangun
+    // sekali dari Jadwal_Piket), bukan diklaim/dikirim dari klien: kartu
+    // hanya menampilkan ulang label yang sudah ditentukan server.
+    var piketSet = buildPiketHariSet(ss);
     izinScoped = izinScoped.map(function (r) {
-      return r.kelompok_id ? Object.assign({}, r, { kegiatan: namaKegiatan[r.kelompok_id] || '' }) : r;
+      var patch = {
+        diverifikasi_kapasitas: izinKapasitasBaris(piketSet, r.diverifikasi_oleh_id, r.waktu_verifikasi),
+        dicatat_kembali_kapasitas: izinKapasitasBaris(piketSet, r.dicatat_kembali_oleh_id, r.waktu_kembali),
+      };
+      if (r.kelompok_id) patch.kegiatan = namaKegiatan[r.kelompok_id] || '';
+      return Object.assign({}, r, patch);
+    });
+    kelompok = kelompok.map(function (k) {
+      return Object.assign({}, k, {
+        diverifikasi_kapasitas: izinKapasitasBaris(piketSet, k.diverifikasi_oleh_id, k.waktu_verifikasi),
+      });
     });
 
     // Status "boleh verifikasi / boleh tandai kembali" ikut dikirim supaya

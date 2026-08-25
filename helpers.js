@@ -482,6 +482,28 @@
            return '';
        }
 
+       // ===== Izin Keluar: kapasitas verifikasi (audit Agustus 2026) =====
+       // "Diverifikasi oleh: Guru Piket — Nama" vs "Diverifikasi oleh:
+       // BK/Kesiswaan — Nama". Bug yang diperbaiki: kartu sebelumnya menulis
+       // "Guru Piket" untuk SEMUA verifikasi tanpa syarat, jadi akun
+       // BK/Kesiswaan yang mengambil alih TANPA sedang piket tercatat
+       // seolah-olah dia memang petugas piket hari itu.
+       //
+       // Kapasitas SEBENARNYA sudah ditentukan & dikirim SERVER
+       // (izinKapasitasVerifikasi/izinKapasitasBaris di Utils.gs, dari sesi +
+       // Jadwal_Piket saat aksi dijalankan — bukan cuma role akun, dan bukan
+       // klaim klien) sebagai izin.diverifikasi_kapasitas /
+       // izin.dicatat_kembali_kapasitas / kelompok.diverifikasi_kapasitas.
+       // Fungsi ini MURNI pemetaan kode -> label tampilan, tidak menghitung
+       // ulang otorisasi apa pun — kalau field ini kosong (baris belum
+       // diverifikasi/ditandai kembali, atau data lama sebelum kolom ini
+       // ada), kartu tidak menampilkan label sama sekali.
+       function izinKapasitasLabel(kapasitas) {
+           if (kapasitas === 'guru_piket') return 'Guru Piket';
+           if (kapasitas === 'bk_kesiswaan') return 'BK/Kesiswaan';
+           return '';
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {

@@ -456,17 +456,58 @@ Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
   label, never a gate. Jalur `khusus` is never labeled Wali Kelas/Guru Mapel
   here either — the card says "Izin Khusus oleh: Nama" instead, so a piket
   officer's exception decision can never read as a real teacher's approval.
-  `Diverifikasi oleh:` and `Kembali dicatat oleh:` are always prefixed
-  "Guru Piket —" (that authority is unambiguous, no class-matching needed).
-  `KartuKelompok` shows the same "Disetujui oleh:"/"Izin Khusus oleh:" +
-  "Diverifikasi oleh: Guru Piket —" wording but **without** a Wali
-  Kelas/Guru Mapel label — one activity can span students from multiple
-  classes, so there is no single class to match against.
+  `Diverifikasi oleh:` and `Kembali dicatat oleh:` are prefixed with
+  whichever **capacity** the actor actually used — "Guru Piket —" or
+  "BK/Kesiswaan —" (audit August 2026, see the capacity bullet below for
+  why this stopped being a hardcoded "Guru Piket —"). `KartuKelompok` shows
+  the same "Disetujui oleh:"/"Izin Khusus oleh:" + "Diverifikasi oleh:
+  {kapasitas} —" wording but **without** a Wali Kelas/Guru Mapel label — one
+  activity can span students from multiple classes, so there is no single
+  class to match against.
 - **verify / mark returned / close** → the Guru Piket **on duty today**, read
   from the existing `Jadwal_Piket` sheet, plus admin/BK (also the fallback
   when `Jadwal_Piket` is empty, otherwise nobody could verify at all).
   Re-evaluated *per action*, so a shift change on the same day just works and
   whoever marks a student back need not be who approved or verified.
+
+  **Capacity, not just a boolean (audit August 2026).** `canVerifyIzin()`
+  used to short-circuit `true` for any admin/BK account regardless of
+  `Jadwal_Piket`, and every card/audit line hardcoded "Guru Piket —" for
+  *any* successful verification — so a BK/Kesiswaan account stepping in
+  *without* being on duty today read on the card as if they were the actual
+  piket teacher. The **permission** didn't change (BK/admin still may act
+  as a backup even when not on duty — required so the school isn't locked
+  out when `Jadwal_Piket` is empty or the scheduled teacher is unavailable),
+  only the **label** did. `izinKapasitasVerifikasi(ss, sessionUser, now)` in
+  `Utils.gs` is the new single source of truth: it checks `isPiketBertugas`
+  **first** — so a BK/Kesiswaan (or admin) account that also happens to be
+  on duty today is labeled `guru_piket`, same as any other teacher on the
+  roster — and only falls back to `bk_kesiswaan` (admin bundled under the
+  same label, matching how `isBkRole` already treats them as one authority
+  tier everywhere else in this feature) when not on duty; anyone else gets
+  `null`. `canVerifyIzin()` is now a thin wrapper (`!== null`) over the same
+  function, so the boolean gate and the capacity label can never disagree.
+  This capacity is computed **server-side only** — request bodies may carry
+  a `kapasitas`/`role` field, but no handler ever reads one.
+
+  The capacity actually used for `verifikasiIzinKeluar`,
+  `tandaiKembaliIzinKeluar`, `tandaiPulangIzinKeluar`,
+  `verifikasiIzinKelompok`, and `tandaiKembaliKelompok` is appended to their
+  Audit Log line (`kapasitas=Guru Piket` / `kapasitas=BK/Kesiswaan`) — an
+  authoritative, point-in-time record immune to later `Jadwal_Piket` edits.
+  The **card-facing** label is a *separate*, best-effort computation:
+  `getIzinKeluar` builds a `{hari|guruId}` set from `Jadwal_Piket` once
+  (`buildPiketHariSet`) and, for every row already written, re-derives
+  `diverifikasi_kapasitas` / `dicatat_kembali_kapasitas` (and
+  `kelompok.diverifikasi_kapasitas`) from the stored actor id + action
+  timestamp (`izinKapasitasBaris`) — same caveat as the Wali Kelas/Guru
+  Mapel label: it reflects *today's* `Jadwal_Piket`, not necessarily what
+  was true when the row was written. A guru id not found on duty for that
+  weekday is assumed `bk_kesiswaan` **without** a `Master_Guru` role lookup
+  — `canVerifyIzin`'s own guarantee (no other path grants access) makes that
+  safe, and avoids a second bulk read on every `getIzinKeluar` call. Izin
+  Khusus's own `Disetujui_Oleh`/"Izin Khusus oleh:" label is untouched by
+  any of this — it never claimed Guru Piket in the first place.
 - **Izin Khusus** (`jalur: 'khusus'`) → same authority as verify, and the
   `Alasan_Khusus` is mandatory. It does **not** forge anyone else's
   approval: `Disetujui_Oleh` holds the piket teacher's own name, `Jalur` is
@@ -691,9 +732,13 @@ one member going home while the rest return, cross-activity id tampering, and
 that the individual flow still works beside it).
 The Beranda notification/summary, its RBAC gating, the Gerbang badge, the
 Beranda→Gerbang routing, the one-step "Tandai Kembali" close (column-by-column,
-including that `selesaikanIzinKeluar` no longer exists), and the card-level
-"Disetujui oleh: Wali Kelas/Guru Mapel/Izin Khusus" + "Diverifikasi oleh: Guru
-Piket" labels live in those same two izin files; Export Izin Keluar is
-in `tests/export-backend.test.js` (scope, tampering, leaked identifiers, audit)
-and `tests/export-frontend.test.js` (14-column PDF/XLSX, and that narrow reports
-keep their old font size).
+including that `selesaikanIzinKeluar` no longer exists), the card-level
+"Disetujui oleh: Wali Kelas/Guru Mapel/Izin Khusus" labels, and the
+"Guru Piket" vs "BK/Kesiswaan" verification-capacity audit (every combination
+in the acceptance list — on-duty guru/wali/BK all label `guru_piket`,
+off-duty BK/admin fall back to `bk_kesiswaan`, off-duty guru/wali are
+rejected outright, OSIS is rejected, a client-sent `kapasitas` is ignored,
+and multiple same-day piket teachers each verify independently) live in
+those same two izin files; Export Izin Keluar is in `tests/export-backend.test.js`
+(scope, tampering, leaked identifiers, audit) and `tests/export-frontend.test.js`
+(14-column PDF/XLSX, and that narrow reports keep their old font size).

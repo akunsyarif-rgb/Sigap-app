@@ -836,12 +836,83 @@ function isPiketBertugas(ss, sessionUser, now) {
   return false;
 }
 
+// ===== Kapasitas verifikasi: Guru Piket vs BK/Kesiswaan (audit Agustus 2026) =====
+// Bug yang diperbaiki: sebelum ini, akun BK/Kesiswaan (atau admin) SELALU
+// boleh memverifikasi terlepas dari Jadwal_Piket, dan kartu/Audit Log
+// menuliskan "Guru Piket" untuk semua verifikasi tanpa membedakan — seorang
+// BK yang mengambil alih TANPA sedang piket tercatat seolah-olah dia memang
+// petugas piket hari itu. Keputusan produk TIDAK berubah (BK/admin tetap
+// boleh bertindak sebagai backup walau tidak piket, supaya sekolah tidak
+// terkunci kalau Jadwal_Piket kosong/piket berhalangan) — yang diperbaiki
+// HANYA kejujuran labelnya.
+//
+// Kapasitas ditentukan dari SESI + Jadwal_Piket HARI INI, bukan cuma role
+// akun: piket dicek LEBIH DULU, jadi guru biasa/wali kelas/BK/admin yang
+// KEBETULAN terjadwal piket hari ini semuanya bertindak sebagai "Guru Piket"
+// — persis kewenangan yang sudah ada sejak awal (isPiketBertugas), cuma
+// sekarang diberi nama eksplisit. Kalau tidak piket, baru jatuh ke BK/admin
+// sebagai kapasitas cadangan/pengambilalihan. Guru biasa & wali kelas yang
+// TIDAK piket tetap ditolak sepenuhnya, sama seperti sebelumnya.
+var IZIN_KAPASITAS_PIKET = 'guru_piket';
+var IZIN_KAPASITAS_BK = 'bk_kesiswaan';
+
+function izinKapasitasVerifikasi(ss, sessionUser, now) {
+  if (!sessionUser || isOsisRole(sessionUser.role)) return null;
+  if (isPiketBertugas(ss, sessionUser, now)) return IZIN_KAPASITAS_PIKET;
+  if (isBkRole(sessionUser.role)) return IZIN_KAPASITAS_BK; // admin + bk_kesiswaan, backup/pengambilalihan
+  return null;
+}
+
+function izinKapasitasLabel(kapasitas) {
+  if (kapasitas === IZIN_KAPASITAS_PIKET) return 'Guru Piket';
+  if (kapasitas === IZIN_KAPASITAS_BK) return 'BK/Kesiswaan';
+  return '';
+}
+
 // Kewenangan VERIFIKASI (dan penandaan "Kembali", dan jalur Izin Khusus).
 // Satu fungsi supaya ketiga aksi itu tidak pernah bisa jadi berbeda diam-diam.
+// Boolean-nya TIDAK berubah oleh audit kapasitas di atas — cuma dibangun di
+// atas fungsi yang sama supaya keduanya tidak pernah bisa berselisih.
 function canVerifyIzin(ss, sessionUser, now) {
-  if (!sessionUser || isOsisRole(sessionUser.role)) return false;
-  if (isBkRole(sessionUser.role)) return true; // admin + bk_kesiswaan
-  return isPiketBertugas(ss, sessionUser, now);
+  return izinKapasitasVerifikasi(ss, sessionUser, now) !== null;
+}
+
+// ===== Kapasitas HISTORIS untuk baris yang sudah tersimpan (tampilan kartu) =====
+// getIzinKeluar memakai ini untuk melabeli "Diverifikasi oleh:"/"Kembali
+// dicatat oleh:" pada SETIAP baris tanpa memindai Jadwal_Piket berulang per
+// baris — piketSet dibangun SEKALI (buildPiketHariSet) lalu dicocokkan ke
+// {hari dari timestamp aksi, id pelaku}.
+//
+// guruId yang TIDAK ketemu piket pada hari itu diasumsikan BK/Kesiswaan
+// (bukan dicek ulang lewat role Master_Guru): canVerifyIzin() menjamin itu
+// SATU-SATUNYA jalan lain untuk lolos otorisasi saat baris itu ditulis, jadi
+// kesimpulannya valid tanpa perlu pencarian role tambahan. Sama seperti label
+// Wali Kelas/Guru Mapel, ini cerminan Jadwal_Piket YANG BERLAKU SEKARANG,
+// bukan snapshot historis — kalau jadwal piket diubah sesudahnya, label lama
+// bisa ikut bergeser. Baris tanpa pelaku/timestamp (belum diverifikasi/belum
+// ditandai kembali) mengembalikan '' — TIDAK ditampilkan di kartu.
+function buildPiketHariSet(ss) {
+  var set = {};
+  var sheet = ss.getSheetByName('Jadwal_Piket');
+  if (!sheet) return set;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return set;
+  var rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var hari = String(rows[i][0]).trim();
+    var guruId = String(rows[i][1]).trim();
+    if (hari && guruId) set[hari + '|' + guruId] = true;
+  }
+  return set;
+}
+
+function izinKapasitasBaris(piketSet, guruId, timestamp) {
+  var id = String(guruId || '').trim();
+  if (!id || !timestamp) return '';
+  var d = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  if (isNaN(d.getTime())) return '';
+  var hari = hariPiketServer(d);
+  return (piketSet && piketSet[hari + '|' + id]) ? IZIN_KAPASITAS_PIKET : IZIN_KAPASITAS_BK;
 }
 
 // ===== Transisi status: DIVALIDASI DI SERVER =====
