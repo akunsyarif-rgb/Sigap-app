@@ -926,8 +926,10 @@
            };
 
            const handleVerifikasiIzin = (payload, callback) => handleIzinAction('verifikasiIzinKeluar', payload, callback, '✓ Terverifikasi — siswa tercatat keluar.');
-           const handleTandaiKembaliIzin = (payload, callback) => handleIzinAction('tandaiKembaliIzinKeluar', payload, callback, '✓ Siswa ditandai sudah kembali.');
-           const handleSelesaikanIzin = (payload, callback) => handleIzinAction('selesaikanIzinKeluar', payload, callback, '✓ Transaksi ditutup.');
+           // Satu langkah, langsung final — tidak ada "Tutup transaksi" lagi
+           // menunggu sesudah ini (lihat Code.gs: tandaiKembaliIzinKeluar
+           // sekarang menulis status Selesai langsung).
+           const handleTandaiKembaliIzin = (payload, callback) => handleIzinAction('tandaiKembaliIzinKeluar', payload, callback, '✓ Siswa ditandai kembali — transaksi selesai.');
            const handleTandaiPulangIzin = (payload, callback) => handleIzinAction('tandaiPulangIzinKeluar', payload, callback, '✓ Siswa ditandai pulang (tidak kembali ke sekolah).');
 
            // ---- Izin Kelompok (satu kegiatan, banyak peserta) ----
@@ -1023,7 +1025,7 @@
                                    <GerbangTab
                                        students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap}
                                        izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
-                                       onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin} onSelesaikanIzin={handleSelesaikanIzin}
+                                       onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin}
                                        onTandaiPulangIzin={handleTandaiPulangIzin} myWaliKelas={user.waliKelas || ''}
                                        onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}

@@ -714,12 +714,24 @@ var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah s
 var IZIN_COL_STATUS = 8; // kolom H (1-based)
 var IZIN_COL_KELOMPOK = 21; // kolom U (1-based)
 
-// Lima status, tidak tumpang tindih. 'Kembali' & 'Pulang' adalah HASIL AKHIR
-// yang berbeda (siswa balik ke sekolah vs tidak balik), 'Selesai' adalah
-// penutupan administratif atas keduanya.
+// Lima nilai status, tidak tumpang tindih — tapi ALUR NORMALNYA cuma
+// melewati EMPAT: Menunggu Verifikasi -> Sedang di Luar -> Selesai (siswa
+// balik), atau Menunggu Verifikasi -> Pulang (siswa tidak balik). Keduanya
+// FINAL dalam satu langkah, tidak ada penutupan administratif kedua.
+//
+// IZIN_STATUS_KEMBALI masih ada sebagai KONSTANTA (dibaca, bukan ditulis)
+// murni untuk baris lama yang sempat singgah di situ sebelum audit UX
+// Agustus 2026 menghapus langkah "Tutup transaksi" — lihat riwayat git kalau
+// perlu konteksnya. Kode BARU tidak pernah menulis status ini lagi:
+// tandaiKembaliIzinKeluar & tandaiKembaliKelompok di Code.gs sekarang
+// menulis IZIN_STATUS_SELESAI langsung, termasuk Waktu_Kembali + pencatatnya
+// di baris yang sama — tidak ada data yang hilang, cuma tidak ada lagi klik
+// kedua. 'Selesai' (siswa balik) dan 'Pulang' (siswa tidak balik) tetap
+// dibedakan lewat kolom Tujuan, BUKAN lewat nilai Status — jangan menyatukan
+// dua kolom itu jadi satu sumber kebenaran.
 var IZIN_STATUS_MENUNGGU = 'Menunggu Verifikasi';
 var IZIN_STATUS_DI_LUAR = 'Sedang di Luar';
-var IZIN_STATUS_KEMBALI = 'Kembali';
+var IZIN_STATUS_KEMBALI = 'Kembali'; // legacy — lihat komentar di atas, tidak ditulis lagi
 var IZIN_STATUS_PULANG = 'Pulang';
 var IZIN_STATUS_SELESAI = 'Selesai';
 // Status "masih berjalan" — selama salah satu ini masih menempel pada seorang

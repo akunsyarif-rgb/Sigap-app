@@ -15,7 +15,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-export-izin-keluar';
+var BACKEND_VERSION = '2026-08-25-izin-selesai-satu-langkah';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin'];
 
 // ===== doPost =====
@@ -748,7 +748,17 @@ function doPost(e) {
     // ---- Langkah 3 (hanya untuk tujuan "kembali"): siswa kembali ke sekolah.
     // Yang menandai TIDAK harus orang yang memberi izin — cukup petugas yang
     // sedang berwenang saat itu, sehingga pergantian guru piket di hari yang
-    // sama tidak menghalangi. ----
+    // sama tidak menghalangi.
+    //
+    // Status hasilnya langsung IZIN_STATUS_SELESAI, BUKAN singgah dulu di
+    // 'Kembali' menunggu aksi kedua. Keputusan produk (audit UX "Tutup
+    // transaksi"): satu tap ini SUDAH administrasi lengkap — Waktu_Kembali +
+    // siapa yang mencatat tetap terisi di baris yang sama, jadi tidak ada
+    // informasi yang hilang, cuma tidak ada lagi klik kedua yang menunggu
+    // guru piket. 'Selesai' di sini TIDAK ambigu dengan hasil 'Pulang': jalur
+    // pulang sudah final di statusnya sendiri (lihat 'tandaiPulangIzinKeluar'
+    // & verifikasi tujuan pulang), dan kolom Tujuan tetap membedakan
+    // "kembali ke sekolah" vs "pulang" di baris yang sama-sama 'Selesai'. ----
     if (action === 'tandaiKembaliIzinKeluar') {
       var kbNow = new Date();
       if (!canVerifyIzin(ss, sessionUser, kbNow)) {
@@ -759,20 +769,20 @@ function doPost(e) {
       if (!kbFound) {
         return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
       }
-      // Siswa 'Pulang' & siswa yang sudah 'Kembali' ditolak di sini — bukan
+      // Siswa 'Pulang' & siswa yang sudah 'Selesai' ditolak di sini — bukan
       // sekadar tombolnya disembunyikan di layar.
       if (kbFound.data.status !== IZIN_STATUS_DI_LUAR) {
         return jsonOut({ status: 'error', message: izinTolakTransisi(kbFound.data.status, 'kembali') });
       }
       var kbValues = kbFound.values.slice();
-      kbValues[7] = IZIN_STATUS_KEMBALI;
+      kbValues[7] = IZIN_STATUS_SELESAI;
       kbValues[17] = kbNow;
       kbValues[18] = sessionUser.name;
       kbValues[19] = sessionUser.id;
       kbSheet.getRange(kbFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([kbValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_KEMBALI));
-      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_KEMBALI });
+      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_SELESAI));
+      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
     }
 
     // ---- Langkah 3b: siswa yang TERNYATA tidak kembali (pulang dari kegiatan).
@@ -805,30 +815,16 @@ function doPost(e) {
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
     }
 
-    // ---- Langkah 4: penutupan administratif. 'Kembali' (siswa balik) dan
-    // 'Pulang' (siswa tidak balik) adalah dua HASIL yang berbeda; keduanya
-    // ditutup jadi 'Selesai'. Transaksi 'Selesai' tidak bisa diubah aksi mana
-    // pun lagi. ----
-    if (action === 'selesaikanIzinKeluar') {
-      var slsNow = new Date();
-      if (!canVerifyIzin(ss, sessionUser, slsNow)) {
-        return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menutup transaksi izin.' });
-      }
-      var slsSheet = ss.getSheetByName(IZIN_SHEET_NAME);
-      var slsFound = slsSheet ? findIzinRowById(slsSheet, data.id) : null;
-      if (!slsFound) {
-        return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
-      }
-      if (slsFound.data.status !== IZIN_STATUS_KEMBALI && slsFound.data.status !== IZIN_STATUS_PULANG) {
-        return jsonOut({ status: 'error', message: izinTolakTransisi(slsFound.data.status, 'selesai') });
-      }
-      var slsValues = slsFound.values.slice();
-      slsValues[7] = IZIN_STATUS_SELESAI;
-      slsSheet.getRange(slsFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([slsValues]);
-      clearIzinCache();
-      logAudit(sessionUser, 'Selesaikan Izin Keluar', buildIzinAuditDetail(slsFound.data, 'dari=' + slsFound.data.status));
-      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
-    }
+    // ---- 'selesaikanIzinKeluar' (penutupan administratif terpisah dari
+    // "Tandai Kembali") DIHAPUS oleh audit UX Agustus 2026: dulu dua tahap
+    // (Kembali -> "Tutup transaksi" -> Selesai) untuk hasil yang sama-sama
+    // "siswa sudah balik" ternyata tidak menambah nilai integritas apa pun —
+    // 'Kembali' sudah TIDAK terhitung transaksi terbuka (IZIN_STATUS_TERBUKA
+    // = [Menunggu Verifikasi, Sedang di Luar] saja) sejak awal, jadi klik
+    // kedua itu murni kosmetik (ganti label) sekaligus beban tambahan buat
+    // Guru Piket. 'tandaiKembaliIzinKeluar' & 'tandaiKembaliKelompok' di atas
+    // sekarang menulis IZIN_STATUS_SELESAI langsung. JANGAN menambahkan lagi
+    // aksi "tutup/selesaikan" terpisah untuk maksud yang sama. ----
 
     // ================= IZIN KELOMPOK (satu kegiatan, banyak peserta) =================
     // Tiga aksi, semuanya BEKERJA DI ATAS baris Izin_Keluar yang sama dengan izin
@@ -1032,16 +1028,19 @@ function doPost(e) {
       for (var tk in tkMinta) {
         if (!tkDitemukan[tk]) return jsonOut({ status: 'error', message: 'Ada peserta yang bukan bagian dari kegiatan ini.' });
       }
-      // Siswa yang sudah 'Pulang'/'Kembali'/'Selesai' ditolak DI SINI juga —
-      // aksi massal tidak boleh jadi celah untuk menembus penjaga transisi yang
+      // Siswa yang sudah 'Pulang'/'Selesai' ditolak DI SINI juga — aksi
+      // massal tidak boleh jadi celah untuk menembus penjaga transisi yang
       // berlaku pada aksi per siswa.
       for (var tj = 0; tj < tkDipilih.length; tj++) {
         if (tkDipilih[tj].data.status !== IZIN_STATUS_DI_LUAR) {
           return jsonOut({ status: 'error', message: tkDipilih[tj].data.name + ': ' + izinTolakTransisi(tkDipilih[tj].data.status, 'kembali') });
         }
       }
+      // Langsung IZIN_STATUS_SELESAI, sama seperti tandaiKembaliIzinKeluar
+      // individual — satu tap rombongan ini SUDAH administrasi lengkap untuk
+      // peserta yang dicentang, tidak menunggu "Tutup transaksi" kedua.
       tkDipilih.forEach(function (p) {
-        p.values[7] = IZIN_STATUS_KEMBALI;
+        p.values[7] = IZIN_STATUS_SELESAI;
         p.values[17] = tkNow;
         p.values[18] = sessionUser.name;
         p.values[19] = sessionUser.id;

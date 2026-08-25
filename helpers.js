@@ -442,6 +442,46 @@
            return { hariIni: hariIni, menunggu: menunggu, diLuar: diLuar, hint: hint };
        }
 
+       // ===== Izin Keluar: label peran di jejak audit kartu =====
+       // "Disetujui oleh: Wali Kelas — Nama" vs "Disetujui oleh: Guru Mapel —
+       // Nama" pada KARTU transaksi (Gerbang), bukan cuma di baris Audit Log
+       // (yang admin-only dan sudah menghitungnya sendiri di server lewat
+       // izinKonteksPersetujuan(), Utils.gs). Baris Izin_Keluar TIDAK
+       // menyimpan konteks itu sebagai kolom (keputusan yang sudah ada —
+       // server cuma menuliskannya ke detail Audit Log), jadi label kartu ini
+       // MURNI DIHITUNG ULANG di klien dari data yang sudah ada di layar:
+       // kelas siswa (izin.class) dicocokkan ke peta wali kelas sekolah
+       // (waliByClass, sudah dibangun dari getLoginUsers/waliKelasMap) lalu
+       // dibandingkan ke NAMA yang tercatat menyetujui (izin.disetujui_oleh).
+       //
+       // Ini BUKAN klaim jadwal mengajar dan BUKAN role — sama seperti
+       // konteksUntuk() di gerbang.js (dipakai SEBELUM submit, untuk kartu
+       // konteks), cuma versi baca-belakangan untuk transaksi yang sudah
+       // tersimpan. Server tidak pernah dipercaya membawa nilai ini balik;
+       // dihitung ulang di dua tempat secara independen (audit log & kartu)
+       // dari fakta yang sama (kelas siswa + peta wali kelas), bukan
+       // saling mewarisi.
+       //
+       // Jalur khusus (Izin Khusus) SENGAJA tidak pernah dilabeli Wali
+       // Kelas/Guru Mapel — Disetujui_Oleh pada baris itu adalah petugas
+       // piket yang mengambil keputusan pengecualian, bukan guru yang
+       // menangani siswa (yang justru sedang tidak tersedia, itulah kenapa
+       // jalur khusus dipakai).
+       function izinPeranPersetujuan(izin, waliByClass) {
+           if (!izin) return '';
+           if (izin.jalur === 'khusus') return 'khusus';
+           const wali = (waliByClass || {})[normalizeClass(izin.class)];
+           const namaWali = String(wali || '').trim();
+           const namaPersetuju = String(izin.disetujui_oleh || '').trim();
+           return (namaWali && namaWali === namaPersetuju) ? 'wali_kelas' : 'guru_mapel';
+       }
+
+       function izinPeranLabel(peran) {
+           if (peran === 'wali_kelas') return 'Wali Kelas';
+           if (peran === 'guru_mapel') return 'Guru Mapel';
+           return '';
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {

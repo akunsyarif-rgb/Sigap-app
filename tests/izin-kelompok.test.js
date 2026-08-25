@@ -377,10 +377,12 @@ test('kembali bersama: hanya siswa yang dicentang berubah, sisanya tetap di luar
   assert.equal(res.jumlahBelumKembali, 1);
 
   const status = s.statusPeserta(buat.id);
-  assert.equal(Object.values(status).filter((v) => v === 'Kembali').length, 7);
+  // Selesai langsung, satu langkah — bukan singgah dulu di 'Kembali'
+  // menunggu penutupan administratif terpisah (dihapus, audit UX Agustus 2026).
+  assert.equal(Object.values(status).filter((v) => v === 'Selesai').length, 7);
   assert.equal(status['Deni'], 'Sedang di Luar', 'yang belum kembali TIDAK boleh ikut berubah');
   // Siapa yang mencatat kembali tersimpan per siswa.
-  s.peserta(buat.id).filter((p) => p.status === 'Kembali').forEach((p) => {
+  s.peserta(buat.id).filter((p) => p.status === 'Selesai').forEach((p) => {
     assert.equal(p.row[18], 'Bu Piket Siang');
     assert.ok(p.row[17], 'waktu kembali terisi');
   });
@@ -407,7 +409,7 @@ test('sisa rombongan bisa ditandai kembali menyusul', () => {
   const susulan = s.post('piketSiang', { action: 'tandaiKembaliKelompok', id: buat.id, pesertaIds: [deni.id] });
   assert.equal(susulan.status, 'success');
   assert.equal(susulan.jumlahBelumKembali, 0);
-  Object.values(s.statusPeserta(buat.id)).forEach((st) => assert.equal(st, 'Kembali'));
+  Object.values(s.statusPeserta(buat.id)).forEach((st) => assert.equal(st, 'Selesai'));
 });
 
 test('pola individual: tiap peserta ditandai kembali sendiri lewat aksi izin individual', () => {
@@ -417,11 +419,12 @@ test('pola individual: tiap peserta ditandai kembali sendiri lewat aksi izin ind
 
   const ahmad = s.peserta(buat.id).find((p) => p.name === 'Ahmad');
   // Aksi per siswa yang SUDAH ADA — tidak ada jalur baru untuk pola individual.
+  // Langsung Selesai (satu langkah), sama seperti izin individual biasa.
   const res = s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: ahmad.id });
-  assert.equal(res.izinStatus, 'Kembali');
+  assert.equal(res.izinStatus, 'Selesai');
 
   const status = s.statusPeserta(buat.id);
-  assert.equal(status['Ahmad'], 'Kembali');
+  assert.equal(status['Ahmad'], 'Selesai');
   assert.equal(Object.values(status).filter((v) => v === 'Sedang di Luar').length, 7,
     'menandai satu siswa tidak boleh menyentuh anggota lain');
 });
@@ -453,12 +456,15 @@ test('satu peserta pulang, sisanya kembali — status masing-masing berdiri send
   assert.equal(res.jumlahKembali, 7);
 
   const status = s.statusPeserta(buat.id);
+  // Deni final di 'Pulang' (tidak pernah butuh penutupan terpisah), sisanya
+  // final di 'Selesai' — dua hasil berbeda, dua kata status berbeda, TAPI
+  // keduanya sudah FINAL dalam satu langkah masing-masing.
   assert.equal(status['Deni'], 'Pulang');
-  assert.equal(Object.values(status).filter((v) => v === 'Kembali').length, 7);
+  assert.equal(Object.values(status).filter((v) => v === 'Selesai').length, 7);
 
-  // Pulang -> Selesai (penutupan administratif), lalu terkunci.
-  assert.equal(s.post('bk', { action: 'selesaikanIzinKeluar', id: deni.id }).izinStatus, 'Selesai');
+  // Sudah terkunci — tidak ada aksi lanjutan apa pun untuk Deni.
   assert.equal(s.post('bk', { action: 'tandaiKembaliIzinKeluar', id: deni.id }).status, 'error');
+  assert.equal(s.post('bk', { action: 'tandaiPulangIzinKeluar', id: deni.id }).status, 'error');
 });
 
 test('tandai pulang butuh kewenangan piket & hanya dari status Sedang di Luar', () => {
@@ -680,12 +686,11 @@ test('izin INDIVIDUAL tetap bekerja penuh berdampingan dengan kelompok', () => {
   const s = loadServer();
   const kelompok = rombonganDiLuar(s);
 
-  // Alur individual lengkap: setuju -> verifikasi -> kembali -> selesai.
+  // Alur individual lengkap: setuju -> verifikasi -> kembali (langsung final).
   const individu = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2001', tujuan: 'kembali', keperluan: 'ke puskesmas' });
   assert.equal(individu.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: individu.id }).izinStatus, 'Sedang di Luar');
-  assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: individu.id }).izinStatus, 'Kembali');
-  assert.equal(s.post('bk', { action: 'selesaikanIzinKeluar', id: individu.id }).izinStatus, 'Selesai');
+  assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: individu.id }).izinStatus, 'Selesai');
 
   // Baris individual tidak punya kunci kegiatan, dan rombongan tidak tersentuh.
   const barisIndra = s.izinRows().find((r) => String(r[1]) === '2001');
