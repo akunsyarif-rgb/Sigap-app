@@ -58,10 +58,23 @@ function makeSheet(header, rows) {
   };
 }
 
-// Waktu fixture dihitung MUNDUR dari sekarang supaya "hari ini" selalu benar
-// jam berapa pun test dijalankan (pelajaran dari tests/rekap-upacara.test.js).
+// ⚠️ Waktu fixture TIDAK boleh dihitung sebagai "sekian menit yang lalu".
+// Versi pertama file ini memakai `now - 90 menit` untuk baris "hari ini", dan
+// itu jatuh ke HARI KEMARIN setiap kali suite dijalankan antara 00:00 dan
+// 01:30 waktu runner — persis yang terjadi saat CI jalan pukul 01:29 UTC
+// setelah merge: 2 test merah tanpa ada satu baris kode produksi pun berubah.
+// (Jebakan yang sama pernah dibereskan di tests/rekap-upacara.test.js.)
+//
+// Sekarang baris "hari ini" ditempatkan pada pecahan waktu yang sudah berlalu
+// SEJAK TENGAH MALAM lokal, jadi selalu jatuh di hari yang sama berapa pun jam
+// suite dijalankan — termasuk pukul 00:00:01 — dan urutannya tetap menaik
+// (getRowsSince mengandalkan itu).
 const now = new Date();
-const hariIni = (menitLalu) => new Date(now.getTime() - menitLalu * 60000);
+const TENGAH_MALAM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+const SEJAK_TENGAH_MALAM = Math.max(1, now.getTime() - TENGAH_MALAM);
+const SLOT_HARI_INI = 6;
+// slot 1..5 -> menaik, selalu di antara tengah malam dan sekarang.
+const hariIni = (slot) => new Date(TENGAH_MALAM + Math.floor((SEJAK_TENGAH_MALAM * slot) / SLOT_HARI_INI));
 const kemarin = (hariLalu) => new Date(now.getTime() - hariLalu * 24 * 3600 * 1000);
 
 // Log_Gerbang: [Timestamp, NISN, Nama, Kelas, Alasan, Dicatat_Oleh] (urut menaik)
@@ -71,10 +84,10 @@ const LATE_ROWS = [
   [kemarin(10), '2002', 'Budi', 'XI B', 'Macet', 'Bu Kartina'],        // lama, XI B, ditulis wali XI A (miliknya)
   [kemarin(5), '1001', 'Rahma', 'XI A', 'Ban bocor', 'Pak Anwar'],     // lama, XI A, ditulis guru biasa
   [kemarin(3), '3003', 'Citra', 'XII C', 'Kesiangan', 'Bu BK'],        // lama, kelas lain, ditulis BK
-  [hariIni(90), '3003', 'Citra', 'XII C', 'Hujan', 'Bu BK'],           // HARI INI, kelas lain
-  [hariIni(30), '2002', 'Budi', 'XI B', 'Kesiangan', 'Bu BK'],         // HARI INI, kelas lain
-  [hariIni(20), '1001', 'Rahma', 'XI A', 'Macet', 'Pak Anwar'],        // HARI INI, dicatat guru biasa (OWN hari ini)
-  [hariIni(10), '3003', 'Citra', 'XII C', 'Hujan', 'Bu Kartina'],      // HARI INI, kelas lain, dicatat wali XI A (OWN hari ini)
+  [hariIni(1), '3003', 'Citra', 'XII C', 'Hujan', 'Bu BK'],           // HARI INI, kelas lain
+  [hariIni(2), '2002', 'Budi', 'XI B', 'Kesiangan', 'Bu BK'],         // HARI INI, kelas lain
+  [hariIni(3), '1001', 'Rahma', 'XI A', 'Macet', 'Pak Anwar'],        // HARI INI, dicatat guru biasa (OWN hari ini)
+  [hariIni(4), '3003', 'Citra', 'XII C', 'Hujan', 'Bu Kartina'],      // HARI INI, kelas lain, dicatat wali XI A (OWN hari ini)
 ];
 
 // Surat_Masuk: [Timestamp, NISN, Nama, Kelas, Jenis, Keterangan, Foto_URL, Dicatat_Oleh]
@@ -83,9 +96,9 @@ const SURAT_ROWS = [
   [kemarin(11), '2002', 'Budi', 'XI B', 'Izin', 'acara keluarga', '', 'Pak Anwar'], // lama, kelas lain, milik guru biasa
   [kemarin(4), '2002', 'Budi', 'XI B', 'Sakit', 'flu', '', 'Bu Kartina'],         // lama, kelas lain, milik wali XI A
   [kemarin(2), '3003', 'Citra', 'XII C', 'Izin', 'lomba', '', 'Bu BK'],           // lama, kelas lain
-  [hariIni(75), '3003', 'Citra', 'XII C', 'Sakit', 'demam', '', 'Bu BK'],         // HARI INI, kelas lain
-  [hariIni(45), '2002', 'Budi', 'XI B', 'Izin', 'ke dokter', '', 'Pak Anwar'],    // HARI INI, milik guru biasa
-  [hariIni(25), '1001', 'Rahma', 'XI A', 'Sakit', 'pusing', '', 'Bu Kartina'],    // HARI INI, kelas wali
+  [hariIni(1), '3003', 'Citra', 'XII C', 'Sakit', 'demam', '', 'Bu BK'],         // HARI INI, kelas lain
+  [hariIni(2), '2002', 'Budi', 'XI B', 'Izin', 'ke dokter', '', 'Pak Anwar'],    // HARI INI, milik guru biasa
+  [hariIni(3), '1001', 'Rahma', 'XI A', 'Sakit', 'pusing', '', 'Bu Kartina'],    // HARI INI, kelas wali
 ];
 
 // Pelanggaran: [Timestamp, NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh]
@@ -94,7 +107,7 @@ const PELANGGARAN_ROWS = [
   [kemarin(8), '2002', 'Budi', 'XI B', 'Bolos', 'Panggilan Ortu', '', 'Bu BK'],
   [kemarin(7), '3003', 'Citra', 'XII C', 'Terlambat', 'Teguran', '', 'Pak Anwar'],  // guru biasa, kelas lain (miliknya)
   [kemarin(6), '2002', 'Budi', 'XI B', 'Atribut', 'Teguran', '', 'Bu Kartina'],     // wali XI A menulis untuk XI B
-  [hariIni(60), '3003', 'Citra', 'XII C', 'Bolos', 'Teguran', '', 'Bu BK'],         // hari ini, kelas lain, milik BK
+  [hariIni(2), '3003', 'Citra', 'XII C', 'Bolos', 'Teguran', '', 'Bu BK'],         // hari ini, kelas lain, milik BK
 ];
 
 const USERS = {
