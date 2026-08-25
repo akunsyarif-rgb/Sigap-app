@@ -759,3 +759,42 @@ test('tidak ada sheet/mapping jadwal mengajar yang ikut ditambahkan', () => {
   });
   assert.match(src, /getSheetByName\('Jadwal_Piket'\)/, 'kewenangan piket tetap dari mekanisme yang sudah ada');
 });
+
+// ============================================================
+// 20. IZIN KHUSUS KELOMPOK — kewenangan lengkap per role (audit eksplisit)
+// ============================================================
+// Sama seperti section 19 di izin-keluar.test.js: menutup celah CAKUPAN TEST
+// (BK/Admin belum pernah diuji eksplisit sukses lewat addIzinKelompok jalur
+// khusus, wali kelas non-piket belum diuji ditolak sebagai skenario
+// tersendiri) — TANPA mengubah satu baris implementasi pun. Perilakunya
+// sudah benar sejak Izin Kelompok pertama kali dibuat (bukti: canVerifyIzin
+// dipakai identik untuk addIzinKeluar & addIzinKelompok, lihat Code.gs).
+
+test('BK/Kesiswaan dapat memberikan Izin Khusus untuk kegiatan kelompok', () => {
+  const s = loadServer();
+  const res = ajukan(s, 'bk', { jalur: 'khusus', alasan_khusus: 'Guru pendamping berhalangan mendadak' });
+  assert.equal(res.status, 'success');
+  assert.equal(s.kelompokRows()[0][9], 'Bu BK');
+});
+
+test('Admin dapat memberikan Izin Khusus untuk kegiatan kelompok', () => {
+  const s = loadServer();
+  const res = ajukan(s, 'admin', { jalur: 'khusus', alasan_khusus: 'Guru pendamping berhalangan mendadak' });
+  assert.equal(res.status, 'success');
+  assert.equal(s.kelompokRows()[0][9], 'Pak Admin');
+});
+
+test('wali kelas yang BUKAN piket hari ini ditolak memberikan Izin Khusus untuk kelompok', () => {
+  const s = loadServer();
+  const res = ajukan(s, 'wali', { jalur: 'khusus', alasan_khusus: 'saya wali kelasnya, biar saya putuskan' });
+  assert.equal(res.status, 'error');
+  assert.equal(s.kelompokRows().length, 0, 'tidak ada kegiatan yang tersimpan saat ditolak');
+});
+
+test('alur kelompok normal tetap berjalan utuh setelah audit Izin Khusus ini (regresi)', () => {
+  const s = loadServer();
+  const buat = ajukan(s, 'wali');
+  assert.equal(buat.status, 'success');
+  assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKelompok', id: buat.id }).status, 'success');
+});

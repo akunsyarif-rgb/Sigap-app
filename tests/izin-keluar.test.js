@@ -838,3 +838,80 @@ test('backend getIzinKeluar tidak diubah untuk fitur badge (tetap izin/kelompok/
   const { sessionExpiresAt, ...isi } = res;
   assert.deepEqual(Object.keys(isi).sort(), ['canVerify', 'izin', 'kelompok', 'status'].sort());
 });
+
+// ============================================================
+// 19. IZIN KHUSUS — kewenangan lengkap per role (audit eksplisit)
+// ============================================================
+// Backend & frontend Izin Khusus SUDAH benar sebelum blok ini ditambahkan —
+// lihat test-test di section 7-8 di atas (petugas piket sukses, guru biasa
+// ditolak, alasan wajib, tidak memalsukan persetujuan). Blok ini menutup
+// SATU celah CAKUPAN TEST, bukan bug implementasi: BK dan Admin sebelumnya
+// tidak pernah diuji secara eksplisit memakai jalur khusus untuk
+// addIzinKeluar (cuma "tersirat lolos" lewat isBkRole), dan wali kelas yang
+// BUKAN piket hari ini tidak pernah diuji sebagai skenario tersendiri, beda
+// dari guru biasa non-wali — penting karena wali kelas gampang mengira
+// kepemilikan kelasnya sendiri memberi kewenangan lebih. Tidak ada
+// implementasi yang diubah untuk blok ini.
+
+test('Guru Piket bertugas hari ini dapat memberikan Izin Khusus', () => {
+  const s = loadServer();
+  const res = s.post('piketPagi', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak dapat dihubungi',
+  });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(res.id)[8], 'khusus');
+});
+
+test('BK/Kesiswaan dapat memberikan Izin Khusus', () => {
+  const s = loadServer();
+  const res = s.post('bk', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak dapat dihubungi',
+  });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(res.id)[10], 'Bu BK', 'tercatat atas nama BK sendiri, bukan wali kelas/guru mapel siapa pun');
+});
+
+test('Admin dapat memberikan Izin Khusus', () => {
+  const s = loadServer();
+  const res = s.post('admin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak dapat dihubungi',
+  });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(res.id)[10], 'Pak Admin');
+});
+
+test('guru biasa (bukan piket, bukan BK/Admin) ditolak memberikan Izin Khusus', () => {
+  const s = loadServer();
+  const res = s.post('pemberiIzin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'saya mau bantu',
+  });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /Izin Khusus/);
+  assert.equal(s.izinRows().length, IZIN_FIXTURE.length);
+});
+
+test('wali kelas yang BUKAN piket hari ini ditolak memberikan Izin Khusus — kepemilikan kelas tidak memberi kewenangan ini', () => {
+  const s = loadServer();
+  // Bu Kartina wali kelas XI B (siswa 1001 ADA di kelasnya sendiri) tapi
+  // TIDAK terjadwal piket hari ini (fixture Jadwal_Piket cuma G10/G11 hari
+  // ini). Jadi kelas perwaliannya sendiri pun tidak memberi jalan pintas.
+  const res = s.post('wali', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'saya wali kelasnya, biar saya putuskan',
+  });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /Izin Khusus/);
+  assert.equal(s.izinRows().length, IZIN_FIXTURE.length, 'tidak ada baris yang tersimpan saat ditolak');
+});
+
+test('alur izin normal tetap berjalan utuh setelah audit Izin Khusus ini (regresi)', () => {
+  const s = loadServer();
+  const normal = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
+  assert.equal(normal.izinStatus, 'Menunggu Verifikasi');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: normal.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: normal.id }).izinStatus, 'Kembali');
+});
