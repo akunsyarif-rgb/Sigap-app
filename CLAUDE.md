@@ -445,6 +445,60 @@ flow in Gerbang, it does not go through `editEntry`/`deleteEntry`, and
 `getSheetForCategory()` deliberately doesn't know the category so a hand-rolled
 edit/delete request is rejected too.
 
+#### "Tandai Kembali" vs "Tutup transaksi" — audited, both kept
+
+Two adjacent buttons that are easy to confuse; they are **not** interchangeable
+and neither is redundant:
+
+| | `tandaiKembaliIzinKeluar` | `selesaikanIzinKeluar` |
+| --- | --- | --- |
+| means | the **event**: student is back on school grounds | the **administration** is closed |
+| from → to | `Sedang di Luar` → `Kembali` | `Kembali` **or** `Pulang` → `Selesai` |
+| writes | `Waktu_Kembali` + who recorded it (cols R/S/T) | column `Status` **only** |
+| authority | piket on duty today + admin/BK | identical |
+
+Closing never deletes a row, never clears a field, and never invents a return:
+`Pulang` (student who was never coming back) closes to `Selesai` with
+`Waktu_Kembali` still empty, and the Audit Log line carries `dari=Kembali` /
+`dari=Pulang` so the two outcomes stay distinguishable after both read
+`Selesai`. What closing *does* buy is the lock: `Selesai` refuses every action,
+which is why the button stays even though `Kembali` already refuses
+`tandaiKembali`. Authority is **never ownership** — the teacher who approved is
+not the transaction's owner, and a later piket shift can close what an earlier
+one verified. `tests/izin-keluar.test.js` pins all of this, column by column.
+
+Known gap, deliberately **not** closed here: group-member rows
+(`ID_Kelompok` filled) have no closing path in the UI — `selesaikanIzinKeluar`
+works per row by `ID_Izin`, but the Kelompok panel offers no per-member or
+batch "Tutup transaksi", so members rest at `Kembali`/`Pulang`. Nothing hangs
+(those statuses already refuse every transition); it just means group rows are
+never explicitly marked `Selesai`. Adding a group closing action is a new batch
+backend action — decide it deliberately, don't slip it in.
+
+#### Beranda: Izin Keluar summary + clickable notification
+
+Beranda now carries **four** summary cards (Terlambat / Surat / Pelanggaran /
+Izin Keluar, laid out 2×2 — four across truncates the labels at 360px) and the
+"N izin keluar menunggu verifikasi" line is a **button** that jumps to Gerbang →
+Izin Keluar.
+
+All of it is client-side derivation over data already fetched — **no new
+endpoint, no new backend field, no second `getIzinKeluar` call**.
+`ringkasIzinBeranda()` (helpers.js) is the only new function and it *calls*
+`hitungIzinMenungguVerifikasi()` rather than re-implementing the rule, so the
+Beranda number and the Gerbang badge can never disagree; a test fails if
+beranda-riwayat.js filters `'Menunggu Verifikasi'` itself.
+
+The shortcut is **navigation only**: `goToIzinKeluar()` in app.js sets
+`gerbangMode='izin'` + `activeTab='scan'`, GerbangTab reads `initialMode` as its
+*initial* state, and `navigateTab` resets it so Gerbang doesn't stick in Izin
+Keluar mode. No authority travels with it — `canVerifyIzin` still comes from the
+server and every action is re-checked by `canVerifyIzin()` in Utils.gs. The
+notification is gated on that same `canVerifyIzin`, so a teacher with no
+verification authority never sees a prompt implying they should act; the summary
+card still shows the honest count. Gerbang's switch keeps its **badge/number**
+— don't turn it into a sentence, that's the Beranda card's job.
+
 #### Izin Kelompok (one activity, many students)
 
 Built **on top of** the individual flow, not beside it. One activity row in the
@@ -537,6 +591,28 @@ Every attempt, successful or rejected, is written to `Audit_Log` with
 metadata only (jenis/periode/cakupan/format/row count/status) — never student
 names or note contents.
 
+The `izin` report (Izin Keluar / Pulang) reads `Izin_Keluar` **as it is** — 21
+columns, no new sheet, no new field, `level: 'umum'` so it inherits the exact
+scope rules above. Excluded on purpose: NISN (same rule as every other report),
+`ID_Izin`/`*_Oleh_ID`/`ID_Kelompok` (internal identifiers, same class as
+`Dicatat_Oleh_ID`), and `Waktu_Verifikasi` — the last one **only** because it is
+always byte-identical to `Waktu_Keluar` (both stamped in the same call), so
+printing it twice just squeezes the other columns. The verifier's *name* is
+still there. The activity name from `Izin_Kelompok` is not joined in — one
+sheet, one report.
+
+At 14 columns it is by far the widest report, which surfaced a latent bug in the
+PDF writer: `pdfColumnWidths` split the page purely proportionally, so short
+columns lost and dates printed as `14/01/2..` — truncation that reads as *wrong
+data*, not merely cramped. Two fixes, both in `export-format.js`: reports with
+more than `PDF_WIDE_COLS` (10) columns drop to 7pt (existing 6–7 column reports
+are byte-identical, and a test pins that), and column widths now first try to fit
+every cell whole, falling back to the old proportional split only when the
+content genuinely can't fit. Don't reintroduce long enum labels in export `map`
+functions for this reason — `izinTujuanLabel`/`izinJalurLabel` return one word
+each ("Kembali"/"Pulang", "Normal"/"Khusus") on purpose; the column header
+carries the meaning.
+
 `getAuditLog` is **admin-only** (`isAdminRole`). It used to be admin +
 BK/Kesiswaan (`isBkRole`); it was tightened when export landed, because the
 Audit Log now also carries every export attempt — it is an oversight trail over
@@ -569,3 +645,9 @@ also what pins down "no printer assumptions".
 creation, partial verification, rombongan return with a student left outside,
 one member going home while the rest return, cross-activity id tampering, and
 that the individual flow still works beside it).
+The Beranda notification/summary, its RBAC gating, the Gerbang badge, the
+Beranda→Gerbang routing, and the "Tandai Kembali vs Tutup transaksi" column-by-
+column integrity checks live in those same two izin files; Export Izin Keluar is
+in `tests/export-backend.test.js` (scope, tampering, leaked identifiers, audit)
+and `tests/export-frontend.test.js` (14-column PDF/XLSX, and that narrow reports
+keep their old font size).

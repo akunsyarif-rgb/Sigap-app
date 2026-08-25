@@ -149,6 +149,19 @@
                try { localStorage.setItem('sigap_font_scale', String(next)); } catch (e) {}
            };
            const [riwayatCategory, setRiwayatCategory] = useState('terlambat');
+           // Mode awal GerbangTab saat layar Gerbang dibuka. Dipakai satu-satunya
+           // pintasan lintas-tab yang ada: kartu "izin keluar menunggu
+           // verifikasi" di Beranda -> Gerbang -> Izin Keluar. Murni navigasi
+           // — tidak ada satu pun kewenangan yang ikut berpindah bersamanya;
+           // apa yang bisa dikerjakan di layar tujuan tetap ditentukan
+           // canVerifyIzin dari server, dan tiap aksi diperiksa ulang lagi oleh
+           // canVerifyIzin() di Utils.gs.
+           const [gerbangMode, setGerbangMode] = useState('terlambat');
+           // Perpindahan tab lewat BottomNav mengembalikan Gerbang ke mode
+           // normalnya. Tanpa ini, sekali datang lewat pintasan, Gerbang akan
+           // selalu terbuka di Izin Keluar setiap kali dibuka lagi dari nav.
+           const navigateTab = (tab) => { setGerbangMode('terlambat'); setActiveTab(tab); };
+           const goToIzinKeluar = () => { setGerbangMode('izin'); setActiveTab('scan'); };
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
@@ -1014,10 +1027,11 @@
                                        onTandaiPulangIzin={handleTandaiPulangIzin} myWaliKelas={user.waliKelas || ''}
                                        onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
+                                       initialMode={gerbangMode}
                                    />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} />
+                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onGoToIzin={effectiveMenus.includes('scan') ? goToIzinKeluar : null} />
                                )}
                                {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab
@@ -1059,7 +1073,7 @@
                                <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} />
                            )}
 
-                           <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={setActiveTab} />
+                           <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={navigateTab} />
                        </div>
                    )}
                </div>

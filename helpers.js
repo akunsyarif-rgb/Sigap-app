@@ -406,6 +406,42 @@
            return individual + kelompokMenunggu;
        }
 
+       // Ringkasan Izin Keluar untuk kartu ke-4 di Beranda. Sengaja dipisah
+       // dari hitungIzinMenungguVerifikasi (yang tetap jadi SATU sumber angka
+       // badge) dan justru MEMANGGILNYA, supaya angka "menunggu verifikasi"
+       // di kartu Beranda, di kalimat notifikasi, dan di badge sakelar Gerbang
+       // tidak akan pernah berbeda.
+       //
+       // Tiga angka, tiga satuan yang berbeda dan masing-masing diberi label
+       // sesuai satuannya — jangan disatukan:
+       //   hariIni  = jumlah SISWA yang punya baris izin hari ini (apa pun
+       //              statusnya, termasuk yang sudah selesai/ditutup). Sejajar
+       //              dengan tiga kartu lain di Beranda yang juga "hari ini".
+       //   menunggu = jumlah PEKERJAAN verifikasi yang menunggu pengguna ini
+       //              (kegiatan kelompok dihitung SATU, sama dengan badge) —
+       //              0 kalau pengguna memang tidak berwenang memverifikasi.
+       //   diLuar   = jumlah SISWA yang saat ini masih di luar sekolah, tanpa
+       //              batas tanggal: siswa yang belum ditandai kembali dari
+       //              kemarin justru kondisi yang paling perlu terlihat.
+       //
+       // Transaksi 'Kembali'/'Pulang'/'Selesai' TIDAK pernah masuk `menunggu`
+       // maupun `diLuar` — keduanya adalah "pekerjaan/keadaan berjalan", bukan
+       // penghitung riwayat. Riwayatnya tetap utuh dan tetap bisa ditelusuri
+       // di menu Riwayat sesuai cakupan yang sudah ada.
+       function ringkasIzinBeranda(izinList, kelompokList, canVerify) {
+           const izin = izinList || [];
+           const today = new Date();
+           const hariIni = izin.filter(i => isSameDay(parseTimestamp(i.timestamp), today)).length;
+           const menunggu = hitungIzinMenungguVerifikasi(izin, kelompokList, canVerify);
+           const diLuar = izin.filter(i => i.status === 'Sedang di Luar').length;
+           // Satu keterangan kecil saja — yang paling menuntut tindakan lebih
+           // dulu. Dashboard tidak dipadati dengan semua angka sekaligus.
+           const hint = menunggu > 0
+               ? menunggu + ' menunggu verifikasi'
+               : (diLuar > 0 ? diLuar + ' siswa di luar' : '');
+           return { hariIni: hariIni, menunggu: menunggu, diLuar: diLuar, hint: hint };
+       }
+
        function buildPeriodSeries(period, logs) {
            const now = new Date();
            if (period === '5hari') {

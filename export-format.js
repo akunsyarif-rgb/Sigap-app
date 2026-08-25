@@ -257,6 +257,21 @@
        const PDF_ROW_H = 15;
        const PDF_FONT_SIZE = 8.5;
        const PDF_HEAD_SIZE = 9;
+       // Tabel lebar (Izin Keluar punya 14 kolom, jenis lain 6-7) memakai
+       // huruf lebih kecil. Bukan kosmetik: lebar kolom dibagi proporsional
+       // dari lebar halaman yang tetap, jadi pada 14 kolom ukuran 8.5pt
+       // memotong isi kolom pendek sampai SALAH — tanggal "14/01/2026" keluar
+       // sebagai "14/01.." dan nama siswa jadi "R..". Ambangnya di atas jumlah
+       // kolom laporan mana pun yang sudah ada, jadi berkas laporan lama
+       // keluar persis sama seperti sebelumnya.
+       const PDF_WIDE_COLS = 10;
+       const pdfFontSizes = (columns) => ((columns || []).length > PDF_WIDE_COLS
+           // head == body di sini (bukan 0.5pt lebih besar seperti tabel biasa):
+           // lebar kolom dihitung dari ukuran BODY, jadi judul yang sedikit
+           // lebih besar justru ikut terpotong. Judul tetap terbedakan lewat
+           // huruf tebal + pita abu-abunya.
+           ? { body: 7, head: 7 }
+           : { body: PDF_FONT_SIZE, head: PDF_HEAD_SIZE });
        // Helvetica rata-rata ±0.5 x ukuran font per karakter. Dipakai hanya
        // untuk memotong teks yang kepanjangan supaya tidak tabrakan antar
        // kolom — tidak perlu presisi tipografis.
@@ -281,7 +296,17 @@
            return s.slice(0, Math.max(1, maxChars - 2)) + '..';
        }
 
-       function pdfColumnWidths(columns, rows, avail) {
+       // Lebar tiap kolom. Dulu murni proporsional terhadap panjang isi
+       // terpanjangnya, dan itu punya cacat yang baru terlihat pada tabel
+       // lebar: kolom pendek TAPI TIDAK BOLEH TERPOTONG (tanggal, kelas)
+       // kalah bersaing dengan kolom panjang, lalu tercetak sebagai
+       // "14/01/2.." — tanggal yang salah baca, bukan sekadar sempit.
+       //
+       // Sekarang: kalau semua kolom muat utuh di satu halaman, itu yang
+       // dipakai (sisa ruangnya dibagi proporsional). Kalau memang tidak
+       // muat, barulah jatuh ke pembagian proporsional yang lama — perilaku
+       // untuk laporan yang isinya sangat panjang tidak berubah.
+       function pdfColumnWidths(columns, rows, avail, bodySize) {
            const weights = columns.map((c, i) => {
                let max = String(c || '').length;
                rows.forEach((row) => {
@@ -291,6 +316,14 @@
                return Math.max(5, Math.min(42, max));
            });
            const sum = weights.reduce((a, b) => a + b, 0) || 1;
+           // +6 = padding kiri/kanan sel, sama dengan yang dipakai fitPdfText.
+           const charW = (bodySize || PDF_FONT_SIZE) * PDF_CHAR_RATIO;
+           const ideal = weights.map((w) => w * charW + 6);
+           const idealSum = ideal.reduce((a, b) => a + b, 0) || 1;
+           if (idealSum <= avail) {
+               const sisa = avail - idealSum;
+               return ideal.map((w) => w + (sisa * w) / idealSum);
+           }
            return weights.map((w) => (avail * w) / sum);
        }
 
@@ -298,7 +331,8 @@
            const columns = (report && report.columns) || [];
            const rows = (report && report.rows) || [];
            const avail = PDF_PAGE_W - PDF_MARGIN * 2;
-           const widths = pdfColumnWidths(columns, rows, avail);
+           const fontSize = pdfFontSizes(columns);
+           const widths = pdfColumnWidths(columns, rows, avail, fontSize.body);
 
            const drawText = (parts, text, x, y, size, bold) => {
                parts.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(text)}) Tj ET`);
@@ -310,7 +344,7 @@
                drawRect(parts, PDF_MARGIN, y - 4, avail, PDF_ROW_H + 2, 0.87);
                let x = PDF_MARGIN;
                columns.forEach((c, i) => {
-                   drawText(parts, fitPdfText(c, widths[i] - 6, PDF_HEAD_SIZE), x + 3, y, PDF_HEAD_SIZE, true);
+                   drawText(parts, fitPdfText(c, widths[i] - 6, fontSize.head), x + 3, y, fontSize.head, true);
                    x += widths[i];
                });
            };
@@ -375,13 +409,13 @@
                    let x = PDF_MARGIN;
                    columns.forEach((c, i) => {
                        const value = (row && row[i]) == null ? '' : row[i];
-                       const text = fitPdfText(value, widths[i] - 6, PDF_FONT_SIZE);
+                       const text = fitPdfText(value, widths[i] - 6, fontSize.body);
                        if (typeof value === 'number') {
                            // Angka (Rekap Siswa) rata kanan supaya mudah dibaca menurun.
-                           const w = String(value).length * PDF_FONT_SIZE * PDF_CHAR_RATIO;
-                           drawText(parts, text, x + widths[i] - 3 - w, y, PDF_FONT_SIZE, false);
+                           const w = String(value).length * fontSize.body * PDF_CHAR_RATIO;
+                           drawText(parts, text, x + widths[i] - 3 - w, y, fontSize.body, false);
                        } else {
-                           drawText(parts, text, x + 3, y, PDF_FONT_SIZE, false);
+                           drawText(parts, text, x + 3, y, fontSize.body, false);
                        }
                        x += widths[i];
                    });

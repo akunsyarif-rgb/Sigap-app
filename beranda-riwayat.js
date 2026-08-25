@@ -4,12 +4,16 @@
 // 1 catatan (khusus Admin & BK/Kesiswaan, BK/Kesiswaan dibatasi 5 menit
 // sejak catatan dibuat — aturan sebenarnya ditegakkan di server).
 
-       function SummaryCard({ value, label, tone }) {
-           const textClasses = { crimson: 'text-crimson', amber: 'text-amber-600', sky: 'text-sky-dim' };
+       // `hint` = satu keterangan kecil di bawah label (mis. "1 menunggu
+       // verifikasi"). Opsional: kartu tanpa hint tampil persis seperti
+       // sebelumnya, jadi tiga kartu lama tidak berubah bentuknya.
+       function SummaryCard({ value, label, tone, hint }) {
+           const textClasses = { crimson: 'text-crimson', amber: 'text-amber-600', sky: 'text-sky-dim', moss: 'text-moss-dim' };
            return (
                <Card tone={tone} className={`text-center ${textClasses[tone]}`}>
                    <div className="font-display text-3xl font-extrabold">{value}</div>
                    <div className="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-80">{label}</div>
+                   {hint ? <div className="text-[9px] mt-1 font-semibold leading-tight opacity-70">{hint}</div> : null}
                </Card>
            );
        }
@@ -54,7 +58,7 @@
            return 'Selamat Malam';
        }
 
-       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading, tindakLanjutList, canViewRanking, isAdmin, onAjukanTindakLanjut, onApproveTindakLanjut, izinList, kelompokList, canVerifyIzin }) {
+       function DashboardTab({ user, allLogs, pelanggaranList, suratList, jadwalPiket, onRefresh, loading, tindakLanjutList, canViewRanking, isAdmin, onAjukanTindakLanjut, onApproveTindakLanjut, izinList, kelompokList, canVerifyIzin, onGoToIzin }) {
            const [showPiketList, setShowPiketList] = useState(false);
            const [tindakLanjutTarget, setTindakLanjutTarget] = useState(null);
            const [catatanInput, setCatatanInput] = useState('');
@@ -134,7 +138,16 @@
            // verifikasi via fallback tetap dapat ringkasannya, dan guru biasa
            // yang bukan petugas piket TIDAK melihat angka yang memberi kesan
            // mereka harus verifikasi.
-           const izinMenunggu = hitungIzinMenungguVerifikasi(izinList, kelompokList, canVerifyIzin);
+           const izinRingkas = ringkasIzinBeranda(izinList, kelompokList, canVerifyIzin);
+           const izinMenunggu = izinRingkas.menunggu;
+           // Pintasan Beranda -> Gerbang -> Izin Keluar. Hanya sebuah PINDAH
+           // LAYAR: apa yang boleh dikerjakan setibanya di sana tetap
+           // ditentukan canVerifyIzin (dari server) dan, pada akhirnya, oleh
+           // canVerifyIzin() di Utils.gs yang memeriksa ulang tiap aksi. Guru
+           // yang tidak berwenang tidak mendapat tombol verifikasi di sana,
+           // dan kartu notifikasi ini pun tidak muncul untuknya karena
+           // izinMenunggu-nya 0.
+           const bisaKeIzin = typeof onGoToIzin === 'function';
 
            // ⑥ Ringkasan kelas perwalian — dihitung dari data yang sudah di-fetch,
            // difilter ke kelas perwalian guru ini saja, minggu berjalan.
@@ -209,17 +222,48 @@
                        Jadwal_Piket) tetap harus melihat ini walau Jadwal_Piket
                        kosong atau mereka bukan wali kelas siapa pun. */}
                    {izinMenunggu > 0 && (
-                       <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl px-4 py-3 flex items-center gap-2.5">
-                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-4 w-4 text-sky-dim flex-shrink-0" />
-                           <span className="text-xs text-sky-dim font-semibold">{izinMenunggu} izin keluar menunggu verifikasi</span>
-                       </div>
+                       bisaKeIzin ? (
+                           /* Kartu tindakan: satu ketukan langsung ke Gerbang ->
+                              Izin Keluar, tempat daftar "Menunggu Verifikasi"
+                              berada paling atas. TIDAK ada aksi verifikasi yang
+                              dijalankan dari Beranda — Beranda meringkas keadaan,
+                              Gerbang tempat memprosesnya. */
+                           <button
+                               type="button"
+                               onClick={() => onGoToIzin()}
+                               className="w-full text-left bg-sky-dim/10 border border-sky-dim/30 rounded-2xl px-4 py-3 flex items-center gap-2.5 active:bg-sky-dim/20 transition"
+                           >
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-4 w-4 text-sky-dim flex-shrink-0" />
+                               <span className="min-w-0 flex-1">
+                                   <span className="block text-xs text-sky-dim font-semibold">{izinMenunggu} izin keluar menunggu verifikasi</span>
+                                   <span className="block text-[10px] text-slate-500 font-semibold mt-0.5">Perlu diproses</span>
+                               </span>
+                               <span className="flex-shrink-0 text-[10px] font-bold text-white bg-sky rounded-lg px-2.5 py-1.5">Lihat</span>
+                           </button>
+                       ) : (
+                           /* Menu Gerbang tidak tersedia untuk pengguna ini —
+                              tampilkan kabarnya saja, jangan tombol yang tidak
+                              menuju ke mana-mana. */
+                           <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl px-4 py-3 flex items-center gap-2.5">
+                               <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-4 w-4 text-sky-dim flex-shrink-0" />
+                               <span className="text-xs text-sky-dim font-semibold">{izinMenunggu} izin keluar menunggu verifikasi</span>
+                           </div>
+                       )
                    )}
 
-                   {/* ③ Ringkasan Hari Ini */}
-                   <div className="grid grid-cols-3 gap-2.5">
+                   {/* ③ Ringkasan Hari Ini — empat kategori. Ditata 2x2, bukan
+                       satu baris berisi empat: di layar HP selebar 360px kartu
+                       keempat membuat label seperti "PELANGGARAN" terpotong,
+                       dan keterangan kecil di bawahnya tidak muat sama sekali. */}
+                   <div className="grid grid-cols-2 gap-2.5">
                        <SummaryCard value={todayLate.length} label="Terlambat" tone="crimson" />
                        <SummaryCard value={todaySurat.length} label="Surat" tone="sky" />
                        <SummaryCard value={todayPelanggaran.length} label="Pelanggaran" tone="amber" />
+                       {/* Angkanya = izin keluar HARI INI (semua status), sejajar
+                           dengan tiga kartu lain. Keterangan kecilnya yang
+                           membawa status paling menuntut tindakan — lihat
+                           ringkasIzinBeranda di helpers.js. */}
+                       <SummaryCard value={izinRingkas.hariIni} label="Izin Keluar" tone="moss" hint={izinRingkas.hint} />
                    </div>
 
                    {/* Surat Hari Ini — daftar KHUSUS surat (bukan tercampur di

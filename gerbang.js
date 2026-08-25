@@ -69,14 +69,20 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onSelesaikanIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onSelesaikanIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
            // Daftar riwayat per-kategori yang dulu ada di sini (dengan filter
            // kelas & sort) dihapus karena mengulang menu Riwayat — kalau perlu
            // cek "siapa di kelas X izin/sakit hari ini", arahnya ke Riwayat.
-           const [mode, setMode] = useState('terlambat');
+           // initialMode HANYA nilai awal, bukan mode yang dikendalikan dari
+           // luar: dipakai pintasan "Lihat" di Beranda supaya layar ini terbuka
+           // langsung di Izin Keluar. GerbangTab di-unmount saat pindah tab,
+           // jadi nilai ini terbaca lagi setiap kali datang dari pintasan; App
+           // membersihkannya kalau pengguna pindah tab lewat BottomNav biasa,
+           // supaya Gerbang tidak "nyangkut" di mode Izin Keluar selamanya.
+           const [mode, setMode] = useState(initialMode === 'izin' ? 'izin' : 'terlambat');
            const [searchQuery, setSearchQuery] = useState('');
            const [pickerStudent, setPickerStudent] = useState(null);
            const [suratStudent, setSuratStudent] = useState(null);
@@ -599,10 +605,25 @@
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} text="Tidak ada siswa yang sedang di luar." />}
                    </div>
 
-                   {/* ③ Selesai Hari Ini — Kembali, Pulang, dan yang sudah ditutup. */}
+                   {/* ③ Selesai Hari Ini — Kembali, Pulang, dan yang sudah ditutup.
+                       Ketiganya sengaja TIDAK dilebur jadi satu label: status
+                       masing-masing baris tetap ditampilkan apa adanya di kartu,
+                       supaya "siswa sudah kembali" dan "administrasinya sudah
+                       ditutup" tidak pernah terbaca sebagai hal yang sama. */}
                    {selesaiHariIni.length > 0 && (
                        <div className="space-y-2.5">
                            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Selesai Hari Ini ({selesaiHariIni.length})</h3>
+                           {/* Kalimat ini yang membedakan dua tombol yang paling
+                               mudah tertukar di layar ini. "Tandai Kembali"
+                               mencatat KEJADIAN (siswa sudah balik, jam & petugas
+                               pencatatnya ikut tersimpan); "Tutup transaksi"
+                               menutup ADMINISTRASINYA. Menutup tidak menghapus
+                               apa pun dan tidak mengubah catatan yang sudah ada —
+                               barisnya tetap ada di Riwayat, lengkap dengan
+                               jejak persetujuan & verifikasinya. */}
+                           <p className="text-[10px] text-slate-500 leading-relaxed">
+                               <strong>Tutup transaksi</strong> hanya menutup administrasinya — datanya tetap tersimpan dan tetap bisa dilihat di Riwayat. Yang mencatat siswa sudah balik ke sekolah adalah <strong>Tandai Kembali</strong>.
+                           </p>
                            {selesaiHariIni.map((izin) => (
                                <KartuIzinKeluar key={izin.id} izin={izin}>
                                    <div className="flex items-center justify-between gap-2">

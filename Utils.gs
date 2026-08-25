@@ -439,6 +439,41 @@ var EXPORT_JENIS = {
     columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Catatan', 'Dicatat Oleh'],
     map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[6])]; },
   },
+  // Izin Keluar / Pulang. Memakai sheet Izin_Keluar APA ADANYA (21 kolom,
+  // IZIN_HEADERS) — tidak ada kolom, sheet, atau field baru yang dibuat untuk
+  // export ini, dan tidak ada satu pun nilai yang dikarang: semuanya kolom
+  // yang memang sudah ditulis alur transaksinya.
+  //
+  // Yang SENGAJA tidak ikut, dan alasannya:
+  // - NISN (kolom B) : sama seperti SEMUA laporan lain di berkas ini —
+  //   identitas siswa di dalam berkas cukup Nama + Kelas (lihat catatan
+  //   panjang di atas). Konsisten, bukan pengecualian untuk izin.
+  // - ID_Izin (E), Disetujui_Oleh_ID (L), Diverifikasi_Oleh_ID (O),
+  //   Dicatat_Kembali_Oleh_ID (T), ID_Kelompok (U) : pengenal internal,
+  //   sekelas Dicatat_Oleh_ID yang juga sudah dikecualikan di mana-mana.
+  // - Waktu_Verifikasi (P) : bukan dihilangkan karena tidak penting, tapi
+  //   karena SELALU sama persis dengan Waktu_Keluar (Q) — keduanya distempel
+  //   pada detik yang sama oleh verifikasiIzinKeluar (dan oleh addIzinKeluar
+  //   pada jalur khusus). Menampilkan dua kolom berisi jam yang identik cuma
+  //   mempersempit kolom lain di PDF. Nama petugas verifikasinya TETAP ikut.
+  // - Timestamp (A) : nilainya sama dengan Waktu_Persetujuan (M) — dipakai
+  //   sekali sebagai kolom 'Tanggal' + 'Jam Persetujuan'.
+  izin: {
+    label: 'Izin Keluar', judul: 'LAPORAN IZIN KELUAR / PULANG', sheet: 'Izin_Keluar',
+    numCols: 21, tsIndex: 0, classIndex: 3, level: 'umum',
+    columns: [
+      'Tanggal', 'Nama', 'Kelas', 'Keperluan', 'Tujuan', 'Jalur', 'Alasan Khusus', 'Status',
+      'Disetujui Oleh', 'Jam Setuju', 'Verifikator', 'Jam Keluar', 'Jam Kembali', 'Pencatat Kembali',
+    ],
+    map: function (r) {
+      return [
+        formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[5]),
+        izinTujuanLabel(r[6]), izinJalurLabel(r[8]), asText(r[9]), asText(r[7]),
+        asText(r[10]), formatExportTime(r[12]), asText(r[13]), formatExportTime(r[16]),
+        formatExportTime(r[17]), asText(r[18]),
+      ];
+    },
+  },
   // Rekap Siswa BUKAN sheet baru: ini agregat dari empat sheet di atas
   // (kategori yang boleh dilihat pemanggil), dihitung server-side.
   rekap: {
@@ -736,6 +771,32 @@ function izinKonteksPersetujuan(sessionUser, kelasSiswa) {
 
 function izinKonteksLabel(konteks) {
   return konteks === IZIN_KONTEKS_WALI_KELAS ? 'Wali Kelas' : 'Guru Mapel';
+}
+
+// Label untuk laporan Export. Nilai yang tersimpan di sheet tetap 'kembali'/
+// 'pulang' dan 'normal'/'khusus' apa adanya — ini MURNI pemanis baca di
+// berkas laporan, tidak mengubah apa pun yang tertulis di Izin_Keluar dan
+// tidak dipakai di jalur transaksi mana pun. Nilai yang tidak dikenali
+// dikembalikan apa adanya, bukan dipaksa jadi salah satu label.
+//
+// Sengaja SATU KATA. Laporan izin adalah laporan terlebar yang ada (14 kolom)
+// dan lebar tiap kolom di PDF dibagi menurut isi terpanjangnya
+// (pdfColumnWidths, export-format.js): label sepanjang "Kembali ke sekolah"
+// di kolom yang cuma perlu membedakan dua nilai akan merampas ruang kolom
+// Nama sampai nama siswa terpotong jadi "R..". Judul kolomnya ("Tujuan",
+// "Jalur") yang menjelaskan artinya.
+function izinTujuanLabel(tujuan) {
+  var t = String(tujuan == null ? '' : tujuan).trim().toLowerCase();
+  if (t === IZIN_TUJUAN_KEMBALI) return 'Kembali';
+  if (t === IZIN_TUJUAN_PULANG) return 'Pulang';
+  return asText(tujuan);
+}
+
+function izinJalurLabel(jalur) {
+  var j = String(jalur == null ? '' : jalur).trim().toLowerCase();
+  if (j === IZIN_JALUR_NORMAL) return 'Normal';
+  if (j === IZIN_JALUR_KHUSUS) return 'Khusus';
+  return asText(jalur);
 }
 
 // ===== Siapa "Guru Piket" hari ini =====

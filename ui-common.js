@@ -28,6 +28,11 @@
                crimson: 'bg-crimson/10 border-crimson/30',
                amber: 'bg-amber-50 border-amber-200',
                sky: 'bg-sky-dim/10 border-sky-dim/30',
+               // moss dipakai kartu ringkasan Izin Keluar di Beranda — warna
+               // keempat yang memang sudah ada di palet (index.html), bukan
+               // warna baru; Terlambat/Surat/Pelanggaran sudah memakai tiga
+               // tone lainnya dan kartu keempat harus tetap terbedakan.
+               moss: 'bg-moss/10 border-moss/30',
            };
            // shadow halus 0 1px 3px rgba(navy,.08) — audit desain (bukan shadow-lg/
            // shadow-xl bawaan Tailwind, itu terlalu berat untuk kartu kecil berulang).

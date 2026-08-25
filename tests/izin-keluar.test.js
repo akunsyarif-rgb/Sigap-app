@@ -915,3 +915,151 @@ test('alur izin normal tetap berjalan utuh setelah audit Izin Khusus ini (regres
   assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: normal.id }).izinStatus, 'Sedang di Luar');
   assert.equal(s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: normal.id }).izinStatus, 'Kembali');
 });
+
+// ============================================================
+// AUDIT "TANDAI KEMBALI" vs "TUTUP TRANSAKSI"
+//
+// Dua aksi yang paling mudah tertukar, dan konsekuensi tertukarnya berat:
+//   tandaiKembaliIzinKeluar  = mencatat KEJADIAN — siswa sudah balik ke
+//                              sekolah. Menulis Waktu_Kembali + siapa yang
+//                              mencatatnya. HANYA dari 'Sedang di Luar'.
+//   selesaikanIzinKeluar     = menutup ADMINISTRASI — dari 'Kembali' ATAU
+//                              'Pulang' ke 'Selesai'. TIDAK menulis apa pun
+//                              selain kolom Status, tidak menghapus apa pun,
+//                              dan tidak bisa menggantikan Tandai Kembali.
+// ============================================================
+
+test('Tutup Transaksi BUKAN pengganti Tandai Kembali — siswa di luar tidak bisa langsung ditutup', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'ambil seragam');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(s.izinById(buat.id)[7], 'Sedang di Luar');
+
+  const tutup = s.post('piketPagi', { action: 'selesaikanIzinKeluar', id: buat.id });
+  assert.equal(tutup.status, 'error', 'siswa yang masih di luar tidak boleh "diselesaikan" begitu saja');
+  assert.equal(s.izinById(buat.id)[7], 'Sedang di Luar', 'statusnya tidak bergeser oleh permintaan yang ditolak');
+  assert.equal(s.izinById(buat.id)[17], '', 'dan Waktu_Kembali tetap kosong — tidak ada kepulangan yang dikarang');
+});
+
+test('Tutup Transaksi TIDAK menghapus data & tidak mengubah satu pun catatan sebelumnya', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol gigi');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+
+  const jumlahBarisSebelum = s.izinRows().length;
+  const sebelum = s.izinById(buat.id).slice();
+  assert.equal(s.post('bk', { action: 'selesaikanIzinKeluar', id: buat.id }).izinStatus, 'Selesai');
+  const sesudah = s.izinById(buat.id);
+
+  assert.equal(s.izinRows().length, jumlahBarisSebelum, 'menutup transaksi tidak menghapus baris');
+  assert.equal(sesudah[7], 'Selesai');
+  // SATU-SATUNYA kolom yang boleh berubah adalah Status (index 7).
+  sebelum.forEach((nilai, i) => {
+    if (i === 7) return;
+    assert.equal(String(sesudah[i]), String(nilai), 'kolom index ' + i + ' (' + IZIN_HEADER_NAMA[i] + ') tidak boleh berubah saat transaksi ditutup');
+  });
+  // Jejak persetujuan, verifikasi, dan pencatatan kembali tetap utuh & terbaca.
+  assert.equal(sesudah[10], 'Bu Kartina', 'nama pemberi persetujuan tetap');
+  assert.equal(sesudah[13], 'Pak Piket Pagi', 'nama petugas verifikasi tetap');
+  assert.equal(sesudah[18], 'Bu Piket Siang', 'nama pencatat kembali tetap');
+  assert.ok(sesudah[17], 'Waktu_Kembali tetap terisi');
+});
+
+const IZIN_HEADER_NAMA = [
+  'Timestamp', 'NISN', 'Nama', 'Kelas', 'ID_Izin', 'Keperluan', 'Tujuan', 'Status', 'Jalur', 'Alasan_Khusus',
+  'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan', 'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID',
+  'Waktu_Verifikasi', 'Waktu_Keluar', 'Waktu_Kembali', 'Dicatat_Kembali_Oleh', 'Dicatat_Kembali_Oleh_ID', 'ID_Kelompok',
+];
+
+test('Tutup Transaksi menambah jejak audit, tidak menghapus jejak yang sudah ada', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '2002', 'kembali', 'ambil obat');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+  const sebelumTutup = s.auditRows().length;
+  s.post('piketPagi', { action: 'selesaikanIzinKeluar', id: buat.id });
+
+  const aksi = s.auditRows().map((r) => String(r[3]));
+  ['Persetujuan Izin Keluar', 'Verifikasi Izin Keluar', 'Tandai Kembali Izin Keluar', 'Selesaikan Izin Keluar']
+    .forEach((a) => assert.ok(aksi.includes(a), 'jejak "' + a + '" harus ada'));
+  assert.equal(s.auditRows().length, sebelumTutup + 1, 'penutupan MENAMBAH satu baris audit, bukan mengganti');
+  // Baris penutupan menyebut status asalnya, sehingga "kembali" dan "pulang"
+  // tetap bisa dibedakan setelah keduanya jadi 'Selesai'.
+  const barisTutup = s.auditRows().find((r) => String(r[3]) === 'Selesaikan Izin Keluar');
+  assert.match(String(barisTutup[4]), /dari=Kembali/);
+});
+
+test('Tutup Transaksi pada tujuan "Pulang" menyebut asalnya Pulang — hasilnya tidak dilebur', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '3003', 'pulang', 'dijemput orang tua');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(s.izinById(buat.id)[7], 'Pulang');
+  assert.equal(s.izinById(buat.id)[17], '', 'tidak ada Waktu_Kembali untuk siswa yang memang tidak kembali');
+
+  s.post('admin', { action: 'selesaikanIzinKeluar', id: buat.id });
+  const barisTutup = s.auditRows().filter((r) => String(r[3]) === 'Selesaikan Izin Keluar').pop();
+  assert.match(String(barisTutup[4]), /dari=Pulang/);
+  assert.equal(s.izinById(buat.id)[17], '', 'menutup transaksi tidak mengarang kepulangan ke sekolah');
+});
+
+test('Kewenangan Tutup Transaksi = kewenangan verifikasi, BUKAN kepemilikan transaksi', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'urusan keluarga');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+
+  // Pemberi persetujuan awal TIDAK otomatis boleh menutup (dia bukan piket).
+  const olehWali = s.post('wali', { action: 'selesaikanIzinKeluar', id: buat.id });
+  assert.equal(olehWali.status, 'error');
+  assert.equal(s.izinById(buat.id)[7], 'Kembali');
+
+  // Petugas piket shift LAIN — bukan yang menyetujui, bukan yang verifikasi,
+  // bukan yang menandai kembali — tetap boleh menutupnya.
+  assert.equal(s.post('piketSiang', { action: 'selesaikanIzinKeluar', id: buat.id }).izinStatus, 'Selesai');
+});
+
+test('transaksi yang sudah ditutup tetap terbaca di daftar — tidak disembunyikan, tidak dihapus', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'ambil berkas');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'selesaikanIzinKeluar', id: buat.id });
+
+  // Admin/BK: seluruh sekolah, termasuk yang sudah ditutup.
+  const daftarAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin;
+  const baris = daftarAdmin.find((i) => i.id === buat.id);
+  assert.ok(baris, 'transaksi yang ditutup tetap ada di daftar');
+  assert.equal(baris.status, 'Selesai');
+  assert.equal(baris.disetujui_oleh, 'Bu Kartina');
+  assert.equal(baris.diverifikasi_oleh, 'Pak Piket Pagi');
+  assert.ok(baris.waktu_kembali, 'waktu kembali tetap ikut terkirim');
+
+  // Cakupan baca TIDAK berubah gara-gara penutupan: aturan riwayat tertutup
+  // yang sudah ada tetap berlaku, tidak ada pelonggaran maupun penyembunyian.
+  const daftarWali = s.get('wali', { action: 'getIzinKeluar' }).izin;
+  assert.ok(daftarWali.some((i) => i.id === buat.id), 'wali kelas siswa ini tetap melihat riwayatnya');
+});
+
+test('lima status, tidak ada status baru yang ditambahkan oleh perubahan ini', () => {
+  const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
+  const konstanta = (utils.match(/var IZIN_STATUS_[A-Z_]+ = /g) || []).map((m) => m.replace('var ', '').replace(' = ', ''));
+  assert.deepEqual(konstanta.sort(), [
+    'IZIN_STATUS_DI_LUAR', 'IZIN_STATUS_KEMBALI', 'IZIN_STATUS_MENUNGGU',
+    'IZIN_STATUS_PULANG', 'IZIN_STATUS_SELESAI', 'IZIN_STATUS_TERBUKA',
+  ]);
+  // Skema Izin_Keluar tetap 21 kolom — tidak ada kolom baru untuk fitur ini.
+  assert.match(utils, /var IZIN_NUM_COLS = IZIN_HEADERS\.length; \/\/ 21/);
+});
+
+test('tidak ada role "Guru Piket" yang dibuat — kewenangannya tetap dari Jadwal_Piket', () => {
+  const cfg = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+  // Entri ROLES dikenali dari adanya `menus:` — NAV_ITEMS juga memakai
+  // `label:` tapi tidak punya daftar menu.
+  const roles = (cfg.match(/^\s+(\w+):\s+\{ label:[^\n]*menus:/gm) || []).map((m) => m.trim().split(':')[0]);
+  assert.deepEqual(roles.sort(), ['admin', 'bk_kesiswaan', 'guru', 'osis']);
+  const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
+  assert.match(utils, /function isPiketBertugas/);
+  assert.match(utils, /Jadwal_Piket/);
+  assert.ok(!/isPiketRole|role === 'piket'|'guru_piket'/.test(utils));
+});
