@@ -697,3 +697,106 @@ test('klaim peran yang tetap dikirim klien tidak mengubah apa pun', () => {
   assert.ok(!JSON.stringify(row).includes('wali_kelas'));
   assert.ok(!JSON.stringify(row).includes('Guru Mapel'));
 });
+
+// ============================================================
+// 17. KONTEKS PERSETUJUAN: Wali Kelas vs Guru Mapel
+// ============================================================
+// MURNI label tampilan/audit, DIHITUNG DI SERVER dari sessionUser.waliKelas +
+// kelas siswa (Master_Siswa) — bukan role baru, bukan klaim jadwal mengajar,
+// dan tidak pernah menggerbangi otorisasi: siapa boleh menyetujui/verifikasi
+// tetap persis aturan lama (semua guru non-OSIS boleh menyetujui siapa pun,
+// Guru Piket dari Jadwal_Piket yang memverifikasi).
+
+test('walas menyetujui siswa kelasnya sendiri → konteks Wali Kelas tercatat', () => {
+  const s = loadServer();
+  s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol' }); // Rahma, XI B
+  const baris = s.auditRows().find((r) => r[3] === 'Persetujuan Izin Keluar');
+  assert.match(String(baris[4]), /konteks=Wali Kelas/);
+});
+
+test('walas menyetujui siswa kelas LAIN → konteks Wali Kelas TIDAK tersedia, jatuh ke Guru Mapel', () => {
+  const s = loadServer();
+  s.post('wali', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'kembali', keperluan: 'kontrol' }); // Budi, XI A — bukan XI B
+  const baris = s.auditRows().find((r) => r[3] === 'Persetujuan Izin Keluar');
+  assert.match(String(baris[4]), /konteks=Guru Mapel/);
+  assert.doesNotMatch(String(baris[4]), /konteks=Wali Kelas/);
+});
+
+test('guru biasa (tanpa kelas perwalian) → jalur Guru Mapel tersedia sesuai aturan existing', () => {
+  const s = loadServer();
+  s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol' });
+  const baris = s.auditRows().find((r) => r[3] === 'Persetujuan Izin Keluar');
+  assert.match(String(baris[4]), /konteks=Guru Mapel/);
+});
+
+test('identitas & konteks dihitung dari session — bukan dari klien', () => {
+  const s = loadServer();
+  const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol' });
+  assert.equal(buat.konteks, 'wali_kelas');
+  const row = s.izinById(buat.id);
+  assert.equal(row[10], 'Bu Kartina');
+  assert.equal(row[11], 'G02');
+});
+
+test('client TIDAK BISA mengubah konteks/role untuk memperoleh kewenangan palsu', () => {
+  const s = loadServer();
+  // Pak Anwar (bukan wali kelas siapa pun) mengaku 'wali_kelas' dan mencoba
+  // menyamar sebagai admin lewat field lepas — semuanya diabaikan.
+  const buat = s.post('pemberiIzin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol',
+    konteks: 'wali_kelas', role: 'admin', waliKelas: 'XI B',
+  });
+  assert.equal(buat.status, 'success');
+  assert.equal(buat.konteks, 'guru_mapel', 'server menghitung ulang sendiri, mengabaikan klaim klien');
+  const baris = s.auditRows().find((r) => r[3] === 'Persetujuan Izin Keluar');
+  assert.match(String(baris[4]), /konteks=Guru Mapel/);
+  // Dan otorisasi tetap sama: tetap cuma "Menunggu Verifikasi", tidak ada hak
+  // tambahan apa pun yang didapat dari klaim itu.
+  assert.equal(s.izinById(buat.id)[7], 'Menunggu Verifikasi');
+});
+
+test('persetujuan Guru Mapel tetap harus masuk ke Guru Piket — tidak ada jalan pintas', () => {
+  const s = loadServer();
+  const buat = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'kembali', keperluan: 'kontrol' });
+  assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
+  // Guru yang sama (bukan piket) tidak bisa langsung memverifikasi punyanya sendiri.
+  assert.equal(s.post('pemberiIzin', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'error');
+  // Guru Piket tetap bisa, sama seperti jalur Wali Kelas.
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }).izinStatus, 'Sedang di Luar');
+});
+
+test('konteks tidak ikut ke baris Izin Khusus — jalur khusus sudah punya penandanya sendiri', () => {
+  const s = loadServer();
+  // Pak Piket Pagi kebetulan bukan wali kelas siapa pun di sini, memakai Izin Khusus.
+  const khusus = s.post('piketPagi', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'pulang', keperluan: 'sakit',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak ada di sekolah',
+  });
+  const baris = s.auditRows().find((r) => r[3] === 'Izin Keluar Khusus');
+  assert.doesNotMatch(String(baris[4]), /konteks=/, 'Izin Khusus tidak perlu label wali kelas/guru mapel — jalur=khusus sudah cukup jelas');
+  assert.match(String(baris[4]), /jalur=khusus/);
+});
+
+test('Izin Khusus & verifikasi Guru Piket tetap berjalan tanpa perubahan (regresi)', () => {
+  const s = loadServer();
+  const khusus = s.post('piketPagi', {
+    action: 'addIzinKeluar', nisn: '3003', tujuan: 'pulang', keperluan: 'sakit',
+    jalur: 'khusus', alasan_khusus: 'darurat',
+  });
+  assert.equal(khusus.status, 'success');
+  assert.equal(khusus.izinStatus, 'Pulang');
+
+  const normal = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol' });
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: normal.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: normal.id }).izinStatus, 'Kembali');
+});
+
+test('tidak ada mapping jadwal guru mapel yang ditambahkan untuk fitur konteks ini', () => {
+  const src = ['Utils.gs', 'Code.gs'].map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  [/Jadwal_Mengajar/i, /jadwalMengajar/i, /getJadwalMengajar/i, /mapping.*guru.*kelas.*jam/i].forEach((pola) => {
+    assert.doesNotMatch(src, pola, 'tidak boleh ada mekanisme jadwal mengajar: ' + pola);
+  });
+  // Konteks hanya membaca sessionUser.waliKelas + kelas siswa — tidak ada
+  // sumber data baru sama sekali.
+  assert.match(src, /function izinKonteksPersetujuan\(sessionUser, kelasSiswa\)/);
+});

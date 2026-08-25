@@ -1011,7 +1011,7 @@
                                        students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap}
                                        izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
                                        onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin} onSelesaikanIzin={handleSelesaikanIzin}
-                                       onTandaiPulangIzin={handleTandaiPulangIzin}
+                                       onTandaiPulangIzin={handleTandaiPulangIzin} myWaliKelas={user.waliKelas || ''}
                                        onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
                                    />

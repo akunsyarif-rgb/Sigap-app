@@ -391,17 +391,31 @@ buckets (Menunggu Verifikasi / Sedang di Luar / Selesai Hari Ini) are a
 Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
 (`Utils.gs`), with hidden buttons never being the gate:
 
-- **approve** (`addIzinKeluar`, jalur normal) → any non-OSIS teacher, recorded
-  as *"guru yang memberikan persetujuan"*. This system deliberately holds **no
+- **approve** (`addIzinKeluar`, jalur normal) → any non-OSIS teacher — this
+  authorization rule is unchanged: *any* non-OSIS teacher may approve *any*
+  student, wali kelas or not. This system deliberately holds **no
   teaching-schedule data** and none will be added for this feature — the real
   timetable changes at short notice, so "the teacher of that hour" is not
   provable from anything SIGAP has. What gets recorded is *who* approved
   (name + id from the **session**) and *when*, nothing more. Don't invent a
-  schedule sheet/mapping/endpoint, don't add a role, and don't ask the client
-  to send a role claim ("I'm the wali kelas / the teacher of this hour") — an
-  unverifiable claim only buys false confidence. The UI says the plain truth
-  instead: "Anda akan tercatat sebagai pihak yang memberikan persetujuan izin
-  ini.
+  schedule sheet/mapping/endpoint, don't add a role, and don't trust a role
+  claim sent by the client — an unverifiable claim only buys false confidence.
+
+  The UI *does* show two different framings — "Anda adalah wali kelas siswa
+  ini" + **Berikan Persetujuan**, vs "Siswa ini bukan kelas perwalian Anda" +
+  **Berikan Izin sebagai Guru Mapel** — but this is a **context label, not a
+  role claim**: which one shows is computed from data already on screen
+  (`user.waliKelas` vs the picked student's class, via the same `sameClass()`
+  used everywhere else), both lead to the *identical* approval form
+  ("Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini."),
+  and neither branch changes what the server will accept. The server
+  **independently recomputes** the same label itself — `izinKonteksPersetujuan()`
+  in `Utils.gs`, from `sessionUser.waliKelas` + the NISN's class resolved from
+  `Master_Siswa` — for the Audit Log line only (`konteks=Wali Kelas` /
+  `konteks=Guru Mapel` on jalur `normal`; jalur `khusus` skips it, since
+  `jalur=khusus` already says the wali kelas/guru mapel wasn't available). A
+  `konteks` field in the request body, if sent at all, is **never read** —
+  don't add code that reads `data.konteks` for anything, gating or otherwise.
 - **verify / mark returned / close** → the Guru Piket **on duty today**, read
   from the existing `Jadwal_Piket` sheet, plus admin/BK (also the fallback
   when `Jadwal_Piket` is empty, otherwise nobody could verify at all).
@@ -546,7 +560,10 @@ plus the Export tab's UI gating.
 `tests/izin-keluar.test.js` drives the whole Izin Keluar workflow through the
 real `doPost`/`doGet` (approve → verify → return → close, both jalur, every
 invalid transition, double submit, parameter tampering, audit trail and read
-scope); `tests/izin-keluar-frontend.test.js` covers its client wiring and is
+scope, plus the Wali Kelas/Guru Mapel konteks label — derived correctly,
+recomputed server-side even when the client sends a spoofed value, and never
+gating anything); `tests/izin-keluar-frontend.test.js` covers its client
+wiring (including the context card shown before the approval form) and is
 also what pins down "no printer assumptions".
 `tests/izin-kelompok.test.js` does the same for Izin Kelompok (all-or-nothing
 creation, partial verification, rombongan return with a student left outside,

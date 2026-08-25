@@ -29,6 +29,12 @@ let sandbox;
 let storage = {};
 let fetchCalls = [];
 let effects = [];
+// Dipakai HANYA oleh renderWithState() di bawah — bukan oleh bootApp()/App(),
+// yang selalu berjalan dengan array kosong (jadi useState() di bawah selalu
+// jatuh ke nilai init, persis seperti sebelum ini ditambahkan). Pola index
+// positional-nya sama dengan tests/render-smoke.test.js.
+let stateOverrides = [];
+let stateCallIndex = 0;
 
 test.before(() => {
   let babel;
@@ -43,7 +49,11 @@ test.before(() => {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
     Fragment: 'Fragment',
-    useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
+    useState: (init) => {
+      const idx = stateCallIndex++;
+      const val = stateOverrides[idx] !== undefined ? stateOverrides[idx] : typeof init === 'function' ? init() : init;
+      return [val, () => {}];
+    },
     useEffect: (fn, deps) => { effects.push({ fn, deps }); },
     useMemo: (fn) => fn(),
     useRef: (init) => ({ current: init }),
@@ -75,7 +85,18 @@ test.before(() => {
   vm.runInContext(transformed, sandbox, { filename: 'combined.js' });
 });
 
-test.beforeEach(() => { storage = {}; fetchCalls = []; effects = []; });
+test.beforeEach(() => { storage = {}; fetchCalls = []; effects = []; stateOverrides = []; stateCallIndex = 0; });
+
+// Render satu komponen dengan state internal dipaksa lewat index posisi
+// useState-nya (lihat komentar di deklarasi stateOverrides) — dipakai untuk
+// membuka kartu konteks/form Izin Keluar tanpa simulasi klik sungguhan.
+function renderWithState(fnName, props, overrides) {
+  stateOverrides = overrides || [];
+  stateCallIndex = 0;
+  const result = get(fnName)(props);
+  stateOverrides = [];
+  return result;
+}
 
 const get = (name) => vm.runInContext(name, sandbox);
 const SIX_HOURS = 6 * 60 * 60 * 1000;
@@ -234,17 +255,65 @@ test('layar persetujuan: mencatat pemberi persetujuan, tanpa klaim peran', () =>
     students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [], waliKelasMap: [], canVerify: false,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
   };
-  // stateOverrides idx 1 = formStudent -> form persetujuan terbuka.
-  const layar = JSON.stringify(get('IzinKeluarPanel')(props));
-
-  assert.ok(!layar.includes('Persetujuan Izin'), 'form belum terbuka, jadi judulnya belum tampil');
+  // Urutan useState IzinKeluarPanel: searchQuery, pickedStudent, formStudent,
+  // keperluan, tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId.
+  const kosong = JSON.stringify(get('IzinKeluarPanel')(props));
+  assert.ok(!kosong.includes('Persetujuan sebagai'), 'belum ada siswa dipilih, jadi judul form belum tampil');
+  assert.ok(!kosong.includes('Anda akan tercatat sebagai pihak'), 'kartu konteks/form belum terbuka');
 
   const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
   const form = gerbang.split('{formStudent && (')[1];
-  assert.match(form, />Persetujuan Izin</);
+  assert.match(form, /Persetujuan sebagai Wali Kelas/);
+  assert.match(form, /Persetujuan sebagai Guru Mapel/);
   assert.match(form, /Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini\./);
   assert.match(form, /'Setujui Izin'/);
   assert.match(form, />Batal</);
+});
+
+test('kartu konteks: wali kelas vs guru mapel, dihitung dari waliKelas pengguna — bukan diketik', () => {
+  const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
+  const props = {
+    students: [student], izinList: [], waliKelasMap: [], canVerify: false,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+  };
+  // idx 1 = pickedStudent -> kartu konteks terbuka (belum form).
+  const walas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, student]));
+  assert.ok(walas.includes('Anda adalah wali kelas siswa ini.'));
+  assert.ok(walas.includes('Berikan Persetujuan'));
+  assert.ok(!walas.includes('Berikan Izin sebagai Guru Mapel'));
+
+  const bukanWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI A' }, [undefined, student]));
+  assert.ok(bukanWalas.includes('Siswa ini bukan kelas perwalian Anda.'));
+  assert.ok(bukanWalas.includes('Berikan Izin sebagai Guru Mapel'));
+  assert.ok(!bukanWalas.includes('Anda adalah wali kelas siswa ini.'));
+
+  // Guru tanpa kelas perwalian sama sekali (myWaliKelas kosong/tidak dikirim)
+  // selalu jatuh ke jalur Guru Mapel — sesuai aturan existing (guru biasa).
+  const guruBiasa = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props }, [undefined, student]));
+  assert.ok(guruBiasa.includes('Berikan Izin sebagai Guru Mapel'));
+});
+
+test('form: judul menyesuaikan konteks, tapi tetap satu form yang sama (bukan dua alur berbeda)', () => {
+  const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
+  const props = {
+    students: [student], izinList: [], waliKelasMap: [], canVerify: true,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+  };
+  // idx 2 = formStudent -> form langsung terbuka (konteks sudah "dikonfirmasi").
+  const formWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, undefined, student]));
+  assert.ok(formWalas.includes('Persetujuan sebagai Wali Kelas'));
+  assert.ok(!formWalas.includes('Persetujuan sebagai Guru Mapel'));
+
+  const formMapel = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI A' }, [undefined, undefined, student]));
+  assert.ok(formMapel.includes('Persetujuan sebagai Guru Mapel'));
+  assert.ok(!formMapel.includes('Persetujuan sebagai Wali Kelas'));
+
+  // Kedua konteks memakai field & tombol yang SAMA persis (keperluan, tujuan,
+  // Izin Khusus untuk yang berwenang, Setujui Izin) — bukan form yang berbeda.
+  ['Keperluan', 'Tujuan', 'Kembali ke sekolah', 'Izin Khusus', 'Setujui Izin'].forEach((teks) => {
+    assert.ok(formWalas.includes(teks), `konteks Wali Kelas kehilangan "${teks}"`);
+    assert.ok(formMapel.includes(teks), `konteks Guru Mapel kehilangan "${teks}"`);
+  });
 });
 
 test('tidak ada isian yang meminta guru mengaku sebagai Guru Mapel / Wali Kelas', () => {

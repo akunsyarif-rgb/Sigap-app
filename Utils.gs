@@ -713,6 +713,31 @@ function izinText(v, max) {
   return String(v === undefined || v === null ? '' : v).trim().slice(0, max);
 }
 
+// ===== Konteks persetujuan: Wali Kelas vs Guru Mapel =====
+// MURNI framing tampilan/audit — BUKAN role baru, BUKAN klaim yang diperiksa
+// lewat jadwal mengajar (SIGAP tidak punya data itu, dan tidak akan
+// ditambahkan untuk ini). Tidak pernah menggerbangi otorisasi apa pun: guru
+// non-OSIS mana pun tetap boleh menyetujui siswa kelas mana pun, persis
+// seperti sebelumnya — ini cuma menentukan LABEL apa yang tercatat.
+//
+// DIHITUNG DI SERVER, tidak pernah dipercaya dari klien: satu-satunya input
+// adalah sessionUser.waliKelas (dari sesi) dan kelas siswa yang di-resolve
+// dari Master_Siswa (bukan dari klien). Kalau klien mengirim field 'konteks'
+// apa pun, itu diabaikan total — lihat pemakaiannya di action addIzinKeluar
+// (Code.gs), yang TIDAK membaca data.konteks sama sekali.
+var IZIN_KONTEKS_WALI_KELAS = 'wali_kelas';
+var IZIN_KONTEKS_GURU_MAPEL = 'guru_mapel';
+
+function izinKonteksPersetujuan(sessionUser, kelasSiswa) {
+  var waliKelas = String((sessionUser && sessionUser.waliKelas) || '').trim();
+  var kelas = String(kelasSiswa || '').trim();
+  return (waliKelas && kelas && sameClass(kelas, waliKelas)) ? IZIN_KONTEKS_WALI_KELAS : IZIN_KONTEKS_GURU_MAPEL;
+}
+
+function izinKonteksLabel(konteks) {
+  return konteks === IZIN_KONTEKS_WALI_KELAS ? 'Wali Kelas' : 'Guru Mapel';
+}
+
 // ===== Siapa "Guru Piket" hari ini =====
 // TIDAK ada role baru: kewenangan piket dibaca dari Jadwal_Piket yang sudah
 // dipakai Beranda ("Guru Piket Hari Ini") dan dikelola admin lewat menu

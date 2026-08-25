@@ -15,7 +15,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-izin-kelompok-beta';
+var BACKEND_VERSION = '2026-08-25-izin-konteks-persetujuan';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok'];
 
 // ===== doPost =====
@@ -648,6 +648,15 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Siswa tidak ditemukan di data induk (NISN harus terisi).' });
       }
 
+      // ---- Konteks persetujuan: Wali Kelas / Guru Mapel ----
+      // Label tampilan/audit saja, DIHITUNG DI SINI dari sessionUser.waliKelas
+      // + kelas siswa yang baru saja di-resolve dari Master_Siswa. Field
+      // 'konteks' yang mungkin ikut terkirim dari klien SENGAJA TIDAK PERNAH
+      // dibaca sama sekali di sini (lihat izinKonteksPersetujuan di Utils.gs).
+      // Tidak menggerbangi apa pun: guru non-OSIS mana pun tetap boleh
+      // menyetujui siswa kelas mana pun, sama seperti sebelumnya.
+      var izinKonteks = izinKonteksPersetujuan(sessionUser, izinSiswa.class);
+
       // ---- Jalur khusus: hanya untuk yang berwenang memverifikasi (Guru Piket
       // bertugas hari ini / BK / Admin), dan WAJIB beralasan.
       // Jalur ini TIDAK memalsukan persetujuan guru mana pun: kolom
@@ -697,10 +706,16 @@ function doPost(e) {
       ];
       izinSheet.appendRow(izinRow);
       clearIzinCache();
+      // Konteks (Wali Kelas/Guru Mapel) cuma masuk detail audit untuk jalur
+      // NORMAL. Jalur khusus sudah punya penandanya sendiri (jalur=khusus) —
+      // menambahkan "konteks=Guru Mapel" di sana cuma membingungkan, karena
+      // Izin Khusus justru berarti wali kelas/guru mapel TIDAK tersedia.
       logAudit(sessionUser,
         izinJalur === IZIN_JALUR_KHUSUS ? 'Izin Keluar Khusus' : 'Persetujuan Izin Keluar',
-        buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS ? 'alasan pengecualian=' + izinAlasanKhusus : 'keperluan=' + izinKeperluan));
-      return jsonOut({ status: 'success', id: izinId, izinStatus: izinStatusAwal });
+        buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS
+          ? 'alasan pengecualian=' + izinAlasanKhusus
+          : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)));
+      return jsonOut({ status: 'success', id: izinId, izinStatus: izinStatusAwal, konteks: izinKonteks });
     }
 
     // ---- Langkah 2: VERIFIKASI Guru Piket. Ini titik di mana siswa dianggap

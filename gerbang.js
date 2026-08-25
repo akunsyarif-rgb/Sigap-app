@@ -69,7 +69,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onSelesaikanIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onSelesaikanIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
@@ -162,6 +162,7 @@
                            onTandaiPulang={onTandaiPulangIzin}
                            onCreateKelompok={onCreateKelompok} onVerifikasiKelompok={onVerifikasiKelompok}
                            onTandaiKembaliKelompok={onTandaiKembaliKelompok}
+                           myWaliKelas={myWaliKelas}
                        />
                    ) : (
                    /* Isi lama (Catat Terlambat / Catat Surat) sengaja TIDAK
@@ -418,8 +419,15 @@
            );
        }
 
-       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, onSelesaikan, waliKelasMap }) {
+       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, onSelesaikan, waliKelasMap, myWaliKelas }) {
            const [searchQuery, setSearchQuery] = useState('');
+           // Siswa yang baru dipilih dari pencarian, SEBELUM konteks persetujuan
+           // dikonfirmasi — kartu kecil "Anda wali kelas siswa ini" / "Siswa ini
+           // bukan kelas perwalian Anda" tampil dulu di sini, baru setelah
+           // dikonfirmasi pindah ke formStudent (form lengkap). Dipisah dari
+           // formStudent supaya "Batal" di kartu konteks tidak perlu membersihkan
+           // isian form yang belum sempat ada.
+           const [pickedStudent, setPickedStudent] = useState(null);
            const [formStudent, setFormStudent] = useState(null);
            const [keperluan, setKeperluan] = useState('');
            const [tujuan, setTujuan] = useState('kembali');
@@ -463,7 +471,15 @@
 
            const filtered = filterStudents(students, searchQuery);
 
-           const resetForm = () => { setFormStudent(null); setKeperluan(''); setTujuan('kembali'); setJalurKhusus(false); setAlasanKhusus(''); };
+           // Konteks persetujuan — MURNI label tampilan, dihitung dari data yang
+           // sudah ada di layar (waliKelas milik pengguna vs kelas siswa), pakai
+           // sameClass yang sama dengan Utils.gs supaya hasilnya selalu identik
+           // dengan yang dihitung ulang server. Bukan role, bukan klaim jadwal
+           // mengajar — server tetap menghitung ulang sendiri saat submit, tidak
+           // pernah mempercayai apa pun dari klien (lihat addIzinKeluar, Code.gs).
+           const konteksUntuk = (s) => (myWaliKelas && s && sameClass(s.class, myWaliKelas)) ? 'wali_kelas' : 'guru_mapel';
+
+           const resetForm = () => { setPickedStudent(null); setFormStudent(null); setKeperluan(''); setTujuan('kembali'); setJalurKhusus(false); setAlasanKhusus(''); };
 
            const submitIzin = () => {
                if (saving) return;
@@ -474,6 +490,11 @@
                    tujuan: tujuan,
                    jalur: jalurKhusus ? 'khusus' : 'normal',
                    alasan_khusus: jalurKhusus ? alasanKhusus : '',
+                   // Informasional saja — server MENGHITUNG ULANG konteksnya
+                   // sendiri dari sesi + kelas siswa dan mengabaikan field ini
+                   // sepenuhnya, jadi mengubah nilai ini di klien tidak bisa
+                   // mengubah apa yang benar-benar tercatat.
+                   konteks: konteksUntuk(formStudent),
                }, (ok, text) => {
                    setSaving(false);
                    showMsg(ok, text);
@@ -513,7 +534,7 @@
                                {filtered.length > 0 ? filtered.map((s, i) => {
                                    const terbuka = izinTerbukaByNisn[String(s.nisn)];
                                    return (
-                                       <div key={`${s.nisn}-${i}`} onClick={() => { if (!terbuka) { setSearchQuery(''); setFormStudent(s); } }} className={`px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between transition ${terbuka ? 'opacity-60' : 'hover:bg-slate-100 active:bg-slate-200 cursor-pointer'}`}>
+                                       <div key={`${s.nisn}-${i}`} onClick={() => { if (!terbuka) { setSearchQuery(''); setPickedStudent(s); } }} className={`px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between transition ${terbuka ? 'opacity-60' : 'hover:bg-slate-100 active:bg-slate-200 cursor-pointer'}`}>
                                            <div className="min-w-0">
                                                <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                                <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</span></div>
@@ -580,21 +601,52 @@
                        </div>
                    )}
 
-                   {/* Form pembuatan izin — dibuka setelah siswa dipilih. */}
+                   {/* Kartu konteks — tampil dulu setelah siswa dipilih, SEBELUM
+                       form. Ini bukan formulir klaim role: cuma menentukan label
+                       mana yang dipakai ("Wali Kelas" vs "Guru Mapel"), dihitung
+                       dari kelas perwalian pengguna vs kelas siswa yang dipilih —
+                       tanpa jadwal mengajar apa pun. Menekan tombolnya cuma
+                       membuka form yang sama seperti sebelumnya, dengan judul
+                       yang menyesuaikan konteksnya. */}
+                   {pickedStudent && (() => {
+                       const konteks = konteksUntuk(pickedStudent);
+                       return (
+                           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                               <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                                   <div className="text-center">
+                                       <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
+                                       <div className="font-display text-xl font-extrabold text-slate-900">{pickedStudent.name}</div>
+                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickedStudent.class}</div>
+                                   </div>
+                                   <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
+                                       {konteks === 'wali_kelas' ? 'Anda adalah wali kelas siswa ini.' : 'Siswa ini bukan kelas perwalian Anda.'}
+                                   </p>
+                                   <Button onClick={() => { setFormStudent(pickedStudent); setPickedStudent(null); }} className="w-full">
+                                       {konteks === 'wali_kelas' ? 'Berikan Persetujuan' : 'Berikan Izin sebagai Guru Mapel'}
+                                   </Button>
+                                   <Button onClick={() => setPickedStudent(null)} variant="secondary" className="w-full">Batal</Button>
+                               </div>
+                           </div>
+                       );
+                   })()}
+
+                   {/* Form pembuatan izin — dibuka setelah konteks dikonfirmasi. */}
                    {formStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
                                <div className="text-center">
                                    <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Persetujuan Izin</h3>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">
+                                       {konteksUntuk(formStudent) === 'wali_kelas' ? 'Persetujuan sebagai Wali Kelas' : 'Persetujuan sebagai Guru Mapel'}
+                                   </h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{formStudent.name}</div>
                                    <div className="text-xs text-slate-500">{formStudent.class}</div>
                                </div>
 
-                               {/* Tidak ada isian "saya Guru Mapel / saya Wali Kelas" di
-                                   sini. SIGAP tidak punya data jadwal mengajar, jadi klaim
-                                   seperti itu tidak bisa diperiksa — yang dicatat cukup
-                                   siapa yang menyetujui (dari sesi) dan kapan. */}
+                               {/* "Guru Mapel" di sini adalah KONTEKS TINDAKAN, bukan
+                                   klaim jadwal mengajar — SIGAP tidak punya data jadwal
+                                   per jam dan tidak memverifikasinya. Identitas yang
+                                   tercatat tetap dari sesi, sama seperti jalur Wali Kelas. */}
                                <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">
                                    Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini.
                                </p>
@@ -1096,6 +1148,7 @@
                            students={props.students} izinList={props.izinList} canVerify={props.canVerify} waliKelasMap={props.waliKelasMap}
                            onCreateIzin={props.onCreateIzin} onVerifikasi={props.onVerifikasi}
                            onTandaiKembali={props.onTandaiKembali} onSelesaikan={props.onSelesaikan}
+                           myWaliKelas={props.myWaliKelas}
                        />
                    )}
                </div>
