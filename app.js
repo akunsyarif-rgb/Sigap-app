@@ -174,6 +174,21 @@
            const [jadwalPiket, setJadwalPiket] = useState(bootData.jadwalPiket || []);
            const [waliKelasMap, setWaliKelasMap] = useState(bootData.waliKelasMap || []);
            const [tindakLanjutList, setTindakLanjutList] = useState(bootData.tindakLanjutList || []);
+           // Izin Keluar / Pulang (BETA). SENGAJA tidak ikut disimpan ke
+           // snapshot localStorage (buildClientCache): ini transaksi berstatus
+           // yang berubah sepanjang hari — menampilkan versi tersimpan bisa
+           // membuat guru piket menekan "Tandai Kembali" untuk transaksi yang
+           // di server sudah tertutup. Selalu ditarik ulang dari server.
+           const [izinList, setIzinList] = useState([]);
+           // Dikirim server bersama daftarnya (apakah pemakai ini Guru Piket
+           // yang bertugas hari ini / BK / Admin). Dipakai untuk memutuskan
+           // tombol apa yang ditampilkan — BUKAN pengamanan: tiap aksi tulis
+           // dicek ulang di server (canVerifyIzin di Utils.gs).
+           const [canVerifyIzin, setCanVerifyIzin] = useState(false);
+           // Konteks kegiatan untuk Izin Kelompok. Baris pesertanya sendiri ada
+           // di izinList (transaksi individual biasa) — daftar ini cuma induknya:
+           // nama kegiatan, tujuan, pola kembali, dan siapa yang menyetujui.
+           const [kelompokList, setKelompokList] = useState([]);
            const [slowConnection, setSlowConnection] = useState(false);
 
            const roleKey = resolveRoleKey(user);
@@ -228,6 +243,9 @@
                setBimbinganList([]);
                setUpacaraList([]);
                setAuditLog([]);
+               setIzinList([]);
+               setKelompokList([]);
+               setCanVerifyIzin(false);
            };
 
            // Dipasang di setiap respons API (lewat .then(checkSession) setelah
@@ -361,6 +379,24 @@
                    .then(data => { if (data.status === 'success') setTindakLanjutList(data.tindakLanjut); });
            };
 
+           // Izin Keluar / Pulang — daftar transaksi berjalan + yang tertutup
+           // hari ini. Cakupan isinya ditentukan server (scopeIzinForUser di
+           // Utils.gs), bukan disaring di sini.
+           const fetchIzinKeluar = () => {
+               if (roleKey === 'osis') return;
+               fetch(`${API_URL}?action=getIzinKeluar&token=${API_TOKEN}&sessionToken=${sessionToken}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status !== 'success') return;
+                       setIzinList(data.izin || []);
+                       // Backend lama (belum di-deploy ulang) tidak mengirim
+                       // field ini — daftarnya cuma kosong, sisa layar tetap jalan.
+                       setKelompokList(data.kelompok || []);
+                       setCanVerifyIzin(!!data.canVerify);
+                   })
+                   .catch(() => {});
+           };
+
            // Tidak butuh sesi (dipanggil justru sebelum login) — lihat
            // getLoginUsers di doGet Code.gs. Kegagalannya BUKAN kondisi fatal:
            // layar login tetap jalan penuh dalam mode legacy (PIN saja).
@@ -406,6 +442,11 @@
            };
            const ensureTabData = (tab) => {
                if (!tab) return;
+               // Izin Keluar dipakai DUA tab: mode Izin di Gerbang (tempat
+               // transaksinya dibuat & diproses) dan kategori Izin Keluar di
+               // Riwayat — jadi penandanya per-DATA, bukan per-tab, supaya
+               // membuka keduanya tidak menarik data yang sama dua kali.
+               if (tab === 'scan' || tab === 'log') loadOnce('izin', fetchIzinKeluar);
                if (tab === 'kelola') loadOnce('teachers', fetchTeachers);
                else if (tab === 'bimbingan') loadOnce('bimbingan', fetchBimbingan);
                else if (tab === 'auditlog') loadOnce('auditlog', fetchAuditLog);
@@ -839,6 +880,90 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           // ---- Izin Keluar / Pulang (BETA) ----
+           // Semua aksi menarik ulang daftarnya setelah sukses, BUKAN menambal
+           // state lokal seperti handler lain: status transaksi ditentukan
+           // server (termasuk hasil verifikasi & penutupan), jadi menebaknya di
+           // klien berisiko menampilkan status yang tidak sama dengan yang
+           // tersimpan. Server tetap satu-satunya sumber kebenaran transaksi.
+           const handleCreateIzin = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addIzinKeluar', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, data.izinStatus === 'Menunggu Verifikasi'
+                               ? '✓ Persetujuan tercatat — menunggu verifikasi Guru Piket.'
+                               : '✓ Izin Khusus tercatat sebagai pengecualian, siswa tercatat keluar.');
+                       } else callback(false, data.message || 'Gagal membuat izin keluar.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleIzinAction = (action, payload, callback, suksesText) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: action, token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, suksesText);
+                       } else callback(false, data.message || 'Gagal memproses izin keluar.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleVerifikasiIzin = (payload, callback) => handleIzinAction('verifikasiIzinKeluar', payload, callback, '✓ Terverifikasi — siswa tercatat keluar.');
+           const handleTandaiKembaliIzin = (payload, callback) => handleIzinAction('tandaiKembaliIzinKeluar', payload, callback, '✓ Siswa ditandai sudah kembali.');
+           const handleSelesaikanIzin = (payload, callback) => handleIzinAction('selesaikanIzinKeluar', payload, callback, '✓ Transaksi ditutup.');
+           const handleTandaiPulangIzin = (payload, callback) => handleIzinAction('tandaiPulangIzinKeluar', payload, callback, '✓ Siswa ditandai pulang (tidak kembali ke sekolah).');
+
+           // ---- Izin Kelompok (satu kegiatan, banyak peserta) ----
+           // Sama seperti izin individual: hasilnya selalu ditarik ulang dari
+           // server, tidak ditebak di klien. Untuk kelompok ini lebih penting
+           // lagi — satu aksi bisa mengubah status banyak siswa sekaligus, dan
+           // server yang memutuskan siapa saja yang benar-benar berubah.
+           const handleCreateKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, data.izinStatus === 'Menunggu Verifikasi'
+                               ? `✓ Kegiatan diajukan untuk ${data.jumlahPeserta} siswa — menunggu verifikasi Guru Piket.`
+                               : `✓ Kegiatan tercatat sebagai Izin Khusus untuk ${data.jumlahPeserta} siswa.`);
+                       } else callback(false, data.message || 'Gagal membuat izin kelompok.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleVerifikasiKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'verifikasiIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, `✓ ${data.jumlahDiverifikasi} siswa terverifikasi & tercatat keluar.`);
+                       } else callback(false, data.message || 'Gagal memverifikasi kegiatan.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleTandaiKembaliKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'tandaiKembaliKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           // Sisa yang belum kembali disebut TERANG-TERANGAN —
+                           // pengecualian tidak boleh lewat tanpa terlihat.
+                           callback(true, data.jumlahBelumKembali
+                               ? `✓ ${data.jumlahKembali} siswa kembali — ${data.jumlahBelumKembali} masih tercatat di luar.`
+                               : `✓ ${data.jumlahKembali} siswa ditandai sudah kembali.`);
+                       } else callback(false, data.message || 'Gagal menandai rombongan kembali.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            return (
                <div style={{ zoom: fontScale }}>
                    {!user ? (
@@ -882,14 +1007,21 @@
 
                            <div className="max-w-2xl mx-auto px-4 pt-20 pb-24">
                                {activeTab === 'scan' && effectiveMenus.includes('scan') && (
-                                   <GerbangTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap} />
+                                   <GerbangTab
+                                       students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap}
+                                       izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
+                                       onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin} onSelesaikanIzin={handleSelesaikanIzin}
+                                       onTandaiPulangIzin={handleTandaiPulangIzin} myWaliKelas={user.waliKelas || ''}
+                                       onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
+                                       onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
+                                   />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} />
+                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} />
                                )}
                                {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab
-                                       allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} initialCategory={riwayatCategory}
+                                       allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} izinList={izinList} initialCategory={riwayatCategory}
                                        canManage={roleKey !== 'osis'} isAdmin={roleKey === 'admin'} isBk={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} currentUserName={user.name}
                                        onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
                                    />

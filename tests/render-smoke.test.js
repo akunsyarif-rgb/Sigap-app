@@ -111,6 +111,24 @@ const jadwal = [{ hari: 'Senin', guruId: 'G01', guruName: 'Kartina' }];
 const waliKelasMap = [{ class: 'XI B', waliKelasName: 'Kartina', waliKelasId: 'G01' }];
 const user = { id: 'G01', name: 'Kartina', role: 'guru', jabatan: '', waliKelas: 'XI B' };
 const tindakLanjutEntry = { timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', catatan: 'Sudah dipanggil', diajukanOleh: 'Kartina', status: 'menunggu', disetujuiOleh: '', tanggalDisetujui: '' };
+// Izin Keluar (BETA) — satu transaksi per status operasional.
+const izinBase = { nisn: '111', name: 'Rahma', class: 'XI B', keperluan: 'kontrol ke puskesmas', tujuan: 'kembali', jalur: 'normal', alasan_khusus: '', disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(), diverifikasi_oleh: '', waktu_verifikasi: '', waktu_keluar: '', waktu_kembali: '', dicatat_kembali_oleh: '', logged_by: 'Bu Kartina' };
+const izinMenunggu = { ...izinBase, id: 'IZ-1', timestamp: new Date().toISOString(), status: 'Menunggu Verifikasi' };
+const izinDiLuar = { ...izinBase, id: 'IZ-2', timestamp: new Date().toISOString(), status: 'Sedang di Luar', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString() };
+const izinKembali = { ...izinBase, id: 'IZ-3', timestamp: new Date().toISOString(), status: 'Kembali', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString(), waktu_kembali: new Date().toISOString(), dicatat_kembali_oleh: 'Bu Piket Siang' };
+const izinKhusus = { ...izinBase, id: 'IZ-4', timestamp: new Date().toISOString(), status: 'Pulang', tujuan: 'pulang', jalur: 'khusus', alasan_khusus: 'Guru yang menangani siswa tidak di sekolah', diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString() };
+const izinSemua = [izinMenunggu, izinDiLuar, izinKembali, izinKhusus];
+// Izin Kelompok — satu kegiatan, 4 peserta dengan status yang sengaja berbeda
+// (inti fiturnya: kelompok itu konteks, status tetap per siswa).
+const kelompok = { id: 'KEL-1', timestamp: new Date().toISOString(), kegiatan: 'Seminar Bank Indonesia', tujuan: 'kembali', keperluan: 'undangan seminar literasi keuangan', pola_kembali: 'bersama', jumlah_peserta: 4, jalur: 'normal', alasan_khusus: '', disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(), diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString() };
+const kelompokKhusus = { ...kelompok, id: 'KEL-2', kegiatan: 'Lomba Mendadak', jalur: 'khusus', alasan_khusus: 'Guru pendamping tidak bisa dihubungi', pola_kembali: 'individual' };
+const anggota = ['Ahmad', 'Budi', 'Citra', 'Deni'].map((nama, i) => ({
+  ...izinBase, id: `IZ-K${i}`, nisn: `20${i}`, name: nama, class: i < 2 ? 'XI A' : 'XI B',
+  timestamp: new Date().toISOString(), kelompok_id: 'KEL-1', kegiatan: 'Seminar Bank Indonesia',
+  status: ['Kembali', 'Kembali', 'Sedang di Luar', 'Menunggu Verifikasi'][i],
+}));
+const kelompokHandlers = { onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {}, onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {} };
+const izinHandlers = { onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {} };
 const manyLateLogs = [0, 10, 20].map((daysAgo) => ({ timestamp: new Date(Date.now() - daysAgo * 86400000).toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', type: 'Hujan', logged_by: 'Bu Kartina' }));
 
 const cases = [
@@ -118,6 +136,7 @@ const cases = [
   ['DashboardTab (admin)', { user: { ...user, waliKelas: '' }, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: jadwal, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: true, isAdmin: true, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {} }, 'DashboardTab'],
   ['DashboardTab (jadwalPiket kosong/tidak terdefinisi)', { user, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: undefined, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: false, isAdmin: false, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {} }, 'DashboardTab'],
   ['DashboardTab (modal tindak lanjut terbuka)', { user, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: jadwal, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: false, isAdmin: false, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {} }, 'DashboardTab', [undefined, student]],
+  ['DashboardTab (ringkasan izin keluar menunggu verifikasi)', { user, allLogs: manyLateLogs, pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], jadwalPiket: jadwal, onRefresh: () => {}, loading: false, tindakLanjutList: [tindakLanjutEntry], canViewRanking: false, isAdmin: false, onAjukanTindakLanjut: () => {}, onApproveTindakLanjut: () => {}, izinList: izinSemua, kelompokList: [kelompok], canVerifyIzin: true }, 'DashboardTab'],
   ['RekapKelasTab (privileged)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: true, myWaliKelas: '' }, 'RekapKelasTab'],
   ['RekapKelasTab (wali kelas)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], waliKelasMap, isPrivileged: false, myWaliKelas: 'XI B' }, 'RekapKelasTab'],
   // Perilaku detail layar Login (interaktif saat loading, fallback legacy,
@@ -162,6 +181,40 @@ const cases = [
   ['GerbangTab (mode terlambat, picker: sudah dicatat)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], onSelectLate: () => {}, suratList: [suratEntry], onAddSurat: () => {}, isAdminUser: true, waliKelasMap }, 'GerbangTab', [undefined, undefined, student]],
   ['GerbangTab (mode surat, picker: belum dicatat)', { students: [student], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {}, isAdminUser: true, waliKelasMap }, 'GerbangTab', ['surat', undefined, student]],
   ['GerbangTab (mode surat, picker: sudah dicatat)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], onSelectLate: () => {}, suratList: [suratEntry], onAddSurat: () => {}, isAdminUser: true, waliKelasMap }, 'GerbangTab', ['surat', undefined, student]],
+  // ---- Izin Keluar / Pulang (BETA) ----
+  // Urutan useState IzinKeluarPanel: searchQuery, pickedStudent, formStudent,
+  // keperluan, tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId.
+  ['IzinKeluarPanel (petugas berwenang)', { students: [student], izinList: izinSemua, canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel'],
+  ['IzinKeluarPanel (guru biasa, tanpa tombol proses)', { students: [student], izinList: izinSemua, canVerify: false, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel'],
+  ['IzinKeluarPanel (daftar kosong / prop belum datang)', { students: [student], izinList: undefined, canVerify: true, waliKelasMap: undefined, ...izinHandlers }, 'IzinKeluarPanel'],
+  ['IzinKeluarPanel (hasil pencarian terbuka, siswa masih punya izin berjalan)', { students: [student], izinList: izinSemua, canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', ['Rah']],
+  ['IzinKeluarPanel (kartu konteks: wali kelas)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
+  ['IzinKeluarPanel (kartu konteks: guru mapel)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI A', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
+  ['IzinKeluarPanel (form izin terbuka, konteks wali kelas)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel', [undefined, undefined, student]],
+  ['IzinKeluarPanel (form izin khusus terbuka, konteks guru mapel)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI A', ...izinHandlers }, 'IzinKeluarPanel', [undefined, undefined, student, 'sakit', 'pulang', true, 'Guru yang menangani siswa tidak di sekolah']],
+  ['KartuIzinKeluar (menunggu verifikasi)', { izin: izinMenunggu, children: null }, 'KartuIzinKeluar'],
+  ['KartuIzinKeluar (izin khusus, sudah pulang)', { izin: izinKhusus, children: null }, 'KartuIzinKeluar'],
+  ['KartuIzinKeluar (sudah kembali)', { izin: izinKembali, children: null }, 'KartuIzinKeluar'],
+  // Urutan useState IzinKelompokPanel: kegiatan, keperluan, tujuan, pola,
+  // searchQuery, pilihan, jalurKhusus, alasanKhusus, saving, msg, msgTone,
+  // busyId, sheetKelompok, sheetMode, sheetPilih.
+  ['IzinKelompokPanel (petugas berwenang)', { students: [student], izinList: anggota, kelompokList: [kelompok, kelompokKhusus], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel'],
+  ['IzinKelompokPanel (guru biasa)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: false, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel'],
+  ['IzinKelompokPanel (daftar & prop belum datang)', { students: [student], izinList: undefined, kelompokList: undefined, canVerify: true, waliKelasMap: undefined, ...kelompokHandlers }, 'IzinKelompokPanel'],
+  ['IzinKelompokPanel (tujuan pulang — tanpa pola kembali)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel', [undefined, undefined, 'pulang']],
+  ['IzinKelompokPanel (peserta terpilih + hasil pencarian)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel', ['Seminar', 'undangan', 'kembali', 'bersama', 'Rah', [student]]],
+  ['IzinKelompokPanel (jalur khusus dicentang)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel', ['Lomba', 'mendadak', 'kembali', 'bersama', '', [student], true, 'Guru pendamping tidak ada']],
+  ['IzinKelompokPanel (daftar peserta terbuka)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel', [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, kelompok, 'lihat', []]],
+  ['IzinKelompokPanel (konfirmasi rombongan kembali)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, ...kelompokHandlers }, 'IzinKelompokPanel', [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, kelompok, 'kembali', ['IZ-K2']]],
+  ['KartuKelompok (menunggu + di luar)', { kelompok, peserta: anggota, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false }, 'KartuKelompok'],
+  ['KartuKelompok (izin khusus, pola individual, tanpa peserta)', { kelompok: kelompokKhusus, peserta: [], canVerify: false, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: true }, 'KartuKelompok'],
+  ['PesertaKelompokSheet (lihat)', { kelompok: kelompokKhusus, peserta: anggota, mode: 'lihat', dipilih: [], onToggle: () => {}, onTutup: () => {}, onKonfirmasi: () => {}, canVerify: true, busy: false, onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {} }, 'PesertaKelompokSheet'],
+  ['PesertaKelompokSheet (verifikasi)', { kelompok, peserta: anggota, mode: 'verifikasi', dipilih: ['IZ-K3'], onToggle: () => {}, onTutup: () => {}, onKonfirmasi: () => {}, canVerify: true, busy: false, onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {} }, 'PesertaKelompokSheet'],
+  ['PesertaKelompokSheet (tandai rombongan kembali)', { kelompok, peserta: anggota, mode: 'kembali', dipilih: ['IZ-K2'], onToggle: () => {}, onTutup: () => {}, onKonfirmasi: () => {}, canVerify: true, busy: false, onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {} }, 'PesertaKelompokSheet'],
+  ['IzinKeluarTab (mode individual)', { students: [student], izinList: izinSemua, kelompokList: [kelompok], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers, ...kelompokHandlers, onTandaiPulang: () => {} }, 'IzinKeluarTab'],
+  ['IzinKeluarTab (mode kelompok)', { students: [student], izinList: anggota, kelompokList: [kelompok], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers, ...kelompokHandlers, onTandaiPulang: () => {} }, 'IzinKeluarTab', ['kelompok']],
+  ['GerbangTab (mode Izin Keluar)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], onSelectLate: () => {}, suratList: [suratEntry], onAddSurat: () => {}, isAdminUser: true, waliKelasMap, myWaliKelas: 'XI B', izinList: izinSemua, canVerifyIzin: true, onCreateIzin: () => {}, onVerifikasiIzin: () => {}, onTandaiKembaliIzin: () => {}, onSelesaikanIzin: () => {} }, 'GerbangTab', ['izin']],
+  ['LogTab (kategori Izin Keluar)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], izinList: izinSemua, initialCategory: 'terlambat', canManage: true, isAdmin: true, isBk: true, currentUserName: 'Kartina', onEditEntry: () => {}, onDeleteEntry: () => {} }, 'LogTab', ['izin']],
   ['PelanggaranTab (privileged)', { students: [student], pelanggaranList: [pelanggaranEntry], onAddPelanggaran: () => {}, onAddBimbingan: () => {}, canSeeClassDetail: true, onGetPelanggaranCount: () => Promise.resolve(0), waliKelasMap }, 'PelanggaranTab'],
   ['PelanggaranTab (self-only)', { students: [student], pelanggaranList: [pelanggaranEntry], onAddPelanggaran: () => {}, onAddBimbingan: () => {}, canSeeClassDetail: false, onGetPelanggaranCount: () => Promise.resolve(2), waliKelasMap }, 'PelanggaranTab'],
   ['PelanggaranTab (modal terbuka)', { students: [student], pelanggaranList: [pelanggaranEntry], onAddPelanggaran: () => {}, onAddBimbingan: () => {}, canSeeClassDetail: true, onGetPelanggaranCount: () => Promise.resolve(0), waliKelasMap }, 'PelanggaranTab', [undefined, student]],
