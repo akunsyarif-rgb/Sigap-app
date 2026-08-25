@@ -243,7 +243,7 @@ BottomNav entry. The data is lazy-loaded under the `'upacara'` key in `app.js`
 fetch twice.
 
 Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
-`Pelanggaran`, `Surat_Masuk`, `Izin_Keluar`, `Audit_Log`, `Error_Log`. Column positions are
+`Pelanggaran`, `Surat_Masuk`, `Izin_Keluar`, `Izin_Kelompok`, `Audit_Log`, `Error_Log`. Column positions are
 significant and accessed by index (e.g. `Master_Guru` col H/index 7 = salt) —
 check existing row-index comments before touching sheet read/write code.
 `LockService` guards concurrent writes to shared sheets.
@@ -431,6 +431,62 @@ flow in Gerbang, it does not go through `editEntry`/`deleteEntry`, and
 `getSheetForCategory()` deliberately doesn't know the category so a hand-rolled
 edit/delete request is rejected too.
 
+#### Izin Kelompok (one activity, many students)
+
+Built **on top of** the individual flow, not beside it. One activity row in the
+new `Izin_Kelompok` sheet (15 cols) is the parent; each participant is an
+ordinary `Izin_Keluar` row carrying the parent's id in `ID_Kelompok` — the
+**21st column, appended at the end** so no existing column shifted.
+
+```
+Izin_Kelompok  (1 row = 1 ACTIVITY: kegiatan, tujuan, pola kembali, approver)
+       |
+       +--> Izin_Keluar (1 row = 1 STUDENT: its own status, its own transitions)
+```
+
+**The activity sheet deliberately has no status column.** Every participant
+keeps an individual status, and the group's state ("8 siswa · 7 di luar · 1
+kembali") is always *computed* from the member rows (`ringkasKelompok()` in
+`Utils.gs`, `ringkasPesertaKelompok()` in `gerbang.js`). Don't add a group
+status — two sources of truth would let one student who never came back hide
+behind a green rombongan.
+
+Group actions are batch operations over member rows, never a second state
+machine: `addIzinKelompok`, `verifikasiIzinKelompok`, `tandaiKembaliKelompok`.
+Each member is still validated one by one with the same guards as the
+per-student actions, so a mass action can't be used to slip past a transition
+rule. Pola `individual` needs no group action at all — it reuses
+`tandaiKembaliIzinKeluar` per student.
+
+Rules that are easy to break and are pinned by `tests/izin-kelompok.test.js`:
+
+- **All-or-nothing creation.** Every participant is resolved and checked before
+  a single row is written; one unknown NISN or one student with an open
+  transaction rejects the whole submission. A half-saved group reads as
+  legitimate while the teacher thinks it failed.
+- **`tandaiKembaliKelompok` requires an explicit `pesertaIds` list.** There is
+  no "mark all" path: unchecked members stay `Sedang di Luar`, and the
+  difference is written to the Audit Log by name. `verifikasiIzinKelompok`'s
+  `pesertaIds` is optional but may only *narrow* — an id from another activity
+  is rejected, not ignored.
+- **Client sends only NISNs.** Names and classes come from `Master_Siswa`
+  (`resolveSiswaListForIzin`, one read for the whole list), duplicates are
+  dropped, and `IZIN_MAX_PESERTA` caps how many rows one request can write
+  while holding the global script lock.
+
+One transition was **added** to the individual state machine for this:
+`tandaiPulangIzinKeluar` moves `Sedang di Luar → Pulang` for a student who
+turns out not to be coming back (a seminar participant who goes straight home).
+Without it that row would hang at `Sedang di Luar` forever. Nothing was
+loosened: it still requires piket authority, still only works from `Sedang di
+Luar`, and `Pulang` still refuses `tandaiKembali`.
+
+Read scope adds no new rule: activities are returned only when at least one of
+their members is already visible under `scopeIzinForUser`, and the activity
+name is attached to member objects **at send time** (never duplicated into the
+student rows), so Riwayat can show "Seminar Bank Indonesia — …" without a
+second scoping path that could drift.
+
 **Printing: nothing is decided.** Printer model, connection method, media,
 paper/slip size, layout and output format are all still open, so the BETA is
 digital-only. The single sentence the UI is allowed to say is "Fitur pencetakan
@@ -492,3 +548,7 @@ real `doPost`/`doGet` (approve → verify → return → close, both jalur, ever
 invalid transition, double submit, parameter tampering, audit trail and read
 scope); `tests/izin-keluar-frontend.test.js` covers its client wiring and is
 also what pins down "no printer assumptions".
+`tests/izin-kelompok.test.js` does the same for Izin Kelompok (all-or-nothing
+creation, partial verification, rombongan return with a student left outside,
+one member going home while the rest return, cross-activity id tampering, and
+that the individual flow still works beside it).

@@ -260,3 +260,115 @@ test('tidak ada isian yang meminta guru mengaku sebagai Guru Mapel / Wali Kelas'
   const blokKirim = src.split("action: 'addIzinKeluar'")[1].split('};')[0];
   assert.doesNotMatch(blokKirim, /peran|role|waliKelas/, 'payload persetujuan tidak membawa klaim peran');
 });
+
+// ===== IZIN KELOMPOK (satu kegiatan, banyak peserta) =====
+// Otorisasi & transisi statusnya diuji di tests/izin-kelompok.test.js lewat
+// doPost/doGet sungguhan. Di sini yang dijaga: perkabelan klien, dan bahwa
+// layar tidak menawarkan jalan pintas yang server sudah larang.
+
+const kelompokContoh = {
+  id: 'KEL-1', timestamp: new Date().toISOString(), kegiatan: 'Seminar Bank Indonesia',
+  tujuan: 'kembali', keperluan: 'undangan seminar', pola_kembali: 'bersama', jumlah_peserta: 4,
+  jalur: 'normal', alasan_khusus: '', disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(),
+  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(),
+};
+const anggotaContoh = ['Ahmad', 'Budi', 'Citra', 'Deni'].map((nama, i) => ({
+  id: `IZ-K${i}`, timestamp: new Date().toISOString(), nisn: `20${i}`, name: nama, class: 'XI A',
+  keperluan: 'undangan seminar', tujuan: 'kembali', jalur: 'normal', alasan_khusus: '',
+  status: ['Kembali', 'Kembali', 'Sedang di Luar', 'Sedang di Luar'][i],
+  disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(),
+  diverifikasi_oleh: 'Pak Piket', waktu_verifikasi: new Date().toISOString(), waktu_keluar: new Date().toISOString(),
+  waktu_kembali: '', dicatat_kembali_oleh: '', logged_by: 'Bu Kartina',
+  kelompok_id: 'KEL-1', kegiatan: 'Seminar Bank Indonesia',
+}));
+const propsKelompok = (extra) => Object.assign({
+  students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }],
+  izinList: anggotaContoh, kelompokList: [kelompokContoh], canVerify: true, waliKelasMap: [],
+  onCreateKelompok: () => {}, onVerifikasiKelompok: () => {}, onTandaiKembaliKelompok: () => {},
+  onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {},
+}, extra || {});
+
+test('kelompok: daftar peserta & konteks kegiatan sampai ke GerbangTab', () => {
+  loginAs(guru);
+  const tree = bootApp();
+  const gerbang = findComponent(tree, 'GerbangTab');
+  assert.ok(Array.isArray(gerbang.props.kelompokList));
+  ['onCreateKelompok', 'onVerifikasiKelompok', 'onTandaiKembaliKelompok', 'onTandaiPulangIzin'].forEach((p) => {
+    assert.equal(typeof gerbang.props[p], 'function', p);
+  });
+});
+
+test('kelompok: yang dikirim ke server cuma NISN — identitas siswa tidak dikarang klien', () => {
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const blok = gerbang.split('const submitKelompok = () => {')[1].split('};')[0];
+  assert.match(blok, /peserta: pilihan\.map\(p => \(\{ nisn: p\.nisn \}\)\)/);
+  assert.doesNotMatch(blok, /name:|class:/, 'nama & kelas peserta harus datang dari Master_Siswa di server');
+  assert.doesNotMatch(blok, /status:/, 'klien tidak pernah mengirim status');
+});
+
+test('kelompok: status rombongan DIHITUNG dari peserta, tidak dibaca dari kegiatan', () => {
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  // Kartu kelompok tidak boleh membaca field status di objek kegiatan —
+  // satu-satunya sumber kebenaran adalah status tiap peserta.
+  const kartu = gerbang.split('function KartuKelompok(')[1].split('\n       function ')[0];
+  assert.doesNotMatch(kartu, /kelompok\.status/);
+  assert.match(kartu, /ringkasPesertaKelompok\(peserta\)/);
+
+  const r = get('ringkasPesertaKelompok')(anggotaContoh);
+  assert.equal(r.total, 4);
+  assert.equal(r.kembali, 2);
+  assert.equal(r.diLuar, 2);
+});
+
+test('kelompok: "Tandai Rombongan Kembali" hanya untuk pola bersama', () => {
+  const dasar = { peserta: anggotaContoh, canVerify: true, onLihat: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, busy: false };
+  const bersama = JSON.stringify(get('KartuKelompok')({ ...dasar, kelompok: kelompokContoh }));
+  assert.ok(bersama.includes('Tandai Rombongan Kembali'));
+
+  const individual = JSON.stringify(get('KartuKelompok')({ ...dasar, kelompok: { ...kelompokContoh, pola_kembali: 'individual' } }));
+  assert.ok(!individual.includes('Tandai Rombongan Kembali'),
+    'pola individual ditandai per siswa — tombol rombongan di sini berarti mengasumsikan semua kembali bareng');
+
+  const biasa = JSON.stringify(get('KartuKelompok')({ ...dasar, kelompok: kelompokContoh, canVerify: false }));
+  assert.ok(!biasa.includes('Tandai Rombongan Kembali'));
+  assert.ok(!biasa.includes('Verifikasi Kelompok'));
+});
+
+test('kelompok: konfirmasi rombongan selalu lewat centang peserta, bukan satu tap', () => {
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  // Tombol di kartu membuka daftar peserta dulu ('kembali'/'verifikasi'),
+  // tidak pernah langsung memanggil handler-nya.
+  const panel = gerbang.split('function IzinKelompokPanel(')[1];
+  assert.match(panel, /onTandaiKembali=\{\(kel\) => bukaSheet\(kel, 'kembali'\)\}/);
+  assert.match(panel, /onVerifikasi=\{\(kel\) => bukaSheet\(kel, 'verifikasi'\)\}/);
+  // Dan konfirmasinya membawa daftar id yang dicentang.
+  assert.match(panel, /fn\(\{ id: sheetKelompok\.id, pesertaIds: sheetPilih \}/);
+
+  // Layarnya pun mengatakan apa yang terjadi pada yang tidak dicentang.
+  const sheet = JSON.stringify(get('PesertaKelompokSheet')({
+    kelompok: kelompokContoh, peserta: anggotaContoh, mode: 'kembali', dipilih: ['IZ-K2'],
+    onToggle: () => {}, onTutup: () => {}, onKonfirmasi: () => {}, canVerify: true, busy: false,
+    onTandaiKembaliIndividu: () => {}, onTandaiPulang: () => {},
+  }));
+  assert.ok(sheet.includes('tetap tercatat'));
+});
+
+test('kelompok: panel individual tidak ikut menampilkan peserta kegiatan', () => {
+  const panelIndividual = JSON.stringify(get('IzinKeluarPanel')({
+    students: [], izinList: anggotaContoh, canVerify: true, waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, onSelesaikan: () => {},
+  }));
+  assert.ok(!panelIndividual.includes('Ahmad'), 'peserta kegiatan diurus di mode Kelompok, bukan sebagai kartu lepas');
+
+  const panelKelompok = JSON.stringify(get('IzinKelompokPanel')(propsKelompok()));
+  assert.ok(panelKelompok.includes('Seminar Bank Indonesia'));
+});
+
+test('kelompok: tidak ada menu/nav baru dan tidak ada asumsi printer', () => {
+  const config = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+  assert.doesNotMatch(config, /kelompok/i, 'Izin Kelompok tidak boleh jadi entri NAV_ITEMS/ROLES baru');
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  [/bluetooth/i, /esc\/?pos/i, /airprint/i, /window\.print/i, /\b(58|80)\s?mm\b/i, /\b(A4|A5|F4)\b/].forEach((pola) => {
+    assert.doesNotMatch(gerbang, pola, 'tidak boleh ada asumsi perangkat/media cetak: ' + pola);
+  });
+});

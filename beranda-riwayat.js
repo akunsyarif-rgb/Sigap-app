@@ -669,6 +669,10 @@
                                            )}
                                            {category === 'izin' && (
                                                <div className="text-[10px] text-slate-500">
+                                                   {/* Nama kegiatan hanya ada kalau baris ini peserta
+                                                       Izin Kelompok — server yang menempelkannya dari
+                                                       baris induk, tidak disimpan ulang per siswa. */}
+                                                   {item.kegiatan && <span className="font-semibold text-slate-600">{item.kegiatan} — </span>}
                                                    {item.keperluan} • {item.tujuan === 'pulang' ? 'Pulang / tidak kembali' : 'Kembali ke sekolah'}
                                                    {item.jalur === 'khusus' && <span className="text-crimson font-semibold"> • Izin Khusus</span>}
                                                </div>

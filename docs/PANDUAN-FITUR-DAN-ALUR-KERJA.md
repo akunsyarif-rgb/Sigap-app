@@ -114,7 +114,27 @@ Persetujuan guru **saja belum membuat siswa boleh keluar** — jam keluar baru d
 
 **Halaman utamanya** menampilkan tiga kelompok yang memang ditanyakan sepanjang hari: **Menunggu Verifikasi**, **Sedang di Luar**, dan **Selesai Hari Ini**. Satu siswa tidak bisa punya dua izin keluar yang berjalan bersamaan, jadi tombol yang tertekan dua kali tidak menghasilkan dua catatan.
 
-**Soal privasi:** izin yang **masih berjalan** terlihat semua guru — petugas piket harus tahu siapa yang masih di luar. Riwayat izin yang sudah tertutup mengikuti aturan yang sama dengan keterlambatan & surat: wali kelas melihat kelas perwaliannya, BK/Admin melihat seluruh sekolah, dan OSIS tidak melihat sama sekali. Fitur ini **tidak** menambah akses siapa pun.
+**Izin Kelompok — satu kegiatan, banyak siswa.** Di dalam mode Izin Keluar ada dua pilihan: **Individual** dan **Kelompok**. Pakai Kelompok kalau beberapa siswa keluar untuk **satu kegiatan yang sama** — seminar, lomba, kunjungan. Kalau keperluan tiap siswa kebetulan berbeda (satu sakit, satu mengambil dokumen, satu urusan keluarga), itu **bukan** kelompok; catat masing-masing lewat Individual.
+
+Guru mengisi **nama kegiatan**, **tujuan**, **keperluan**, memilih **peserta** (bisa banyak siswa sekaligus), dan **pola kembali**:
+
+- **Bersama** — rombongan berangkat dan kembali bareng. Saat pulang, petugas piket menekan *Tandai Rombongan Kembali*.
+- **Individual** — tiap peserta ditandai kembali sendiri-sendiri dari daftar peserta.
+
+Yang penting dipahami: **kelompok itu hanya konteks, status tetap milik masing-masing siswa.** Satu kegiatan berisi 8 siswa bisa berakhir seperti ini, dan itu normal:
+
+| Siswa | Status |
+|---|---|
+| Ahmad | Kembali |
+| Budi | Kembali |
+| Citra | Sedang di Luar |
+| Deni | Pulang |
+
+Karena itu, **tidak ada tombol yang mengubah semua siswa sekaligus tanpa dikonfirmasi**. Saat memverifikasi, petugas piket melihat dulu daftar pesertanya dan mencentang siapa yang benar-benar berangkat. Saat rombongan kembali pun begitu: petugas mencentang siapa yang benar-benar sudah kembali — misalnya 7 dicentang, 1 tidak. Hasilnya 7 siswa berstatus *Kembali* dan 1 siswa **tetap** *Sedang di Luar*, dan selisih itu tercatat di jejak audit lengkap dengan namanya. Kalau ada peserta yang ternyata langsung pulang dan tidak kembali ke sekolah, petugas menandainya **Pulang** — setelah itu ia tidak bisa ditandai kembali, sementara status teman-temannya tidak ikut berubah.
+
+Satu siswa tetap **tidak bisa punya dua izin berjalan sekaligus**: kalau ada satu peserta saja yang masih di luar, seluruh pengajuan kegiatan ditolak — bukan tersimpan setengah — supaya tidak ada rombongan yang terlihat sah padahal separuh datanya batal.
+
+**Soal privasi:** izin yang **masih berjalan** terlihat semua guru — petugas piket harus tahu siapa yang masih di luar. Riwayat izin yang sudah tertutup mengikuti aturan yang sama dengan keterlambatan & surat: wali kelas melihat kelas perwaliannya, BK/Admin melihat seluruh sekolah, dan OSIS tidak melihat sama sekali. Nama kegiatan hanya ikut terlihat kalau pesertanya memang boleh dilihat. Fitur ini **tidak** menambah akses siapa pun.
 
 **Soal cetak:** untuk sekarang seluruhnya digital. Jenis printer, cara koneksi, media, dan ukuran kertas/slip **belum ditentukan sekolah**, jadi belum ada satu pun bagian aplikasi yang berhubungan dengan alat cetak. Yang tampil di layar hanya keterangan *"Fitur pencetakan masih dalam tahap BETA."* Kalau nanti printernya sudah ada, cetakan menjadi hasil dari transaksi yang **sudah tersimpan** — bukan syarat supaya transaksinya berhasil.
 
@@ -250,6 +270,19 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 6. Kalau tujuannya kembali ke sekolah: begitu siswa datang lagi, petugas piket yang sedang bertugas menekan **Tandai Kembali** pada namanya di daftar *Sedang di Luar*.
 
 *Kalau guru yang menangani siswa itu benar-benar tidak ada di sekolah:* guru piket mencentang **Izin Khusus** di langkah 3, mengisi **alasan pengecualian**, lalu menyimpan. Aplikasi menampilkan penegasan bahwa ini pengecualian dan akan tercatat sebagai Izin Khusus.
+
+### 5.3c Mencatat Izin Kelompok (satu kegiatan, banyak siswa)
+
+1. Buka menu **Gerbang** → **Izin Keluar · BETA** → tombol **Kelompok**.
+2. Isi **Kegiatan** (contoh: *Seminar Bank Indonesia*) dan **Keperluan**.
+3. Pilih **Tujuan**, lalu **Pola Kembali** (*Bersama* atau *Individual*).
+4. Cari dan **centang semua siswa peserta**. Siswa yang masih punya izin berjalan tidak bisa dipilih.
+5. Tekan **Ajukan Kelompok**. Anda tercatat sebagai pihak yang memberikan persetujuan kegiatan ini.
+6. **Guru piket** membuka kegiatan itu, menekan **Verifikasi Kelompok**, memeriksa daftar peserta, mencentang siapa yang benar-benar berangkat, lalu mengonfirmasi.
+7. Saat rombongan kembali (pola *Bersama*): tekan **Tandai Rombongan Kembali**, centang siapa yang benar-benar sudah kembali, konfirmasi. Yang tidak dicentang tetap tercatat *Sedang di Luar*.
+8. Pola *Individual*: buka **Lihat Peserta**, lalu tandai kembali siswa satu per satu.
+
+*Kalau ada peserta yang tidak kembali ke sekolah:* buka **Lihat Peserta**, tekan **Tandai Pulang** pada namanya. Statusnya berhenti di *Pulang* dan tidak bisa ditandai kembali; peserta lain tidak terpengaruh.
 
 ### 5.4 Mencatat Pelanggaran Tata Tertib
 

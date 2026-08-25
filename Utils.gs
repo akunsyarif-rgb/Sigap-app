@@ -665,11 +665,19 @@ var IZIN_HEADERS = [
   'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan',
   'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID', 'Waktu_Verifikasi',
   'Waktu_Keluar', 'Waktu_Kembali', 'Dicatat_Kembali_Oleh', 'Dicatat_Kembali_Oleh_ID',
+  // Kolom ke-21, DITAMBAHKAN DI UJUNG saat Izin Kelompok masuk — tidak ada
+  // satu pun kolom lama yang bergeser posisinya. Kosong = izin individual;
+  // terisi = baris ini peserta dari satu kegiatan di sheet Izin_Kelompok.
+  // Relasinya sengaja cuma satu kolom kunci: nama & kelas peserta TETAP dari
+  // Master_Siswa (lihat resolveSiswaListForIzin), dan nama kegiatan tetap
+  // tinggal di baris induknya — tidak diduplikasi ke tiap peserta.
+  'ID_Kelompok',
 ];
-var IZIN_NUM_COLS = IZIN_HEADERS.length; // 20
+var IZIN_NUM_COLS = IZIN_HEADERS.length; // 21
 var IZIN_COL_NISN = 2;   // kolom B (1-based) — dipakai cek "masih ada izin terbuka?"
 var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah status
 var IZIN_COL_STATUS = 8; // kolom H (1-based)
+var IZIN_COL_KELOMPOK = 21; // kolom U (1-based)
 
 // Lima status, tidak tumpang tindih. 'Kembali' & 'Pulang' adalah HASIL AKHIR
 // yang berbeda (siswa balik ke sekolah vs tidak balik), 'Selesai' adalah
@@ -755,6 +763,12 @@ function izinTolakTransisi(statusSekarang, aksi) {
     if (statusSekarang === IZIN_STATUS_DI_LUAR) return 'Izin ini sudah diverifikasi — siswa sudah tercatat keluar.';
     return 'Izin ini sudah tidak menunggu verifikasi (status: ' + statusSekarang + ').';
   }
+  if (aksi === 'pulang') {
+    if (statusSekarang === IZIN_STATUS_MENUNGGU) return 'Izin ini belum diverifikasi Guru Piket, jadi siswa belum tercatat keluar.';
+    if (statusSekarang === IZIN_STATUS_KEMBALI) return 'Siswa ini sudah tercatat kembali ke sekolah.';
+    if (statusSekarang === IZIN_STATUS_PULANG) return 'Siswa ini sudah tercatat pulang.';
+    return 'Transaksi ini sudah selesai — tidak bisa diubah lagi.';
+  }
   if (aksi === 'kembali') {
     if (statusSekarang === IZIN_STATUS_MENUNGGU) return 'Izin ini belum diverifikasi Guru Piket, jadi siswa belum tercatat keluar.';
     if (statusSekarang === IZIN_STATUS_PULANG) return 'Siswa ini izin PULANG (tidak kembali) — tidak bisa ditandai kembali.';
@@ -788,6 +802,9 @@ function izinRowToObject(row) {
     waktu_kembali: row[17],
     dicatat_kembali_oleh: row[18],
     dicatat_kembali_oleh_id: String(row[19]),
+    // Baris lama (sebelum kolom ke-21 ada) mengembalikan undefined di sini —
+    // dijaga supaya tidak berubah jadi string 'undefined'.
+    kelompok_id: row[20] ? String(row[20]) : '',
     // Kolom "siapa yang mencatat" untuk keperluan pembatasan cakupan baca
     // memakai PEMBERI PERSETUJUAN — mekanisme kepemilikan yang sama (nama
     // pencatat) seperti Dicatat_Oleh di sheet lain.
@@ -905,4 +922,265 @@ function resolveSiswaForIzin(ss, nisn) {
     }
   }
   return null;
+}
+
+// ===== IZIN KELOMPOK (kegiatan dengan banyak peserta) =====
+// Dipakai kalau BEBERAPA siswa keluar karena SATU kegiatan yang sama (seminar,
+// lomba, kunjungan). Bukan "beberapa izin yang kebetulan barengan": kalau
+// keperluannya berbeda-beda (satu sakit, satu ambil dokumen), itu tetap
+// transaksi individual masing-masing — satu kegiatan = satu kelompok.
+//
+// Bentuk datanya SENGAJA parent/child, bukan satu baris gemuk:
+//
+//     Izin_Kelompok  (1 baris = 1 KEGIATAN, konteks bersama)
+//            |
+//            +--> Izin_Keluar (1 baris = 1 SISWA, transaksi individual)
+//
+// Alasannya: setiap peserta WAJIB tetap punya status sendiri (§ "Status
+// Individual"). Kalau status disimpan di level kegiatan, satu siswa yang belum
+// kembali akan tertutupi oleh status rombongan. Jadi baris peserta adalah baris
+// Izin_Keluar biasa — status, transisi, kewenangan, dan cakupan bacanya persis
+// sama dengan izin individual — dan kegiatan hanya menambahkan KONTEKS di
+// atasnya lewat satu kolom kunci ID_Kelompok.
+//
+// Konsekuensinya yang disengaja: TIDAK ADA kolom status di sheet kegiatan.
+// Keadaan rombongan ("8 siswa, 7 di luar, 1 kembali") selalu DIHITUNG dari
+// baris pesertanya, sehingga tidak mungkin ada dua sumber kebenaran yang
+// berselisih.
+var IZIN_KELOMPOK_SHEET_NAME = 'Izin_Kelompok';
+var IZIN_KELOMPOK_HEADERS = [
+  'Timestamp', 'ID_Kelompok', 'Kegiatan', 'Tujuan', 'Keperluan', 'Pola_Kembali', 'Jumlah_Peserta',
+  'Jalur', 'Alasan_Khusus',
+  'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan',
+  'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID', 'Waktu_Verifikasi',
+];
+var IZIN_KELOMPOK_NUM_COLS = IZIN_KELOMPOK_HEADERS.length; // 15
+var IZIN_KELOMPOK_COL_ID = 2; // kolom B (1-based)
+
+// Pola kembali — HANYA berlaku kalau tujuannya kembali ke sekolah:
+//   bersama    : rombongan pulang-pergi bareng, penandaan kembali dilakukan
+//                sekali untuk rombongan (tapi tetap per siswa, lihat di bawah)
+//   individual : tiap peserta ditandai kembali sendiri-sendiri
+// Untuk tujuan 'pulang' kolom ini dikosongkan — tidak ada yang kembali.
+var IZIN_POLA_BERSAMA = 'bersama';
+var IZIN_POLA_INDIVIDUAL = 'individual';
+
+var IZIN_MAX_KEGIATAN = 120;
+// Batas peserta per kegiatan. Bukan angka filosofis — ini pagar supaya satu
+// permintaan tidak bisa memaksa server menulis ratusan baris sambil memegang
+// script lock global (lihat komentar lock di doPost). Rombongan sekolah yang
+// wajar jauh di bawah ini.
+var IZIN_MAX_PESERTA = 60;
+
+// Ambil identitas BANYAK siswa sekaligus dari Master_Siswa dengan SATU kali
+// baca. Versi per-siswa (resolveSiswaForIzin) dipanggil berulang untuk 8-40
+// peserta berarti memindai Master_Siswa 8-40 kali sambil memegang script lock
+// global — persis pola yang sudah pernah bikin jam gerbang melambat (lihat
+// catatan getRowsSince). Nama & kelas tetap dari Master_Siswa, TIDAK PERNAH
+// dari daftar yang dikirim klien.
+// Mengembalikan { siswa: [...urut sesuai permintaan...], tidakDitemukan: [nisn...] }.
+function resolveSiswaListForIzin(ss, nisnList) {
+  var hasil = { siswa: [], tidakDitemukan: [] };
+  var diminta = nisnList || [];
+  if (!diminta.length) return hasil;
+  var sheet = ss.getSheetByName('Master_Siswa');
+  var lastRow = sheet ? sheet.getLastRow() : 0;
+  var peta = {};
+  if (lastRow > 1) {
+    var rows = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var nisn = String(rows[i][0]).trim();
+      if (nisn && !peta[nisn]) peta[nisn] = { nisn: nisn, name: String(rows[i][1]), class: String(rows[i][2]) };
+    }
+  }
+  for (var j = 0; j < diminta.length; j++) {
+    var cari = String(diminta[j] || '').trim();
+    if (peta[cari]) hasil.siswa.push(peta[cari]);
+    else hasil.tidakDitemukan.push(cari);
+  }
+  return hasil;
+}
+
+// Sama seperti findIzinTerbukaForNisn, tapi untuk BANYAK NISN sekaligus dengan
+// satu kali baca. Mengembalikan daftar bentrokan [{nisn, name, status}] —
+// dipakai untuk menolak SELURUH pengajuan kelompok sebelum satu baris pun
+// ditulis, jadi tidak pernah ada kelompok yang tersimpan setengah jadi.
+function findIzinTerbukaForNisnList(sheet, nisnList) {
+  var bentrok = [];
+  var diminta = nisnList || [];
+  if (!sheet || !diminta.length) return bentrok;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return bentrok;
+  var cari = {};
+  for (var d = 0; d < diminta.length; d++) cari[String(diminta[d]).trim()] = true;
+  var numCols = IZIN_COL_STATUS - IZIN_COL_NISN + 1;
+  var rows = sheet.getRange(2, IZIN_COL_NISN, lastRow - 1, numCols).getValues();
+  var ketemu = {};
+  // Dari baris terbaru ke terlama: transaksi terakhir seorang siswa yang
+  // menentukan, sama seperti findIzinTerbukaForNisn.
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var nisn = String(rows[i][0]).trim();
+    if (!cari[nisn] || ketemu[nisn]) continue;
+    var status = String(rows[i][IZIN_COL_STATUS - IZIN_COL_NISN]).trim();
+    if (IZIN_STATUS_TERBUKA.indexOf(status) !== -1) {
+      ketemu[nisn] = { nisn: nisn, name: String(rows[i][1]), status: status };
+    }
+  }
+  // Dikembalikan MENGIKUTI URUTAN YANG DIMINTA, bukan urutan baris sheet:
+  // pesan penolakannya menyebut beberapa nama pertama saja, dan nama itu harus
+  // yang pertama di daftar peserta yang barusan dipilih guru — bukan nama acak
+  // dari ujung sheet yang membingungkan saat dicocokkan dengan layar.
+  for (var d2 = 0; d2 < diminta.length; d2++) {
+    var kunci = String(diminta[d2]).trim();
+    if (ketemu[kunci]) { bentrok.push(ketemu[kunci]); delete ketemu[kunci]; }
+  }
+  return bentrok;
+}
+
+function izinKelompokRowToObject(row) {
+  return {
+    timestamp: row[0],
+    id: String(row[1]),
+    kegiatan: row[2],
+    tujuan: String(row[3]),
+    keperluan: row[4],
+    pola_kembali: String(row[5] || ''),
+    jumlah_peserta: Number(row[6]) || 0,
+    jalur: String(row[7]),
+    alasan_khusus: row[8],
+    disetujui_oleh: row[9],
+    disetujui_oleh_id: String(row[10]),
+    waktu_persetujuan: row[11],
+    diverifikasi_oleh: row[12],
+    diverifikasi_oleh_id: String(row[13]),
+    waktu_verifikasi: row[14],
+  };
+}
+
+// Cari baris kegiatan lewat ID_Kelompok — pola & alasannya sama persis dengan
+// findIzinRowById: baca kolom ID dulu (1 panggilan API), baru tarik barisnya.
+function findIzinKelompokRowById(sheet, id) {
+  if (!sheet) return null;
+  var target = String(id || '').trim();
+  if (!target) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var ids = sheet.getRange(2, IZIN_KELOMPOK_COL_ID, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === target) {
+      var rowIndex = i + 2;
+      var values = sheet.getRange(rowIndex, 1, 1, IZIN_KELOMPOK_NUM_COLS).getValues()[0];
+      return { rowIndex: rowIndex, values: values, data: izinKelompokRowToObject(values) };
+    }
+  }
+  return null;
+}
+
+// Semua baris peserta milik satu kegiatan, LENGKAP dengan nomor barisnya —
+// aksi kelompok perlu itu untuk menulis balik status tiap peserta.
+// Membaca seluruh kolom (bukan cuma kolom kunci) sekali jalan: jumlah peserta
+// satu kegiatan kecil, dan ini menghindari satu getRange per peserta.
+function findPesertaKelompok(sheet, idKelompok) {
+  var hasil = [];
+  if (!sheet) return hasil;
+  var target = String(idKelompok || '').trim();
+  if (!target) return hasil;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return hasil;
+  var rows = sheet.getRange(2, 1, lastRow - 1, IZIN_NUM_COLS).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][IZIN_COL_KELOMPOK - 1] || '').trim() !== target) continue;
+    hasil.push({ rowIndex: i + 2, values: rows[i], data: izinRowToObject(rows[i]) });
+  }
+  return hasil;
+}
+
+// Ringkasan keadaan rombongan, DIHITUNG dari baris peserta (bukan disimpan).
+// Inilah yang membuat "8 siswa · 7 di luar · 1 kembali" tidak pernah bisa
+// berselisih dengan status siswanya sendiri.
+function ringkasKelompok(pesertaList) {
+  var ringkas = { total: 0, menunggu: 0, diLuar: 0, kembali: 0, pulang: 0, selesai: 0 };
+  var list = pesertaList || [];
+  for (var i = 0; i < list.length; i++) {
+    var st = String((list[i].data ? list[i].data.status : list[i].status) || '').trim();
+    ringkas.total++;
+    if (st === IZIN_STATUS_MENUNGGU) ringkas.menunggu++;
+    else if (st === IZIN_STATUS_DI_LUAR) ringkas.diLuar++;
+    else if (st === IZIN_STATUS_KEMBALI) ringkas.kembali++;
+    else if (st === IZIN_STATUS_PULANG) ringkas.pulang++;
+    else if (st === IZIN_STATUS_SELESAI) ringkas.selesai++;
+  }
+  return ringkas;
+}
+
+// Daftar peserta unik & valid dari permintaan klien. Klien boleh mengirim apa
+// saja — di sini yang dipakai HANYA NISN-nya, dibersihkan, dibuang duplikatnya,
+// dan dibatasi jumlahnya. Nama/kelas yang ikut terkirim diabaikan total
+// (identitas diambil dari Master_Siswa).
+function normalizeDaftarPesertaIzin(daftar) {
+  var keluar = [];
+  var terlihat = {};
+  var input = daftar || [];
+  if (!Array.isArray(input)) return keluar;
+  for (var i = 0; i < input.length; i++) {
+    var item = input[i];
+    var nisn = String((item && typeof item === 'object') ? (item.nisn || '') : (item || '')).trim();
+    if (!nisn || terlihat[nisn]) continue;
+    terlihat[nisn] = true;
+    keluar.push(nisn);
+  }
+  return keluar;
+}
+
+// Detail Audit Log untuk aksi kelompok. Memuat nama kegiatan + jumlah peserta,
+// dan (untuk pengecualian) nama siswa yang statusnya menyimpang dari rombongan
+// — itu justru inti jejaknya. Kebijakan Audit Log sendiri tidak diubah: sheet,
+// kolom, dan aksesnya (Admin-only) tetap seperti semula.
+function buildKelompokAuditDetail(kelompok, tambahan) {
+  var detail = 'kegiatan=' + kelompok.kegiatan +
+    ' | peserta=' + kelompok.jumlah_peserta +
+    ' | tujuan=' + kelompok.tujuan +
+    ' | pola=' + (kelompok.pola_kembali || '-') +
+    ' | jalur=' + kelompok.jalur;
+  return tambahan ? detail + ' | ' + tambahan : detail;
+}
+
+// Satu titik pembuangan cache untuk SEMUA aksi tulis Izin Keluar/Kelompok.
+// Dipisah jadi fungsi supaya aksi baru tidak bisa lupa membuang salah satunya
+// (baris peserta dan baris kegiatan selalu berubah berpasangan di layar).
+function clearIzinCache() {
+  var cache = CacheService.getScriptCache();
+  cache.remove('izin_keluar_raw');
+  cache.remove('izin_kelompok_raw');
+}
+
+// Tulis banyak baris peserta sekaligus. Baris satu kegiatan dibuat berurutan,
+// jadi perubahan statusnya hampir selalu jatuh pada blok baris yang bersebelahan
+// — dikelompokkan dulu supaya jadi SATU setValues per blok, bukan satu
+// panggilan Sheets API per siswa (40 peserta = 40 panggilan sambil memegang
+// script lock global; itu pola yang sudah pernah bikin jam gerbang melambat).
+function writeIzinRowsBatch(sheet, items) {
+  var list = (items || []).slice().sort(function (a, b) { return a.rowIndex - b.rowIndex; });
+  var i = 0;
+  while (i < list.length) {
+    var mulai = i;
+    while (i + 1 < list.length && list[i + 1].rowIndex === list[i].rowIndex + 1) i++;
+    var blok = list.slice(mulai, i + 1).map(function (it) { return it.values; });
+    sheet.getRange(list[mulai].rowIndex, 1, blok.length, IZIN_NUM_COLS).setValues(blok);
+    i++;
+  }
+}
+
+// Tambah banyak baris sekaligus di ujung sheet. appendRow() per baris berarti
+// satu panggilan API per siswa; setValues() sekali jalan jauh lebih murah, tapi
+// getRange() TIDAK boleh melewati jumlah baris yang dimiliki sheet — makanya
+// sheet-nya dilebarkan dulu kalau memang kurang.
+function appendRowsBatch(sheet, rows) {
+  var list = rows || [];
+  if (!list.length) return;
+  var mulai = sheet.getLastRow() + 1;
+  var butuh = mulai + list.length - 1;
+  var maks = sheet.getMaxRows();
+  if (butuh > maks) sheet.insertRowsAfter(maks, butuh - maks);
+  sheet.getRange(mulai, 1, list.length, list[0].length).setValues(list);
 }

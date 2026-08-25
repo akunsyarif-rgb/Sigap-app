@@ -185,6 +185,10 @@
            // tombol apa yang ditampilkan — BUKAN pengamanan: tiap aksi tulis
            // dicek ulang di server (canVerifyIzin di Utils.gs).
            const [canVerifyIzin, setCanVerifyIzin] = useState(false);
+           // Konteks kegiatan untuk Izin Kelompok. Baris pesertanya sendiri ada
+           // di izinList (transaksi individual biasa) — daftar ini cuma induknya:
+           // nama kegiatan, tujuan, pola kembali, dan siapa yang menyetujui.
+           const [kelompokList, setKelompokList] = useState([]);
            const [slowConnection, setSlowConnection] = useState(false);
 
            const roleKey = resolveRoleKey(user);
@@ -240,6 +244,7 @@
                setUpacaraList([]);
                setAuditLog([]);
                setIzinList([]);
+               setKelompokList([]);
                setCanVerifyIzin(false);
            };
 
@@ -384,6 +389,9 @@
                    .then(data => {
                        if (data.status !== 'success') return;
                        setIzinList(data.izin || []);
+                       // Backend lama (belum di-deploy ulang) tidak mengirim
+                       // field ini — daftarnya cuma kosong, sisa layar tetap jalan.
+                       setKelompokList(data.kelompok || []);
                        setCanVerifyIzin(!!data.canVerify);
                    })
                    .catch(() => {});
@@ -907,6 +915,54 @@
            const handleVerifikasiIzin = (payload, callback) => handleIzinAction('verifikasiIzinKeluar', payload, callback, '✓ Terverifikasi — siswa tercatat keluar.');
            const handleTandaiKembaliIzin = (payload, callback) => handleIzinAction('tandaiKembaliIzinKeluar', payload, callback, '✓ Siswa ditandai sudah kembali.');
            const handleSelesaikanIzin = (payload, callback) => handleIzinAction('selesaikanIzinKeluar', payload, callback, '✓ Transaksi ditutup.');
+           const handleTandaiPulangIzin = (payload, callback) => handleIzinAction('tandaiPulangIzinKeluar', payload, callback, '✓ Siswa ditandai pulang (tidak kembali ke sekolah).');
+
+           // ---- Izin Kelompok (satu kegiatan, banyak peserta) ----
+           // Sama seperti izin individual: hasilnya selalu ditarik ulang dari
+           // server, tidak ditebak di klien. Untuk kelompok ini lebih penting
+           // lagi — satu aksi bisa mengubah status banyak siswa sekaligus, dan
+           // server yang memutuskan siapa saja yang benar-benar berubah.
+           const handleCreateKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, data.izinStatus === 'Menunggu Verifikasi'
+                               ? `✓ Kegiatan diajukan untuk ${data.jumlahPeserta} siswa — menunggu verifikasi Guru Piket.`
+                               : `✓ Kegiatan tercatat sebagai Izin Khusus untuk ${data.jumlahPeserta} siswa.`);
+                       } else callback(false, data.message || 'Gagal membuat izin kelompok.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleVerifikasiKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'verifikasiIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, `✓ ${data.jumlahDiverifikasi} siswa terverifikasi & tercatat keluar.`);
+                       } else callback(false, data.message || 'Gagal memverifikasi kegiatan.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleTandaiKembaliKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'tandaiKembaliKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           // Sisa yang belum kembali disebut TERANG-TERANGAN —
+                           // pengecualian tidak boleh lewat tanpa terlihat.
+                           callback(true, data.jumlahBelumKembali
+                               ? `✓ ${data.jumlahKembali} siswa kembali — ${data.jumlahBelumKembali} masih tercatat di luar.`
+                               : `✓ ${data.jumlahKembali} siswa ditandai sudah kembali.`);
+                       } else callback(false, data.message || 'Gagal menandai rombongan kembali.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
 
            return (
                <div style={{ zoom: fontScale }}>
@@ -953,8 +1009,11 @@
                                {activeTab === 'scan' && effectiveMenus.includes('scan') && (
                                    <GerbangTab
                                        students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap}
-                                       izinList={izinList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
+                                       izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
                                        onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin} onSelesaikanIzin={handleSelesaikanIzin}
+                                       onTandaiPulangIzin={handleTandaiPulangIzin}
+                                       onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
+                                       onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
                                    />
                                )}
                                {activeTab === 'dashboard' && (

@@ -67,6 +67,10 @@ function makeSheet(header, rows) {
     },
     deleteRow(i) { data.splice(i - 1, 1); },
     appendRow(row) { data.push(row.slice()); },
+    // appendRowsBatch() melebarkan sheet dulu kalau barisnya kurang — mock ini
+    // meniru itu supaya jalur tulis massal benar-benar teruji, bukan dilewati.
+    getMaxRows: () => Math.max(data.length, 1000),
+    insertRowsAfter(after, howMany) { for (let i = 0; i < howMany; i++) data.push([]); },
   };
 }
 
