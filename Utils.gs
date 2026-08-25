@@ -627,3 +627,276 @@ function buildExportAuditDetail(jenis, periodeLabel, scopeLabel, format, total, 
     ' | baris=' + total +
     ' | status=' + status;
 }
+
+// ===== IZIN KELUAR / PULANG (BETA) =====
+// Pencatatan siswa yang MENINGGALKAN lingkungan sekolah di tengah jam
+// pelajaran. BUKAN fitur Surat: Surat adalah laporan tertulis atas siswa yang
+// tidak masuk/terlambat (satu baris, selesai saat itu juga), sedangkan Izin
+// Keluar adalah TRANSAKSI BERSTATUS yang hidup sepanjang hari dan baru
+// tertutup setelah siswa kembali (atau memang pulang).
+//
+// Prosedur sekolah yang ditiru (TIDAK dipangkas jadi satu persetujuan):
+//   Walas / Guru Mapel  -> persetujuan awal
+//   Guru Piket          -> verifikasi akhir
+//   Siswa keluar
+// Dua tahap itu tetap dua tahap di sini: aksi 'addIzinKeluar' hanya mencatat
+// PERSETUJUAN (status 'Menunggu Verifikasi'), dan siswa baru dianggap keluar
+// setelah 'verifikasiIzinKeluar' dijalankan pihak yang berwenang.
+//
+// CETAK/SLIP: tidak ada apa pun soal printer di sini. Jenis printer, media,
+// ukuran kertas, dan cara koneksinya BELUM ditentukan sekolah, jadi tahap BETA
+// ini murni transaksi digital. Kalau nanti pencetakan ditambahkan, ia menjadi
+// OUTPUT dari baris yang sudah tersimpan — keberhasilan transaksi tidak boleh
+// pernah bergantung pada berhasil/tidaknya mencetak.
+var IZIN_SHEET_NAME = 'Izin_Keluar';
+
+// Posisi kolom signifikan (dibaca by index, sama seperti sheet lain di SIGAP).
+// Empat kolom pertama sengaja identik dengan sheet kategori lain
+// (Timestamp, NISN, Nama, Kelas) supaya helper yang sudah ada — terutama
+// getRowsSince() yang binary-search kolom Timestamp — tetap berlaku.
+var IZIN_HEADERS = [
+  'Timestamp', 'NISN', 'Nama', 'Kelas', 'ID_Izin', 'Keperluan', 'Tujuan', 'Status', 'Jalur', 'Alasan_Khusus',
+  'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan',
+  'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID', 'Waktu_Verifikasi',
+  'Waktu_Keluar', 'Waktu_Kembali', 'Dicatat_Kembali_Oleh', 'Dicatat_Kembali_Oleh_ID',
+];
+var IZIN_NUM_COLS = IZIN_HEADERS.length; // 20
+var IZIN_COL_NISN = 2;   // kolom B (1-based) — dipakai cek "masih ada izin terbuka?"
+var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah status
+var IZIN_COL_STATUS = 8; // kolom H (1-based)
+
+// Lima status, tidak tumpang tindih. 'Kembali' & 'Pulang' adalah HASIL AKHIR
+// yang berbeda (siswa balik ke sekolah vs tidak balik), 'Selesai' adalah
+// penutupan administratif atas keduanya.
+var IZIN_STATUS_MENUNGGU = 'Menunggu Verifikasi';
+var IZIN_STATUS_DI_LUAR = 'Sedang di Luar';
+var IZIN_STATUS_KEMBALI = 'Kembali';
+var IZIN_STATUS_PULANG = 'Pulang';
+var IZIN_STATUS_SELESAI = 'Selesai';
+// Status "masih berjalan" — selama salah satu ini masih menempel pada seorang
+// siswa, siswa itu tidak boleh dibuatkan transaksi keluar kedua.
+var IZIN_STATUS_TERBUKA = [IZIN_STATUS_MENUNGGU, IZIN_STATUS_DI_LUAR];
+
+var IZIN_TUJUAN_KEMBALI = 'kembali';
+var IZIN_TUJUAN_PULANG = 'pulang';
+var IZIN_JALUR_NORMAL = 'normal';
+var IZIN_JALUR_KHUSUS = 'khusus';
+
+var IZIN_MAX_KEPERLUAN = 200;
+var IZIN_MAX_ALASAN = 300;
+
+// Nama hari untuk mencocokkan Jadwal_Piket (kolom Hari diisi teks 'Senin'..).
+// Ditulis tetap seperti HARI_PIKET di config.js — BUKAN toLocaleDateString,
+// supaya tidak tergantung locale runtime Apps Script.
+var HARI_PIKET_SERVER = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+function hariPiketServer(d) {
+  var date = d instanceof Date ? d : new Date();
+  return HARI_PIKET_SERVER[date.getDay()];
+}
+
+function izinText(v, max) {
+  return String(v === undefined || v === null ? '' : v).trim().slice(0, max);
+}
+
+// ===== Siapa "Guru Piket" hari ini =====
+// TIDAK ada role baru: kewenangan piket dibaca dari Jadwal_Piket yang sudah
+// dipakai Beranda ("Guru Piket Hari Ini") dan dikelola admin lewat menu
+// Kelola. Dicek ULANG setiap aksi, memakai hari saat aksi dijalankan — jadi
+// pergantian guru piket di hari yang sama otomatis terbawa: yang memverifikasi
+// pagi dan yang menandai siswa kembali siang boleh orang yang berbeda.
+//
+// admin & BK/Kesiswaan selalu boleh (mereka memang penanggung jawab kesiswaan,
+// dan tanpa ini sekolah bisa terkunci total kalau Jadwal_Piket belum diisi).
+function isPiketBertugas(ss, sessionUser, now) {
+  if (!sessionUser) return false;
+  var sheet = ss.getSheetByName('Jadwal_Piket');
+  if (!sheet) return false;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return false;
+  var hariIni = hariPiketServer(now);
+  var rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === hariIni && String(rows[i][1]).trim() === String(sessionUser.id).trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Kewenangan VERIFIKASI (dan penandaan "Kembali", dan jalur Izin Khusus).
+// Satu fungsi supaya ketiga aksi itu tidak pernah bisa jadi berbeda diam-diam.
+function canVerifyIzin(ss, sessionUser, now) {
+  if (!sessionUser || isOsisRole(sessionUser.role)) return false;
+  if (isBkRole(sessionUser.role)) return true; // admin + bk_kesiswaan
+  return isPiketBertugas(ss, sessionUser, now);
+}
+
+// ===== Transisi status: DIVALIDASI DI SERVER =====
+// Klien tidak pernah mengirim "status berikutnya" — ia cuma memanggil aksi
+// (verifikasi / tandai kembali / selesaikan), dan server yang menentukan status
+// hasilnya dari status SEKARANG + tujuan yang tersimpan di baris itu. Dengan
+// begitu tidak ada nilai status dari klien yang bisa dipercaya, dan urutan yang
+// tidak masuk akal (Pulang lalu Kembali, Kembali dua kali, dst.) ditolak.
+function izinStatusSetelahVerifikasi(tujuan) {
+  return String(tujuan) === IZIN_TUJUAN_PULANG ? IZIN_STATUS_PULANG : IZIN_STATUS_DI_LUAR;
+}
+
+// Pesan penolakan yang bisa dibaca guru — dipakai handler di Code.gs supaya
+// alasan penolakan konsisten di semua aksi.
+function izinTolakTransisi(statusSekarang, aksi) {
+  if (aksi === 'verifikasi') {
+    if (statusSekarang === IZIN_STATUS_DI_LUAR) return 'Izin ini sudah diverifikasi — siswa sudah tercatat keluar.';
+    return 'Izin ini sudah tidak menunggu verifikasi (status: ' + statusSekarang + ').';
+  }
+  if (aksi === 'kembali') {
+    if (statusSekarang === IZIN_STATUS_MENUNGGU) return 'Izin ini belum diverifikasi Guru Piket, jadi siswa belum tercatat keluar.';
+    if (statusSekarang === IZIN_STATUS_PULANG) return 'Siswa ini izin PULANG (tidak kembali) — tidak bisa ditandai kembali.';
+    if (statusSekarang === IZIN_STATUS_KEMBALI) return 'Siswa ini sudah ditandai kembali.';
+    return 'Transaksi ini sudah selesai — tidak bisa ditandai kembali.';
+  }
+  return 'Status transaksi tidak memungkinkan aksi ini (status: ' + statusSekarang + ').';
+}
+
+// Baris sheet -> objek. by_id/ids TIDAK ikut dikirim ke klien (dipakai hanya
+// untuk pengecekan di server), sama seperti pola pelanggaran_upacara_raw.
+function izinRowToObject(row) {
+  return {
+    timestamp: row[0],
+    nisn: row[1],
+    name: row[2],
+    class: row[3],
+    id: String(row[4]),
+    keperluan: row[5],
+    tujuan: String(row[6]),
+    status: String(row[7]),
+    jalur: String(row[8]),
+    alasan_khusus: row[9],
+    disetujui_oleh: row[10],
+    disetujui_oleh_id: String(row[11]),
+    waktu_persetujuan: row[12],
+    diverifikasi_oleh: row[13],
+    diverifikasi_oleh_id: String(row[14]),
+    waktu_verifikasi: row[15],
+    waktu_keluar: row[16],
+    waktu_kembali: row[17],
+    dicatat_kembali_oleh: row[18],
+    dicatat_kembali_oleh_id: String(row[19]),
+    // Kolom "siapa yang mencatat" untuk keperluan pembatasan cakupan baca
+    // memakai PEMBERI PERSETUJUAN — mekanisme kepemilikan yang sama (nama
+    // pencatat) seperti Dicatat_Oleh di sheet lain.
+    logged_by: row[10],
+  };
+}
+
+// Cari baris berdasarkan ID_Izin. Baca KOLOM ID saja dulu (1 panggilan Sheets
+// API), baru tarik baris yang cocok — pola yang sama dengan getRowsSince, dan
+// jauh lebih murah daripada getDataRange() untuk sheet yang terus tumbuh.
+// ID dipakai (bukan nomor baris dari klien) supaya baris yang bergeser tidak
+// pernah membuat aksi mengenai transaksi milik siswa lain.
+function findIzinRowById(sheet, id) {
+  if (!sheet) return null;
+  var target = String(id || '').trim();
+  if (!target) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var ids = sheet.getRange(2, IZIN_COL_ID, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === target) {
+      var rowIndex = i + 2;
+      var values = sheet.getRange(rowIndex, 1, 1, IZIN_NUM_COLS).getValues()[0];
+      return { rowIndex: rowIndex, values: values, data: izinRowToObject(values) };
+    }
+  }
+  return null;
+}
+
+// Transaksi yang MASIH BERJALAN untuk seorang siswa. Dipakai sebagai penjaga
+// double-submit sekaligus penjaga integritas: selama siswa masih 'Menunggu
+// Verifikasi' atau 'Sedang di Luar', permintaan keluar kedua ditolak — jadi
+// tombol yang tertekan dua kali (koneksi Apps Script lambat, guru menekan
+// ulang) tidak pernah menghasilkan dua transaksi. Dicek DI DALAM script lock
+// global doPost, jadi dua permintaan bersamaan tidak bisa lolos berdua.
+// Membaca kolom NISN..Status saja (1 panggilan API), tanpa batas tanggal —
+// baris "terbuka" seberapa pun lamanya tetap ketahuan.
+function findIzinTerbukaForNisn(sheet, nisn) {
+  if (!sheet) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var target = String(nisn || '').trim();
+  var numCols = IZIN_COL_STATUS - IZIN_COL_NISN + 1;
+  var rows = sheet.getRange(2, IZIN_COL_NISN, lastRow - 1, numCols).getValues();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][0]).trim() !== target) continue;
+    var status = String(rows[i][IZIN_COL_STATUS - IZIN_COL_NISN]).trim();
+    if (IZIN_STATUS_TERBUKA.indexOf(status) !== -1) {
+      return { status: status, name: String(rows[i][1]) };
+    }
+  }
+  return null;
+}
+
+// ===== Cakupan baca Izin Keluar =====
+// TIDAK memperluas hak akses siapa pun. Dua aturan, keduanya sudah ada di
+// SIGAP:
+//   1. Transaksi yang MASIH BERJALAN ('Menunggu Verifikasi'/'Sedang di Luar')
+//      terlihat oleh semua pemakai non-OSIS. Alasannya persis sama dengan
+//      "keterlambatan & surat HARI INI terlihat seluruh sekolah": guru piket
+//      yang bertugas harus tahu siapa yang masih di luar untuk bisa menandai
+//      kembali, dan yang menandai kembali bukan harus orang yang memberi izin.
+//      Ini transaksi berjalan, bukan riwayat.
+//   2. Sisanya (Kembali/Pulang/Selesai) mengikuti aturan yang SUDAH BERLAKU
+//      untuk Keterlambatan & Surat lewat scopeDailyRecordsForUser(): hari ini
+//      seluruh sekolah, riwayat hari sebelumnya hanya admin/BK (semua) dan
+//      wali kelas (kelasnya sendiri). Guru biasa TIDAK menyimpan riwayat
+//      lintas kelas hanya karena ia yang menyetujui.
+// OSIS ditolak di handler, sama seperti kategori disiplin lain.
+function scopeIzinForUser(list, sessionUser, now) {
+  var rows = list || [];
+  if (isSchoolWideReader(sessionUser)) return rows;
+  var today = now instanceof Date ? now : new Date();
+  var tertutup = [];
+  var terbuka = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r) continue;
+    if (IZIN_STATUS_TERBUKA.indexOf(String(r.status).trim()) !== -1) terbuka.push(r);
+    else tertutup.push(r);
+  }
+  var hasil = scopeDailyRecordsForUser(tertutup, sessionUser, today).concat(terbuka);
+  hasil.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  return hasil;
+}
+
+// Detail Audit Log untuk Izin Keluar. Memuat nama+NISN siswa (sama seperti
+// entri 'Edit Data'/'Hapus Data' yang sudah ada) karena jejaknya memang harus
+// bisa merekonstruksi transaksi siapa — tapi TIDAK mengubah kebijakan Audit
+// Log itu sendiri: sheet, format kolom, dan aksesnya (Admin-only) tetap.
+function buildIzinAuditDetail(izin, tambahan) {
+  var detail = izin.name + ' (' + izin.nisn + ') | kelas=' + izin.class +
+    ' | tujuan=' + izin.tujuan + ' | jalur=' + izin.jalur;
+  return tambahan ? detail + ' | ' + tambahan : detail;
+}
+
+// Identitas siswa diambil dari Master_Siswa, BUKAN dari yang dikirim klien.
+// Aksi lama (record/addSurat) memang menulis nama & kelas apa adanya dari
+// browser, tapi Izin Keluar adalah transaksi berstatus yang cakupan bacanya
+// ditentukan oleh KELAS — kalau kelas boleh dikarang klien, seorang wali kelas
+// bisa membuat baris berkelas apa pun dan bermain-main dengan cakupan itu.
+// Jadi di sini klien cuma menentukan SIAPA (NISN), server yang menentukan
+// nama & kelasnya.
+function resolveSiswaForIzin(ss, nisn) {
+  var target = String(nisn || '').trim();
+  if (!target) return null;
+  var sheet = ss.getSheetByName('Master_Siswa');
+  if (!sheet) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var rows = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === target) {
+      return { nisn: String(rows[i][0]).trim(), name: String(rows[i][1]), class: String(rows[i][2]) };
+    }
+  }
+  return null;
+}

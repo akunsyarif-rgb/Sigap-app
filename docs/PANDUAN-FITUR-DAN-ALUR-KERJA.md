@@ -7,7 +7,7 @@
 
 ## 1. Ringkasan Singkat
 
-SIGAP (Sistem Informasi Gerbang & Absensi Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
+SIGAP (Sistem Informasi Gerbang & Absensi Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, izin keluar/pulang di tengah jam pelajaran (BETA), pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
 
 Aplikasi ini dipakai **oleh guru dan petugas sekolah**, dibuka lewat **browser HP atau laptop** — tidak perlu instal apa pun dari Play Store atau App Store.
 
@@ -86,6 +86,35 @@ Kolom "hari ini" sengaja terbuka untuk semua guru: guru piket di gerbang harus s
 Aturan ini soal **apa yang terlihat**. Aturan perbaikan catatan tidak berubah: koreksi hanya bisa dilakukan dalam 5 menit pertama sejak dicatat (Admin tanpa batas waktu).
 
 **Perbaikan salah ketik:** kalau guru salah memilih alasan atau salah ketik keterangan, catatan bisa **diubah atau dihapus dalam 5 menit pertama** sejak dicatat, dan hanya catatan yang ditulis sendiri. Setelah 5 menit lewat, hanya Admin yang bisa memperbaikinya. Aturan ini sengaja dibuat agar catatan tidak bisa "dirapikan" diam-diam berhari-hari kemudian.
+
+### 3.3b Izin Keluar · BETA — Siswa Meninggalkan Sekolah di Tengah Jam Pelajaran
+
+Ada di dalam menu **Gerbang**, sebagai mode ketiga di samping *Catat Terlambat* dan *Catat Surat*. Ini **bukan** fitur Surat: Surat adalah laporan tertulis untuk siswa yang tidak masuk atau terlambat, sedangkan Izin Keluar mencatat siswa yang **keluar dari lingkungan sekolah** dan mengikutinya sampai siswa itu kembali (atau memang pulang).
+
+Statusnya **BETA** karena masih tahap uji coba dan perangkat pencetakan slip belum tersedia di sekolah.
+
+**Alurnya persis prosedur yang sudah berjalan — tidak dipotong:**
+
+| Langkah | Siapa | Yang terjadi di aplikasi |
+|---|---|---|
+| 1. Persetujuan | Wali kelas / guru mata pelajaran jam itu | Isi keperluan & pilih tujuan → status **Menunggu Verifikasi** |
+| 2. Verifikasi | Guru piket yang bertugas hari itu | Tekan *Verifikasi* → siswa tercatat keluar |
+| 3. Siswa kembali | Guru/petugas piket yang sedang bertugas | Tekan *Tandai Kembali* → status **Kembali** |
+
+Persetujuan wali kelas/guru mapel **saja belum membuat siswa boleh keluar** — jam keluar baru dicatat saat guru piket memverifikasi.
+
+**Dua pilihan tujuan saat izin dibuat:**
+
+- **Kembali ke sekolah** — setelah diverifikasi, siswa berstatus *Sedang di Luar* sampai ada petugas piket yang menandainya kembali. Yang menandai **tidak harus** orang yang tadi memberi izin, jadi pergantian guru piket di hari yang sama tidak jadi masalah.
+- **Pulang / tidak kembali** — setelah diverifikasi, transaksinya langsung selesai. Siswa yang izin pulang **tidak bisa** ditandai kembali, dan siswa yang sudah ditandai kembali tidak bisa ditandai kembali dua kali.
+
+**Izin Khusus (jalur pengecualian).** Kadang wali kelas dan guru mapel terkait sama-sama tidak ada di sekolah sementara kondisi siswa butuh keputusan saat itu juga. Untuk keadaan itu, guru piket yang bertugas (juga BK/Admin) bisa memakai jalur **Izin Khusus**. Aplikasi **tidak** menuliskan seolah-olah wali kelas atau guru mapel sudah menyetujui: transaksinya ditandai jelas sebagai *Izin Khusus* atas nama petugas yang mengambil keputusan, **alasan pengecualiannya wajib diisi**, dan semuanya masuk Audit Log. Jalur ini untuk keadaan yang memang tidak bisa menunggu — bukan jalan pintas kalau prosedur normal masih bisa ditempuh.
+
+**Halaman utamanya** menampilkan tiga kelompok yang memang ditanyakan sepanjang hari: **Menunggu Verifikasi**, **Sedang di Luar**, dan **Selesai Hari Ini**. Satu siswa tidak bisa punya dua izin keluar yang berjalan bersamaan, jadi tombol yang tertekan dua kali tidak menghasilkan dua catatan.
+
+**Soal privasi:** izin yang **masih berjalan** terlihat semua guru — petugas piket harus tahu siapa yang masih di luar. Riwayat izin yang sudah tertutup mengikuti aturan yang sama dengan keterlambatan & surat: wali kelas melihat kelas perwaliannya, BK/Admin melihat seluruh sekolah, dan OSIS tidak melihat sama sekali. Fitur ini **tidak** menambah akses siapa pun.
+
+**Soal cetak:** untuk sekarang seluruhnya digital. Jenis printer, cara koneksi, media, dan ukuran kertas/slip **belum ditentukan sekolah**, jadi belum ada satu pun bagian aplikasi yang berhubungan dengan alat cetak. Yang tampil di layar hanya keterangan *"Fitur pencetakan masih dalam tahap BETA."* Kalau nanti printernya sudah ada, cetakan menjadi hasil dari transaksi yang **sudah tersimpan** — bukan syarat supaya transaksinya berhasil.
 
 ### 3.4 Pelanggaran — Catat Pelanggaran Tata Tertib
 
@@ -209,6 +238,17 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 3. Pilih **jenis** (Sakit / Izin / lainnya) dan tulis **keterangan** singkat.
 4. Tekan **Simpan**. Jendela isian baru tertutup setelah server benar-benar mengonfirmasi tersimpan — jadi kalau gagal, isian Anda tidak hilang dan bisa langsung dicoba lagi.
 
+### 5.3b Mencatat Izin Keluar / Pulang (BETA)
+
+1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar · BETA**.
+2. Cari dan pilih siswanya. (Kalau siswa itu masih punya izin yang berjalan, namanya tidak bisa dipilih lagi.)
+3. Isi **keperluan**, lalu pilih tujuan: **Kembali ke sekolah** atau **Pulang / tidak kembali**.
+4. Tekan **Kirim untuk Verifikasi Piket**. Statusnya jadi *Menunggu Verifikasi* — siswa **belum boleh keluar**.
+5. **Guru piket** membuka layar yang sama, melihat izin itu di daftar *Menunggu Verifikasi*, lalu menekan **Verifikasi & Siswa Keluar**.
+6. Kalau tujuannya kembali ke sekolah: begitu siswa datang lagi, petugas piket yang sedang bertugas menekan **Tandai Kembali** pada namanya di daftar *Sedang di Luar*.
+
+*Kalau wali kelas dan guru mapel benar-benar tidak ada di sekolah:* guru piket mencentang **Izin Khusus** di langkah 3, mengisi **alasan pengecualian**, lalu menyimpan. Aplikasi menampilkan penegasan bahwa ini pengecualian dan akan tercatat sebagai Izin Khusus.
+
 ### 5.4 Mencatat Pelanggaran Tata Tertib
 
 1. Buka menu **Pelanggaran**.
@@ -279,6 +319,7 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 - Jadwal pelajaran (yang ada adalah **jadwal piket guru**).
 - Aplikasi khusus siswa atau orang tua, dan pengumuman ke siswa.
 - Aplikasi Android/iOS di toko aplikasi — SIGAP dibuka lewat **browser**.
+- **Cetak slip izin keluar.** Fitur Izin Keluar masih BETA dan seluruhnya digital; jenis printer, cara koneksi, media, dan ukuran slipnya belum ditentukan sekolah, jadi belum dirancang sama sekali.
 
 ---
 

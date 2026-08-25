@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-24-rbac-own-today';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog'];
+var BACKEND_VERSION = '2026-08-25-izin-keluar-beta';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar'];
 
 // ===== doPost =====
 
@@ -607,6 +607,176 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
+    // ================= IZIN KELUAR / PULANG (BETA) =================
+    // Empat aksi, satu untuk tiap langkah prosedur sekolah. TIDAK ada satu pun
+    // aksi yang menerima "status" dari klien — status berikutnya selalu
+    // dihitung server dari status sekarang + tujuan yang tersimpan di baris
+    // (lihat blok IZIN di Utils.gs). Semuanya berjalan di dalam script lock
+    // global doPost, jadi dua permintaan bersamaan tidak bisa lolos berdua.
+
+    // ---- Langkah 1: PERSETUJUAN awal (Walas / Guru Mapel).
+    // Ini BUKAN izin keluar yang sah — hasilnya 'Menunggu Verifikasi'. Siswa
+    // baru boleh keluar setelah Guru Piket memverifikasi (langkah 2). Sistem
+    // ini tidak punya pemetaan jadwal mengajar, jadi "Guru Mapel jam ini"
+    // tidak bisa dibuktikan datanya — yang dicatat adalah SIAPA yang menyetujui
+    // (nama + ID dari sesi, bukan klaim dari klien), dan itulah kewenangan
+    // yang memang sudah ada di SIGAP. Jangan mengarang pemetaan jam mengajar
+    // hanya supaya pengecekannya terlihat lebih ketat.
+    if (action === 'addIzinKeluar') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var izinTujuan = String(data.tujuan || '').trim().toLowerCase();
+      if (izinTujuan !== IZIN_TUJUAN_KEMBALI && izinTujuan !== IZIN_TUJUAN_PULANG) {
+        return jsonOut({ status: 'error', message: 'Tujuan izin harus dipilih: kembali ke sekolah atau pulang.' });
+      }
+      var izinKeperluan = izinText(data.keperluan, IZIN_MAX_KEPERLUAN);
+      if (!izinKeperluan) {
+        return jsonOut({ status: 'error', message: 'Keperluan wajib diisi.' });
+      }
+      // Nama & kelas TIDAK diambil dari klien — lihat resolveSiswaForIzin.
+      var izinSiswa = resolveSiswaForIzin(ss, data.nisn);
+      if (!izinSiswa) {
+        return jsonOut({ status: 'error', message: 'Siswa tidak ditemukan di data induk (NISN harus terisi).' });
+      }
+
+      // ---- Jalur khusus: hanya untuk yang berwenang memverifikasi (Guru Piket
+      // bertugas hari ini / BK / Admin), dan WAJIB beralasan.
+      // Jalur ini TIDAK memalsukan persetujuan Walas/Guru Mapel: kolom
+      // Disetujui_Oleh diisi nama petugas piket itu sendiri dan kolom Jalur
+      // ditandai 'khusus' + alasannya disimpan, sehingga transaksi ini tidak
+      // pernah bisa dibaca sebagai persetujuan normal.
+      var izinJalur = String(data.jalur || '').trim().toLowerCase() === IZIN_JALUR_KHUSUS ? IZIN_JALUR_KHUSUS : IZIN_JALUR_NORMAL;
+      var izinAlasanKhusus = izinText(data.alasan_khusus, IZIN_MAX_ALASAN);
+      var izinNow = new Date();
+      if (izinJalur === IZIN_JALUR_KHUSUS) {
+        if (!canVerifyIzin(ss, sessionUser, izinNow)) {
+          return jsonOut({ status: 'error', message: 'Izin Khusus hanya bisa dibuat Guru Piket yang bertugas hari ini (atau BK/Admin).' });
+        }
+        if (!izinAlasanKhusus) {
+          return jsonOut({ status: 'error', message: 'Alasan pengecualian wajib diisi untuk Izin Khusus.' });
+        }
+      } else {
+        // Alasan pengecualian tidak boleh menempel di transaksi normal —
+        // kalau ikut tersimpan, baris normal jadi terbaca seperti pengecualian.
+        izinAlasanKhusus = '';
+      }
+
+      var izinSheet = getOrCreateSheet(ss, IZIN_SHEET_NAME, IZIN_HEADERS);
+      // Penjaga double-submit sekaligus penjaga integritas: satu siswa tidak
+      // boleh punya dua transaksi keluar yang masih berjalan.
+      var izinTerbuka = findIzinTerbukaForNisn(izinSheet, izinSiswa.nisn);
+      if (izinTerbuka) {
+        return jsonOut({
+          status: 'error',
+          message: izinTerbuka.status === IZIN_STATUS_DI_LUAR
+            ? izinSiswa.name + ' tercatat masih di luar sekolah — tandai kembali dulu sebelum membuat izin baru.'
+            : izinSiswa.name + ' sudah punya izin yang menunggu verifikasi Guru Piket.',
+        });
+      }
+
+      // Jalur khusus = petugas piket menyetujui DAN memverifikasi sekaligus
+      // (itu memang keadaannya: Walas & Guru Mapel tidak ada di tempat), jadi
+      // siswa langsung tercatat keluar. Jalur normal berhenti di 'Menunggu
+      // Verifikasi' — dua tahap tetap dua tahap.
+      var izinStatusAwal = izinJalur === IZIN_JALUR_KHUSUS ? izinStatusSetelahVerifikasi(izinTujuan) : IZIN_STATUS_MENUNGGU;
+      var izinId = Utilities.getUuid();
+      var izinRow = [
+        izinNow, izinSiswa.nisn, izinSiswa.name, izinSiswa.class, izinId, izinKeperluan, izinTujuan, izinStatusAwal, izinJalur, izinAlasanKhusus,
+        sessionUser.name, sessionUser.id, izinNow,
+        izinJalur === IZIN_JALUR_KHUSUS ? sessionUser.name : '', izinJalur === IZIN_JALUR_KHUSUS ? sessionUser.id : '', izinJalur === IZIN_JALUR_KHUSUS ? izinNow : '',
+        izinJalur === IZIN_JALUR_KHUSUS ? izinNow : '', '', '', '',
+      ];
+      izinSheet.appendRow(izinRow);
+      CacheService.getScriptCache().remove('izin_keluar_raw');
+      logAudit(sessionUser,
+        izinJalur === IZIN_JALUR_KHUSUS ? 'Izin Keluar Khusus' : 'Persetujuan Izin Keluar',
+        buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS ? 'alasan pengecualian=' + izinAlasanKhusus : 'keperluan=' + izinKeperluan));
+      return jsonOut({ status: 'success', id: izinId, izinStatus: izinStatusAwal });
+    }
+
+    // ---- Langkah 2: VERIFIKASI Guru Piket. Ini titik di mana siswa dianggap
+    // benar-benar keluar (Waktu_Keluar diisi di sini, bukan saat disetujui). ----
+    if (action === 'verifikasiIzinKeluar') {
+      var verNow = new Date();
+      if (!canVerifyIzin(ss, sessionUser, verNow)) {
+        return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa memverifikasi.' });
+      }
+      var verSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+      var verFound = verSheet ? findIzinRowById(verSheet, data.id) : null;
+      if (!verFound) {
+        return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
+      }
+      if (verFound.data.status !== IZIN_STATUS_MENUNGGU) {
+        return jsonOut({ status: 'error', message: izinTolakTransisi(verFound.data.status, 'verifikasi') });
+      }
+      var verValues = verFound.values.slice();
+      verValues[7] = izinStatusSetelahVerifikasi(verFound.data.tujuan);
+      verValues[13] = sessionUser.name;
+      verValues[14] = sessionUser.id;
+      verValues[15] = verNow;
+      verValues[16] = verNow; // Waktu_Keluar
+      verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
+      CacheService.getScriptCache().remove('izin_keluar_raw');
+      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7]));
+      return jsonOut({ status: 'success', izinStatus: verValues[7] });
+    }
+
+    // ---- Langkah 3 (hanya untuk tujuan "kembali"): siswa kembali ke sekolah.
+    // Yang menandai TIDAK harus orang yang memberi izin — cukup petugas yang
+    // sedang berwenang saat itu, sehingga pergantian guru piket di hari yang
+    // sama tidak menghalangi. ----
+    if (action === 'tandaiKembaliIzinKeluar') {
+      var kbNow = new Date();
+      if (!canVerifyIzin(ss, sessionUser, kbNow)) {
+        return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menandai siswa kembali.' });
+      }
+      var kbSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+      var kbFound = kbSheet ? findIzinRowById(kbSheet, data.id) : null;
+      if (!kbFound) {
+        return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
+      }
+      // Siswa 'Pulang' & siswa yang sudah 'Kembali' ditolak di sini — bukan
+      // sekadar tombolnya disembunyikan di layar.
+      if (kbFound.data.status !== IZIN_STATUS_DI_LUAR) {
+        return jsonOut({ status: 'error', message: izinTolakTransisi(kbFound.data.status, 'kembali') });
+      }
+      var kbValues = kbFound.values.slice();
+      kbValues[7] = IZIN_STATUS_KEMBALI;
+      kbValues[17] = kbNow;
+      kbValues[18] = sessionUser.name;
+      kbValues[19] = sessionUser.id;
+      kbSheet.getRange(kbFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([kbValues]);
+      CacheService.getScriptCache().remove('izin_keluar_raw');
+      logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_KEMBALI));
+      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_KEMBALI });
+    }
+
+    // ---- Langkah 4: penutupan administratif. 'Kembali' (siswa balik) dan
+    // 'Pulang' (siswa tidak balik) adalah dua HASIL yang berbeda; keduanya
+    // ditutup jadi 'Selesai'. Transaksi 'Selesai' tidak bisa diubah aksi mana
+    // pun lagi. ----
+    if (action === 'selesaikanIzinKeluar') {
+      var slsNow = new Date();
+      if (!canVerifyIzin(ss, sessionUser, slsNow)) {
+        return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menutup transaksi izin.' });
+      }
+      var slsSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+      var slsFound = slsSheet ? findIzinRowById(slsSheet, data.id) : null;
+      if (!slsFound) {
+        return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah diproses pengguna lain).' });
+      }
+      if (slsFound.data.status !== IZIN_STATUS_KEMBALI && slsFound.data.status !== IZIN_STATUS_PULANG) {
+        return jsonOut({ status: 'error', message: izinTolakTransisi(slsFound.data.status, 'selesai') });
+      }
+      var slsValues = slsFound.values.slice();
+      slsValues[7] = IZIN_STATUS_SELESAI;
+      slsSheet.getRange(slsFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([slsValues]);
+      CacheService.getScriptCache().remove('izin_keluar_raw');
+      logAudit(sessionUser, 'Selesaikan Izin Keluar', buildIzinAuditDetail(slsFound.data, 'dari=' + slsFound.data.status));
+      return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
+    }
+
     // ---- Edit 1 catatan (Terlambat/Pelanggaran/Surat) — SEMUA role non-OSIS
     // boleh, tapi dibatasi 5 menit sejak catatan dibuat (asumsi salah input),
     // kecuali admin (tidak dibatasi waktu). Guru/BK non-admin cuma boleh ubah
@@ -1094,6 +1264,46 @@ function doGet(e) {
       upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
     }
     return jsonOut({ status: 'success', upacara: upacara });
+  }
+
+  // ---- Izin Keluar / Pulang (BETA) — bukan untuk OSIS ----
+  // Cakupannya ditentukan scopeIzinForUser() di Utils.gs dan TIDAK memperluas
+  // hak baca siapa pun: transaksi yang masih berjalan terlihat semua pemakai
+  // non-OSIS (alasan yang sama dengan "hari ini seluruh sekolah" pada alur
+  // gerbang — petugas piket harus bisa menandai siswa yang masih di luar),
+  // sedangkan yang sudah tertutup ikut aturan Keterlambatan & Surat yang sudah
+  // berlaku. Cache tetap MENTAH & global, penyaringan dilakukan SETELAH dibaca
+  // — pola yang sama persis dengan today_logs/surat_list/pelanggaran_list_raw,
+  // supaya tidak ada hasil "sudah difilter untuk satu orang" yang ke-cache
+  // lalu salah kirim ke pemanggil berikutnya.
+  if (action === 'getIzinKeluar') {
+    if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
+    var izinRaw;
+    var cachedIzin = cache.get('izin_keluar_raw');
+    if (cachedIzin) {
+      izinRaw = JSON.parse(cachedIzin);
+    } else {
+      var izinSheetGet = ss.getSheetByName(IZIN_SHEET_NAME);
+      izinRaw = [];
+      if (izinSheetGet) {
+        var izinRows = izinSheetGet.getDataRange().getValues();
+        for (var izi = 1; izi < izinRows.length; izi++) {
+          if (!izinRows[izi][4]) continue; // baris tanpa ID = baris kosong/rusak
+          izinRaw.push(izinRowToObject(izinRows[izi]));
+        }
+        izinRaw.reverse();
+      }
+      cache.put('izin_keluar_raw', JSON.stringify(izinRaw), 30);
+    }
+    // Status "boleh verifikasi / boleh tandai kembali" ikut dikirim supaya
+    // layar tidak menampilkan tombol yang pasti ditolak server. Ini KENYAMANAN,
+    // bukan pengamanan — gerbang sesungguhnya ada di canVerifyIzin() pada tiap
+    // aksi tulis di doPost.
+    return jsonOut({
+      status: 'success',
+      izin: scopeIzinForUser(izinRaw, sessionUser),
+      canVerify: canVerifyIzin(ss, sessionUser, new Date()),
+    });
   }
 
   // ---- Audit Log (ADMIN ONLY) — jejak keamanan permanen ----

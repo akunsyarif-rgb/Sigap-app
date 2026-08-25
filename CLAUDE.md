@@ -243,7 +243,7 @@ BottomNav entry. The data is lazy-loaded under the `'upacara'` key in `app.js`
 fetch twice.
 
 Data lives in named sheets: `Master_Guru`, `Master_Siswa`, `Log_Gerbang`,
-`Pelanggaran`, `Surat_Masuk`, `Audit_Log`, `Error_Log`. Column positions are
+`Pelanggaran`, `Surat_Masuk`, `Izin_Keluar`, `Audit_Log`, `Error_Log`. Column positions are
 significant and accessed by index (e.g. `Master_Guru` col H/index 7 = salt) —
 check existing row-index comments before touching sheet read/write code.
 `LockService` guards concurrent writes to shared sheets.
@@ -359,6 +359,81 @@ map that could be turned into a ranking.
 a manual deploy — it's the only way to tell "deployed" from "saved but still
 serving the old version" without guessing.
 
+### Izin Keluar / Pulang (BETA)
+
+A **stateful transaction**, not another Surat row: it tracks a student
+*leaving school grounds* and stays open until they come back (or were going
+home anyway). Sheet `Izin_Keluar`, 20 columns, positions significant — see
+`IZIN_HEADERS` in `Utils.gs`. It lives as a **third mode inside Gerbang**
+("Izin Keluar · BETA"), not a new BottomNav entry (nav space is already full —
+see the long note on `ROLES` in `config.js`) and not a new role.
+
+The school's two-step procedure is kept as two steps and must stay that way:
+
+```
+Walas / Guru Mapel -> persetujuan   |  addIzinKeluar      -> "Menunggu Verifikasi"
+Guru Piket         -> verifikasi    |  verifikasiIzinKeluar -> "Sedang di Luar" / "Pulang"
+siswa kembali                       |  tandaiKembaliIzinKeluar -> "Kembali"
+penutupan                           |  selesaikanIzinKeluar -> "Selesai"
+```
+
+`Waktu_Keluar` is stamped at **verification**, never at approval — one approval
+is never treated as the whole procedure.
+
+Five statuses, no overlap: `Menunggu Verifikasi`, `Sedang di Luar`, `Kembali`,
+`Pulang`, `Selesai`. **The client never sends a status.** It calls an action;
+the server derives the next status from the row's *current* status plus the
+stored `tujuan`, so an impossible order (Pulang then Kembali, Kembali twice,
+anything at all on a `Selesai` row) is rejected server-side. The UI's three
+buckets (Menunggu Verifikasi / Sedang di Luar / Selesai Hari Ini) are a
+*grouping* of those five, not a second status model.
+
+Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
+(`Utils.gs`), with hidden buttons never being the gate:
+
+- **approve** (`addIzinKeluar`, jalur normal) → any non-OSIS teacher. There is
+  no teaching-schedule mapping in this system, so "the Guru Mapel of that
+  hour" is not provable from data — what gets recorded is *who* approved
+  (name + id from the session). Don't invent a schedule mapping to make the
+  check look stricter.
+- **verify / mark returned / close** → the Guru Piket **on duty today**, read
+  from the existing `Jadwal_Piket` sheet, plus admin/BK (also the fallback
+  when `Jadwal_Piket` is empty, otherwise nobody could verify at all).
+  Re-evaluated *per action*, so a shift change on the same day just works and
+  whoever marks a student back need not be who approved or verified.
+- **Izin Khusus** (`jalur: 'khusus'`) → same authority as verify, and the
+  `Alasan_Khusus` is mandatory. It does **not** forge a Walas/Guru Mapel
+  approval: `Disetujui_Oleh` holds the piket teacher's own name, `Jalur` is
+  stamped `khusus`, and an exception reason sent on a *normal* row is
+  discarded so a normal row can never read as an exception.
+
+Integrity: `resolveSiswaForIzin()` takes name/class from `Master_Siswa` (the
+client only picks *who* via NISN) — the client's `class_name` is never stored,
+so it can't be used to steer the read scope; and a student with an open
+transaction (`Menunggu Verifikasi`/`Sedang di Luar`) cannot get a second one,
+which is what makes a double-tapped Simpan harmless. Rows are addressed by
+`ID_Izin`, never by row number.
+
+Read scope (`scopeIzinForUser`) **does not widen anyone's access**: rows still
+*running* are visible to every non-OSIS user — same justification as
+"keterlambatan & surat hari ini is school-wide", the piket on duty must see who
+is still outside — and everything closed falls back to the existing
+`scopeDailyRecordsForUser()` rule. OSIS is rejected outright.
+
+Riwayat gets an `izin` category that is **read-only**: izin has its own status
+flow in Gerbang, it does not go through `editEntry`/`deleteEntry`, and
+`getSheetForCategory()` deliberately doesn't know the category so a hand-rolled
+edit/delete request is rejected too.
+
+**Printing: nothing is decided.** Printer model, connection method, media,
+paper/slip size, layout and output format are all still open, so the BETA is
+digital-only. The single sentence the UI is allowed to say is "Fitur pencetakan
+masih dalam tahap BETA." Don't add a paper size, a layout, a protocol, or any
+device assumption (Bluetooth/Wi-Fi/USB/AirPrint/ESC-POS) — and if printing is
+ever added it is an *output of a saved row*: a transaction must never depend on
+printing succeeding. `tests/izin-keluar-frontend.test.js` fails the build if
+such an assumption appears.
+
 ### Export Data: who may export what
 
 `exportData` (a `doGet` action) is the only path that hands a report file's
@@ -406,3 +481,8 @@ stubbed Apps Script services and calls `doGet()` for real — that's where expor
 authorization, scope tampering, filter validation, and audit logging are pinned
 down. `tests/export-frontend.test.js` covers the PDF/XLSX writers byte-for-byte
 plus the Export tab's UI gating.
+`tests/izin-keluar.test.js` drives the whole Izin Keluar workflow through the
+real `doPost`/`doGet` (approve → verify → return → close, both jalur, every
+invalid transition, double submit, parameter tampering, audit trail and read
+scope); `tests/izin-keluar-frontend.test.js` covers its client wiring and is
+also what pins down "no printer assumptions".
