@@ -215,6 +215,107 @@ function getRowLoggedBy(sheet, rowIndex) {
   return sheet.getRange(rowIndex, lastCol).getValue();
 }
 
+// ===== RBAC: baris mana yang boleh dilihat siapa =====
+// SATU tempat yang menentukan cakupan baca untuk Keterlambatan & Pelanggaran,
+// dipakai getLogs / getPelanggaran / getStudentLateHistory / getTodayData di
+// Code.gs. Ditegakkan di SERVER — sebelum ini getLogs mengirim SELURUH
+// Log_Gerbang (riwayat sekolah lintas tahun ajaran) ke setiap pemanggil
+// non-OSIS, dan browser yang memutuskan apa yang ditampilkan. Menyaring di
+// browser bukan pengamanan: datanya sudah terlanjur sampai ke perangkat.
+//
+// Aturan yang disepakati:
+//   Keterlambatan & Surat HARI INI : seluruh sekolah untuk semua role non-OSIS.
+//     Ini BUKAN kelonggaran — guru piket di gerbang harus saling melihat
+//     catatan hari itu supaya satu siswa tidak dicatat dua kali (lihat
+//     GerbangTab di gerbang.js & pengecekan duplikat di aksi 'record'/'addSurat').
+//   RIWAYAT keterlambatan & surat : admin/BK seluruh sekolah; wali kelas =
+//     kelas perwaliannya (tanggal berapa pun); guru biasa = TIDAK ADA riwayat
+//     hari sebelumnya. Yang ia catat sendiri hanya terlihat pada HARI catatan
+//     itu dibuat ("OWN-hari-ini") — dan itu sudah tercakup oleh aturan "hari
+//     ini = seluruh sekolah" di atas, jadi tidak ada klausa OWN terpisah di
+//     sini. Ini yang membedakannya dari Pelanggaran: guru piket yang mencatat
+//     puluhan siswa lintas kelas tiap pagi TIDAK ikut menyimpan riwayat lintas
+//     kelas itu di layarnya besok harinya.
+//   PELANGGARAN            : admin/BK seluruh sekolah; wali kelas = kelasnya
+//     sendiri + catatan yang ia tulis (TANPA batas tanggal); guru biasa =
+//     HANYA catatan yang ia tulis sendiri (TANPA batas tanggal). Sengaja
+//     BERBEDA dari dua kategori di atas dan tidak boleh disamakan: mencatat
+//     pelanggaran bukan alur gerbang massal, dan guru perlu bisa menelusuri
+//     kembali catatan pelanggaran yang ia buat sendiri.
+//   OSIS                   : tidak dapat keduanya (ditolak di handler).
+//
+// Kepemilikan (OWN) memakai mekanisme yang SUDAH ADA di aplikasi ini: kolom
+// Dicatat_Oleh dicocokkan dengan nama pemilik sesi, sama persis seperti yang
+// dipakai editEntry/deleteEntry. Nama pencatat kosong / sesi tanpa nama tidak
+// pernah dianggap memiliki baris apa pun.
+function isSchoolWideReader(sessionUser) {
+  return isBkRole(sessionUser && sessionUser.role); // admin + bk_kesiswaan
+}
+
+function ownsRow(row, sessionUser) {
+  var owner = String((row && row.logged_by) || '').trim();
+  var me = String((sessionUser && sessionUser.name) || '').trim();
+  return !!owner && !!me && owner === me;
+}
+
+function readerClass(sessionUser) {
+  return String((sessionUser && sessionUser.waliKelas) || '').trim();
+}
+
+// Dipakai untuk DUA kategori yang aturannya sama: Keterlambatan (Log_Gerbang)
+// dan Surat/Izin (Surat_Masuk). rows = daftar objek {timestamp, class,
+// logged_by, ...}; isi lain dibiarkan apa adanya. `now` dipisah jadi parameter
+// supaya bisa diuji tanpa bergantung jam dinding.
+//
+// Catatan kenapa tidak ada klausa ownsRow() di sini: "OWN-hari-ini" seluruhnya
+// tercakup oleh klausa hari-ini (yang berlaku untuk seluruh sekolah). Klausa
+// OWN tanpa batas tanggal justru yang harus TIDAK ADA — itu membuat guru piket
+// menyimpan riwayat lintas kelas dari hari-hari sebelumnya hanya karena ia yang
+// mencatatnya. ownsRow() tetap dipakai untuk Pelanggaran di bawah, yang
+// aturannya memang berbeda.
+function scopeDailyRecordsForUser(rows, sessionUser, now) {
+  var list = rows || [];
+  if (isSchoolWideReader(sessionUser)) return list;
+  var today = now instanceof Date ? now : new Date();
+  var kelas = readerClass(sessionUser);
+  return list.filter(function (r) {
+    if (!r) return false;
+    // Hari ini: seluruh sekolah (alur gerbang) — termasuk catatan sendiri.
+    if (r.timestamp && isSameDayServer(new Date(r.timestamp), today)) return true;
+    // Wali kelas: kelas perwaliannya, tanggal berapa pun.
+    return !!kelas && sameClass(r.class, kelas);
+  });
+}
+
+// getTodayData mengirim satu paket berisi data HARI INI + potongan riwayat
+// (lateForBanner, seminggu/sebulan ke belakang, untuk banner "sering
+// terlambat"). Bagian hari ini tetap seluruh sekolah; bagian riwayat &
+// pelanggaran dibatasi dengan aturan yang sama seperti getLogs/getPelanggaran,
+// supaya tidak ada jalan memutar untuk menarik riwayat lewat endpoint ini.
+// Surat sengaja tidak diubah di sini — cakupannya memang belum pernah
+// dibatasi per kelas (lihat getSurat), dan itu di luar perbaikan ini.
+function scopeTodayDataPayload(payload, sessionUser) {
+  var data = payload || {};
+  return {
+    status: data.status || 'success',
+    todayLate: data.todayLate || [],
+    todaySurat: data.todaySurat || [],
+    todayPelanggaran: scopePelanggaranForUser(data.todayPelanggaran || [], sessionUser),
+    lateForBanner: scopeDailyRecordsForUser(data.lateForBanner || [], sessionUser),
+  };
+}
+
+function scopePelanggaranForUser(list, sessionUser) {
+  var rows = list || [];
+  if (isSchoolWideReader(sessionUser)) return rows;
+  var kelas = readerClass(sessionUser);
+  return rows.filter(function (p) {
+    if (!p) return false;
+    if (kelas && sameClass(p.class, kelas)) return true;
+    return ownsRow(p, sessionUser);
+  });
+}
+
 // ===== PERUBAHAN UTAMA =====
 // Hapus cache list terkait kategori supaya perubahan langsung kelihatan
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).
@@ -263,16 +364,266 @@ function startOfWeekServer(d) {
 // Riwayat keterlambatan 1 siswa saja (dipakai peringatan "sudah Nx terlambat"
 // di form Catat Terlambat) — dipanggil on-demand per siswa yang dipilih,
 // bukan tarik seluruh Log_Gerbang ke semua ~1.296 siswa sekaligus.
+// Kolom Kelas & Dicatat_Oleh ikut dibaca (6 kolom, bukan 5) BUKAN untuk
+// dikirim ke klien, tapi supaya hasilnya bisa disaring lewat
+// scopeDailyRecordsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
+// siswa bisa ditarik siapa saja yang tahu NISN-nya.
 function getLateHistoryForStudent(sheet, nisn) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
-  var data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   var result = [];
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][1]) === String(nisn)) {
-      result.push({ timestamp: data[i][0], type: data[i][4] });
+      result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
     }
   }
   result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
   return result;
+}
+
+// ===== EXPORT DATA (laporan PDF/Excel dari dalam aplikasi) =====
+// Latar belakang: Google Spreadsheet tetap ADMIN-ONLY. Supaya guru/BK tidak
+// perlu dibukakan akses ke Sheet cuma untuk mengambil rekap, aksi 'exportData'
+// di doGet (Code.gs) mengembalikan LAPORAN yang sudah jadi: sudah difilter
+// server-side sesuai hak akses pemanggil, sudah dipotong sesuai periode, dan
+// kolomnya sudah ditetapkan per jenis laporan. Klien hanya membungkusnya jadi
+// berkas PDF/XLSX — TIDAK pernah memilih kolom sendiri, dan TIDAK pernah
+// menerima baris yang bukan haknya lalu menyaringnya di browser.
+//
+// Yang SENGAJA tidak pernah ikut ke hasil export: NISN, Foto_URL, dan
+// Dicatat_Oleh_ID. Laporan cetak untuk wali kelas/BK tidak membutuhkannya,
+// dan identitas siswa di dalam berkas cukup Nama + Kelas.
+// (Identitas internal tetap memakai NISN — pengelompokan Rekap Siswa di bawah
+// dikunci ke NISN, bukan nama, supaya dua siswa bernama sama tidak menyatu.)
+
+var EXPORT_SEKOLAH = 'SMAN 2 Tarakan'; // identitas sekolah di kop laporan
+var EXPORT_MAX_ROWS = 5000;        // batas baris per laporan (lindungi memori Apps Script & ukuran respons)
+var EXPORT_MAX_RANGE_DAYS = 366;   // batas panjang periode yang boleh diminta sekali jalan
+
+// Definisi tiap jenis laporan: dari sheet mana, kolom apa yang keluar, dan
+// siapa yang boleh. level 'bk' = hanya admin/BK-Kesiswaan (mengikuti aturan
+// getBimbingan yang sudah ada); level 'umum' = admin/BK + wali kelas (untuk
+// kelasnya sendiri saja).
+// tsIndex/classIndex = posisi kolom di SHEET (bukan di hasil export).
+var EXPORT_JENIS = {
+  keterlambatan: {
+    label: 'Keterlambatan', judul: 'LAPORAN KETERLAMBATAN', sheet: 'Log_Gerbang',
+    numCols: 6, tsIndex: 0, classIndex: 3, level: 'umum',
+    columns: ['Tanggal', 'Jam', 'Nama', 'Kelas', 'Keterangan', 'Dicatat Oleh'],
+    map: function (r) { return [formatExportDate(r[0]), formatExportTime(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5])]; },
+  },
+  pelanggaran: {
+    label: 'Pelanggaran', judul: 'LAPORAN PELANGGARAN', sheet: 'Pelanggaran',
+    numCols: 8, tsIndex: 0, classIndex: 3, level: 'umum',
+    columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat Oleh'],
+    map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[6]), asText(r[7])]; },
+  },
+  surat: {
+    label: 'Surat/Izin', judul: 'LAPORAN SURAT / IZIN', sheet: 'Surat_Masuk',
+    numCols: 8, tsIndex: 0, classIndex: 3, level: 'umum',
+    // Kolom G (index 6) = Foto_URL — SENGAJA dilewati, lihat catatan di atas.
+    columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis', 'Keterangan', 'Dicatat Oleh'],
+    map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[7])]; },
+  },
+  bimbingan: {
+    label: 'Bimbingan Khusus', judul: 'LAPORAN BIMBINGAN KHUSUS', sheet: 'Bimbingan_Khusus',
+    numCols: 6, tsIndex: 0, classIndex: 3, level: 'bk',
+    columns: ['Tanggal', 'Nama', 'Kelas', 'Catatan', 'Dicatat Oleh'],
+    map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5])]; },
+  },
+  upacara: {
+    label: 'Pelanggaran Upacara', judul: 'LAPORAN PELANGGARAN UPACARA', sheet: 'Pelanggaran_Upacara',
+    numCols: 8, tsIndex: 0, classIndex: 3, level: 'umum',
+    // Kolom H (index 7) = Dicatat_Oleh_ID — SENGAJA tidak ikut.
+    columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Catatan', 'Dicatat Oleh'],
+    map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[6])]; },
+  },
+  // Rekap Siswa BUKAN sheet baru: ini agregat dari empat sheet di atas
+  // (kategori yang boleh dilihat pemanggil), dihitung server-side.
+  rekap: {
+    label: 'Rekap Siswa', judul: 'REKAP SISWA', special: 'rekap', level: 'umum',
+    columns: ['Nama', 'Kelas', 'Terlambat', 'Pelanggaran', 'Surat/Izin', 'Upacara', 'Total'],
+  },
+};
+
+function asText(v) {
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+function pad2Export(n) {
+  return n < 10 ? '0' + n : String(n);
+}
+
+// Tanggal/jam diformat DI SERVER supaya isi berkas sama untuk semua orang dan
+// tidak bergantung locale/zona waktu HP yang mengunduhnya.
+function formatExportDate(value) {
+  var d = value instanceof Date ? value : new Date(value);
+  if (!d || isNaN(d.getTime())) return '';
+  return pad2Export(d.getDate()) + '/' + pad2Export(d.getMonth() + 1) + '/' + d.getFullYear();
+}
+
+function formatExportTime(value) {
+  var d = value instanceof Date ? value : new Date(value);
+  if (!d || isNaN(d.getTime())) return '';
+  return pad2Export(d.getHours()) + ':' + pad2Export(d.getMinutes());
+}
+
+// ===== Otorisasi export (server-side, satu tempat) =====
+// Aturannya SENGAJA tidak melebarkan hak akses yang sudah ada di aplikasi:
+// - admin & BK/Kesiswaan  : semua jenis, semua kelas (atau satu kelas tertentu)
+// - guru yang wali kelas  : semua jenis KECUALI Bimbingan Khusus (yang memang
+//                           sudah admin/BK-only lewat getBimbingan), dan HANYA
+//                           kelas perwaliannya — nilai kelas dari klien tidak
+//                           dipercaya: kalau minta kelas lain, ditolak.
+// - guru biasa (bukan wali kelas) : tidak dapat akses export sama sekali.
+//   Tidak ada dasar data untuk memberi guru biasa cakupan kelas tertentu
+//   (tidak ada mapping jadwal mengajar di sistem ini), jadi haknya tidak
+//   diperluas hanya demi fitur ini.
+// - OSIS                  : ditolak.
+function resolveExportAccess(sessionUser, jenis, requestedKelas) {
+  var def = EXPORT_JENIS[String(jenis || '')];
+  if (!def) return { allowed: false, message: 'Jenis laporan tidak dikenali.' };
+  if (!sessionUser) return { allowed: false, message: 'Sesi berakhir, silakan login ulang.' };
+  if (isOsisRole(sessionUser.role)) return { allowed: false, message: 'Tidak punya akses export data.' };
+
+  // Satu-satunya parameter export yang berbentuk teks bebas (jenis/format
+  // dicocokkan ke daftar tetap, tanggal ke pola YYYY-MM-DD). Dipotong supaya
+  // nilai raksasa dari klien tidak bisa membanjiri baris Audit Log atau
+  // merusak tata letak kop laporan; nama kelas nyata jauh di bawah batas ini.
+  var kelas = String(requestedKelas || '').trim().slice(0, 60);
+  if (isBkRole(sessionUser.role)) {
+    return { allowed: true, jenis: jenis, kelasFilter: kelas, scopeLabel: kelas || 'Semua Kelas' };
+  }
+
+  var wali = String((sessionUser && sessionUser.waliKelas) || '').trim();
+  if (!wali) return { allowed: false, message: 'Tidak punya akses export data.' };
+  if (def.level === 'bk') return { allowed: false, message: 'Tidak punya akses untuk jenis laporan ini.' };
+  if (kelas && !sameClass(kelas, wali)) {
+    return { allowed: false, message: 'Hanya bisa mengekspor data kelas perwalian Anda.' };
+  }
+  return { allowed: true, jenis: jenis, kelasFilter: wali, scopeLabel: wali };
+}
+
+// ===== Validasi periode =====
+// Format yang diterima cuma YYYY-MM-DD (nilai <input type="date">). Tanggal
+// yang "ada di kalender" ikut diperiksa (2026-02-31 ditolak, bukan digeser
+// diam-diam ke 3 Maret seperti perilaku new Date()).
+function parseExportDate(str, endOfDay) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str || '').trim());
+  if (!m) return null;
+  var y = parseInt(m[1], 10), mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var date = endOfDay ? new Date(y, mo - 1, d, 23, 59, 59, 999) : new Date(y, mo - 1, d, 0, 0, 0, 0);
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  return date;
+}
+
+function validateExportPeriod(startStr, endStr) {
+  var start = parseExportDate(startStr, false);
+  var end = parseExportDate(endStr, true);
+  if (!start || !end) return { valid: false, message: 'Tanggal tidak valid. Isi tanggal mulai dan tanggal akhir.' };
+  if (start.getTime() > end.getTime()) return { valid: false, message: 'Tanggal mulai tidak boleh melewati tanggal akhir.' };
+  var days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (days > EXPORT_MAX_RANGE_DAYS) {
+    return { valid: false, message: 'Rentang terlalu panjang (maksimal ' + EXPORT_MAX_RANGE_DAYS + ' hari). Persempit periodenya.' };
+  }
+  return { valid: true, start: start, end: end, days: days, label: formatExportDate(start) + ' - ' + formatExportDate(end) };
+}
+
+// Saring baris mentah satu sheet -> baris laporan siap pakai. Murni (tanpa
+// SpreadsheetApp) supaya bisa diuji langsung di tests/export.test.js.
+function buildExportRows(jenis, rawRows, kelasFilter, start, end) {
+  var def = EXPORT_JENIS[String(jenis || '')];
+  if (!def || def.special) return [];
+  var rows = rawRows || [];
+  var startMs = start.getTime(), endMs = end.getTime();
+  var kelas = String(kelasFilter || '').trim();
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r || !r[def.tsIndex]) continue;
+    var ts = new Date(r[def.tsIndex]).getTime();
+    if (isNaN(ts) || ts < startMs || ts > endMs) continue;
+    if (kelas && !sameClass(r[def.classIndex], kelas)) continue;
+    out.push({ ts: ts, cells: def.map(r) });
+  }
+  out.sort(function (a, b) { return a.ts - b.ts; });
+  return out.map(function (o) { return o.cells; });
+}
+
+// Rekap Siswa: hitung jumlah kejadian per siswa dari beberapa sheet sekaligus.
+// sources = { keterlambatan: rows, pelanggaran: rows, surat: rows, upacara: rows }
+// Dikelompokkan per NISN (identitas yang sudah dipakai sistem), tapi NISN-nya
+// TIDAK ikut ke hasil export — cuma Nama + Kelas.
+function buildRekapRows(sources, kelasFilter, start, end) {
+  var order = ['keterlambatan', 'pelanggaran', 'surat', 'upacara'];
+  var startMs = start.getTime(), endMs = end.getTime();
+  var kelas = String(kelasFilter || '').trim();
+  var map = {};
+  var keys = [];
+  for (var k = 0; k < order.length; k++) {
+    var jenis = order[k];
+    var def = EXPORT_JENIS[jenis];
+    var rows = (sources && sources[jenis]) || [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r || !r[def.tsIndex]) continue;
+      var ts = new Date(r[def.tsIndex]).getTime();
+      if (isNaN(ts) || ts < startMs || ts > endMs) continue;
+      if (kelas && !sameClass(r[def.classIndex], kelas)) continue;
+      var nisn = asText(r[1]);
+      var id = nisn || ('nama:' + asText(r[2]) + '|' + asText(r[3]));
+      if (!map[id]) {
+        map[id] = { name: asText(r[2]), kelas: asText(r[3]), counts: { keterlambatan: 0, pelanggaran: 0, surat: 0, upacara: 0 } };
+        keys.push(id);
+      }
+      map[id].counts[jenis]++;
+    }
+  }
+  var list = keys.map(function (id) { return map[id]; });
+  list.sort(function (a, b) {
+    var ca = String(a.kelas).toLowerCase(), cb = String(b.kelas).toLowerCase();
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    var na = String(a.name).toLowerCase(), nb = String(b.name).toLowerCase();
+    return na < nb ? -1 : na > nb ? 1 : 0;
+  });
+  return list.map(function (s) {
+    var total = s.counts.keterlambatan + s.counts.pelanggaran + s.counts.surat + s.counts.upacara;
+    return [s.name, s.kelas, s.counts.keterlambatan, s.counts.pelanggaran, s.counts.surat, s.counts.upacara, total];
+  });
+}
+
+// ===== RATE LIMIT EXPORT =====
+// Terpisah dari checkWriteRateLimit (aksi tulis): export itu aksi BACA yang
+// mahal (memindai sheet lintas bulan) dan setiap panggilannya menulis satu
+// baris Audit Log. Tanpa batas sendiri, satu sesi bisa membanjiri Audit Log
+// sekaligus membebani Sheets API. Pola fixed-window-nya sama persis dengan
+// dua rate limit lain di file ini.
+var EXPORT_RATE_WINDOW_MS = 5 * 60 * 1000; // 5 menit per window
+var EXPORT_RATE_MAX = 20;                  // laporan per window per SESI
+
+function checkExportRateLimit(sessionToken) {
+  if (!sessionToken) return false;
+  var cache = CacheService.getScriptCache();
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sessionToken);
+  var tokenHash = bytesToHex(digest).slice(0, 16);
+  var key = 'exportlimit_' + tokenHash + '_' + Math.floor(Date.now() / EXPORT_RATE_WINDOW_MS);
+  var raw = cache.get(key);
+  var count = (raw ? parseInt(raw, 10) : 0) + 1;
+  cache.put(key, String(count), Math.ceil(EXPORT_RATE_WINDOW_MS / 1000) + 15);
+  return count <= EXPORT_RATE_MAX;
+}
+
+// Detail Audit Log untuk export. SENGAJA hanya metadata permintaan (jenis,
+// periode, cakupan, format, jumlah baris) — tidak ada satu pun nama/NISN
+// siswa yang ikut tercatat di sini.
+function buildExportAuditDetail(jenis, periodeLabel, scopeLabel, format, total, status) {
+  return 'jenis=' + jenis +
+    ' | periode=' + periodeLabel +
+    ' | cakupan=' + scopeLabel +
+    ' | format=' + format +
+    ' | baris=' + total +
+    ' | status=' + status;
 }

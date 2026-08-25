@@ -72,6 +72,19 @@ Semua catatan tersimpan dan bisa ditelusuri kapan saja.
 - Saring berdasarkan kelas dan jenis, atau cari langsung dengan nama/NISN.
 - Urutkan dari yang terbaru (bawaan) atau berdasarkan Kelas & Nama A–Z.
 
+**Siapa melihat apa di Riwayat** (dibatasi di server, bukan sekadar disembunyikan di layar):
+
+| | Keterlambatan & Surat hari ini | Riwayat keterlambatan & surat hari sebelumnya | Pelanggaran |
+| --- | --- | --- | --- |
+| Guru | seluruh sekolah | tidak ada | hanya yang ia catat sendiri (tanggal berapa pun) |
+| Wali kelas | seluruh sekolah | kelas perwaliannya | kelas perwaliannya + catatannya sendiri |
+| BK/Kesiswaan & Admin | seluruh sekolah | seluruh sekolah | seluruh sekolah |
+| OSIS | tidak ada akses | tidak ada akses | tidak ada akses |
+
+Kolom "hari ini" sengaja terbuka untuk semua guru: guru piket di gerbang harus saling melihat catatan hari itu supaya satu siswa tidak tercatat dua kali. Catatan yang dibuat seorang guru tetap terlihat olehnya **pada hari itu**; besoknya, catatan untuk siswa di luar kelas perwaliannya tidak lagi muncul di layarnya. Pelanggaran sengaja berbeda: catatan yang ia buat sendiri tetap bisa ia telusuri kapan pun.
+
+Aturan ini soal **apa yang terlihat**. Aturan perbaikan catatan tidak berubah: koreksi hanya bisa dilakukan dalam 5 menit pertama sejak dicatat (Admin tanpa batas waktu).
+
 **Perbaikan salah ketik:** kalau guru salah memilih alasan atau salah ketik keterangan, catatan bisa **diubah atau dihapus dalam 5 menit pertama** sejak dicatat, dan hanya catatan yang ditulis sendiri. Setelah 5 menit lewat, hanya Admin yang bisa memperbaikinya. Aturan ini sengaja dibuat agar catatan tidak bisa "dirapikan" diam-diam berhari-hari kemudian.
 
 ### 3.4 Pelanggaran — Catat Pelanggaran Tata Tertib
@@ -80,7 +93,7 @@ Semua catatan tersimpan dan bisa ditelusuri kapan saja.
 - Saat siswa dipilih, aplikasi menampilkan **berapa kali siswa itu sudah pernah tercatat** — supaya guru tahu apakah ini kejadian berulang.
 - Dari halaman ini, guru BK/Kesiswaan dan Admin juga bisa menandai siswa sebagai **"Perlu Bimbingan Khusus"** beserta catatannya.
 
-**Soal privasi:** guru biasa hanya melihat daftar pelanggaran **yang ia catat sendiri**. Wali kelas melihat pelanggaran **kelas perwaliannya**. BK/Kesiswaan dan Admin melihat seluruh sekolah. Ini disengaja supaya catatan pribadi siswa tidak beredar ke semua guru.
+**Soal privasi:** guru biasa hanya melihat daftar pelanggaran **yang ia catat sendiri**. Wali kelas melihat pelanggaran **kelas perwaliannya + catatannya sendiri**. BK/Kesiswaan dan Admin melihat seluruh sekolah. Ini disengaja supaya catatan pribadi siswa tidak beredar ke semua guru.
 
 ### 3.5 Upacara — Catat & Rekap Pelanggaran Upacara
 
@@ -107,7 +120,7 @@ Admin dan BK/Kesiswaan melihat semua kelas. Wali kelas hanya melihat kelas perwa
 - Daftar **siswa yang sering terlambat** (minimal 3 kali) dalam jendela waktu yang bisa dipilih: 1 minggu, 2 minggu, 3 minggu, atau sebulan.
 - Ringkasan kelas dan jenis kasus terbanyak.
 - **Mode Ranking** (kelas mana kasusnya paling banyak) hanya tersedia untuk BK/Kesiswaan dan Admin. Guru biasa mendapat mode "Per Kelas" urut A–Z. Ini disengaja agar perbandingan antar kelas tidak jadi bahan saling melabeli.
-- **Unduh data (CSV)** — bisa dibuka di Excel — tersedia untuk Admin.
+- **Unduh data (CSV)** — bisa dibuka di Excel — tersedia untuk Admin. Untuk laporan yang lebih rapi (PDF siap cetak / Excel dengan kop & periode), lihat menu **Export Data** di 3.11.
 
 ### 3.8 Bimbingan Khusus — Untuk BK/Kesiswaan & Admin
 
@@ -123,7 +136,29 @@ Satu halaman berisi tiga kelompok pengaturan:
 
 ### 3.10 Audit Log — Jejak Siapa Melakukan Apa
 
-Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/menghapus catatan, kapan, dan atas siswa siapa. Bisa dicari. Hanya Admin dan BK/Kesiswaan yang bisa membukanya. Fungsinya seperti **buku tamu yang tidak bisa dihapus** — kalau ada catatan yang hilang atau berubah, ketahuan siapa yang melakukannya.
+Catatan permanen 300 aktivitas terakhir: siapa login, siapa menambah/mengubah/menghapus catatan, kapan, dan atas siswa siapa. Bisa dicari. **Hanya Admin** yang bisa membukanya — BK/Kesiswaan, wali kelas, guru, dan OSIS tidak. Fungsinya seperti **buku tamu yang tidak bisa dihapus** — kalau ada catatan yang hilang atau berubah, ketahuan siapa yang melakukannya.
+
+### 3.11 Export Data — Laporan PDF & Excel Tanpa Membuka Spreadsheet
+
+Google Spreadsheet tetap **hanya boleh dibuka Admin**. Supaya guru/BK tidak perlu dibukakan akses ke sana hanya untuk mengambil rekap, ada menu **Export Data** (ada di tombol "Lainnya"):
+
+1. Pilih **jenis data**: Keterlambatan, Pelanggaran, Surat/Izin, Pelanggaran Upacara, Bimbingan Khusus (khusus Admin/BK), atau Rekap Siswa (gabungan semuanya per siswa).
+2. Pilih **kelas**: semua kelas atau satu kelas. Untuk wali kelas, kolom ini sudah terkunci ke kelas perwaliannya — tidak perlu memilih.
+3. Pilih **periode**: dari tanggal — sampai tanggal (maksimal satu tahun sekali unduh).
+4. Pilih **format**: PDF (siap cetak, lengkap dengan kop sekolah, judul, periode, cakupan, tanggal cetak, dan jumlah record) atau Excel (.xlsx, satu baris per kejadian, siap diolah lagi).
+5. Tekan **Generate & Download**.
+
+Siapa boleh mengekspor apa:
+
+| Peran | Boleh export? | Cakupan |
+| --- | --- | --- |
+| Admin | Ya, semua jenis | Semua kelas |
+| BK/Kesiswaan | Ya, semua jenis | Semua kelas |
+| Wali kelas | Ya, kecuali Bimbingan Khusus | Hanya kelas perwaliannya |
+| Guru biasa (bukan wali kelas) | Tidak | — |
+| OSIS | Tidak | — |
+
+Batasan ini diperiksa **di server**, bukan sekadar menyembunyikan tombol: kalau permintaan diubah-ubah dari luar aplikasi agar meminta kelas lain, permintaannya ditolak. Berkas laporan hanya memuat kolom yang memang diperlukan (tanpa NISN) dan **setiap pembuatan laporan — berhasil maupun ditolak — tercatat di Audit Log**.
 
 ### 3.11 Kenyamanan Pakai
 
@@ -250,7 +285,7 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 ## 8. Pertanyaan yang Sering Diajukan (FAQ)
 
 **1. Apakah data siswa aman?**
-Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan password, dan **tidak semua orang melihat semua data**: guru biasa hanya melihat catatan pelanggaran yang ia tulis sendiri, wali kelas hanya kelasnya, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
+Data disimpan di spreadsheet milik sekolah, bukan di layanan pihak ketiga yang tidak dikenal. Setiap orang harus login dengan nama dan password, dan **tidak semua orang melihat semua data**: guru biasa tidak menyimpan riwayat keterlambatan/surat hari-hari sebelumnya sama sekali (hari ini tetap terbuka untuk semua guru demi alur gerbang) dan hanya melihat catatan pelanggaran yang ia tulis sendiri, wali kelas melihat kelas perwaliannya, OSIS hanya data upacara. Setiap perubahan tercatat permanen di Audit Log. Batasan ini diberlakukan di sisi server, bukan sekadar menyembunyikan menu.
 
 **2. Apakah bisa dipakai di HP?**
 Bisa, dan memang dirancang untuk HP. Cukup buka alamat SIGAP lewat browser (Chrome, Safari, dll.) — tidak perlu instal aplikasi. Bisa juga dibuka di laptop.

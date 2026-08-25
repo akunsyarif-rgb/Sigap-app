@@ -150,7 +150,7 @@ order does for anything not hoisted.
   hashing (`hashPasswordLegacy`/`hashPasswordSalted`), `sameClass` (tolerant
   class-name matching — mirrors `normalizeClass()` in `helpers.js`, keep both
   in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
-  throws), `getRowsSince` (binary-search over timestamps to avoid scanning
+  throws; readable by admin only — see `getAuditLog`), `getRowsSince` (binary-search over timestamps to avoid scanning
   full sheets), and **login rate limiting** (`isLoginRateLimited`/
   `recordLoginFailure`): the rate limiter is a **global, fixed 5-minute
   window** (not per-account, not sliding) capped at 15 failures. It's global
@@ -262,7 +262,7 @@ check existing row-index comments before touching sheet read/write code.
 3. Injects the transformed result as one `<script>` tag.
 
 File load order (`index.html`'s `files` array):
-`config.js → helpers.js → ui-common.js → admin.js → beranda-riwayat.js → statistik.js → gerbang.js → pelanggaran-bimbingan-upacara.js → rekap-kelas.js → app.js`
+`config.js → helpers.js → export-format.js → ui-common.js → admin.js → beranda-riwayat.js → statistik.js → gerbang.js → pelanggaran-bimbingan-upacara.js → rekap-kelas.js → export-data.js → app.js`
 
 - **`config.js`** — `API_URL`/`API_TOKEN` (sent from every client; there is no
   way to truly hide this in a bundler-less static-JS app), the `ROLES` map
@@ -280,10 +280,20 @@ File load order (`index.html`'s `files` array):
   routing between tabs. Also computes runtime-only access rules not expressible
   as static role config — e.g. Rekap Kelas access for a `guru` who is a wali
   kelas is granted per-person here, not via `ROLES` in `config.js`.
+- **`export-format.js`** — pure, dependency-free builders for the Export Data
+  feature: a minimal PDF writer (Helvetica/Helvetica-Bold, no embedding, own
+  xref table) and a minimal XLSX writer (ZIP with stored — uncompressed —
+  entries, inline strings). Deliberately hand-rolled instead of pulling
+  jsPDF/SheetJS from a CDN: there is no build step, so a ~1 MB library would
+  be paid on **every** app open, not just on export. Don't add such a
+  dependency without re-reading that trade-off. Byte-level structure is
+  covered by `tests/export-frontend.test.js` (it re-parses the ZIP and walks
+  the PDF xref) — if you touch these writers, that suite is what proves the
+  files still open.
 - Remaining files (`gerbang.js`, `beranda-riwayat.js`,
   `pelanggaran-bimbingan-upacara.js`, `rekap-kelas.js`, `statistik.js`,
-  `admin.js`) are one file per feature tab/group of tabs, named after what
-  they contain.
+  `admin.js`, `export-data.js`) are one file per feature tab/group of tabs,
+  named after what they contain.
 
 **Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
 constant appended as `?v=` to every fetched file. **Bump this on every deploy
@@ -297,6 +307,93 @@ this pattern (major-version pin, not exact patch — unverifiable exact patches
 risk 404s from unpkg; not `latest` — risks silent breaking upgrades) when
 touching these `<script>` tags.
 
+### Read scope: Keterlambatan, Surat & Pelanggaran (RBAC)
+
+`scopeDailyRecordsForUser()` (Keterlambatan + Surat) and
+`scopePelanggaranForUser()` (Pelanggaran) in `Utils.gs` are the single source of
+truth, applied server-side by `getLogs`, `getSurat`, `getPelanggaran`,
+`getStudentLateHistory`, and `getTodayData`. The two categories deliberately
+follow **different** rules — don't unify them:
+
+| | Keterlambatan & Surat | Pelanggaran |
+| --- | --- | --- |
+| admin / bk_kesiswaan | whole school | whole school |
+| wali kelas | own class (any date) + everything from **today** | own class + own records, any date |
+| plain guru | everything from **today** only | own records, any date |
+| osis | rejected | rejected |
+
+**Today is school-wide** for lateness and surat because gate duty teachers must
+see each other's entries or the same student gets recorded twice (`GerbangTab`,
+and the duplicate checks in `record`/`addSurat`). "OWN-hari-ini" needs no clause
+of its own — it is fully contained in that today rule. What must *not* come back
+is an unrestricted OWN clause: a wali kelas who does gate duty would otherwise
+keep a cross-class history forever, just because they typed it. Pelanggaran is
+the opposite case (no mass gate flow, teachers need to trace their own entries),
+so it keeps unrestricted OWN.
+
+`getLogs` and `getSurat` used to return the *entire* sheet to every non-OSIS
+caller and let the browser decide what to show — a plain guru could read any
+class's history straight out of the Network tab. When touching these handlers,
+keep the cache **raw** (`today_logs`, `surat_list`, `pelanggaran_list_raw`,
+`today_data` all store the unfiltered list) and scope **after** reading it;
+caching a per-user result hands one teacher's list to the next caller.
+`tests/rbac-riwayat-pelanggaran.test.js` calls `doGet()` for real and pins all
+of this down, cache leakage and parameter tampering included.
+
+Visibility is not the edit rule: the 5-minute edit/delete window in
+`editEntry`/`deleteEntry` is unchanged and independent of this.
+
+Ownership (OWN) uses the existing mechanism — the `Dicatat_Oleh` column matched
+against the session user's name, same as `editEntry`/`deleteEntry`. Don't
+replace it with ids "while you're in there": old rows only carry the name.
+
+`getStudentLateHistory` returns scoped detail rows **plus** `count`, the
+student's true school-wide total as a bare number. That count is what keeps the
+"sudah Nx terlambat" warning in `RecordModal` honest now that a guru's
+`allLogs` only holds today. Same deliberate trade-off (and same reasoning) as
+`getPelanggaranCountForStudent`: per-student, on demand, never an all-students
+map that could be turned into a ranking.
+
+`BACKEND_VERSION` in `Code.gs` is echoed by the token-gated status ping
+(`doGet` with no action). Bump it whenever a `.gs` change needs verifying after
+a manual deploy — it's the only way to tell "deployed" from "saved but still
+serving the old version" without guessing.
+
+### Export Data: who may export what
+
+`exportData` (a `doGet` action) is the only path that hands a report file's
+contents to the browser. Google Sheets stays admin-only; this replaces
+"just give the teacher access to the Sheet".
+
+- admin / bk_kesiswaan → every report type, any class (or all classes)
+- **guru who is a wali kelas** → their own class only, and **not** Bimbingan
+  Khusus (that one stays admin/BK-only, mirroring `getBimbingan`)
+- plain guru (not a wali kelas) → no export at all. There is no teaching-schedule
+  mapping in this system, so there is no data-backed way to give them a class
+  scope — don't invent one to make the feature easier.
+- osis → rejected
+
+Enforcement lives in `resolveExportAccess()` (Utils.gs), not in the menus: the
+client's `kelas` parameter is never trusted — a wali kelas asking for another
+class is **rejected**, not silently corrected. The handler order in `Code.gs`
+is load-bearing and asserted by `tests/export-backend.test.js`: session →
+export rate limit → authorization → filter validation → *only then* read
+sheets. Report columns are fixed per report type in `EXPORT_JENIS` (Utils.gs);
+users pick a report, never columns. NISN, `Foto_URL`, and `Dicatat_Oleh_ID`
+are deliberately excluded from every export (Rekap Siswa still *groups* by
+NISN — duplicate student names must not merge — it just doesn't emit it).
+Every attempt, successful or rejected, is written to `Audit_Log` with
+metadata only (jenis/periode/cakupan/format/row count/status) — never student
+names or note contents.
+
+`getAuditLog` is **admin-only** (`isAdminRole`). It used to be admin +
+BK/Kesiswaan (`isBkRole`); it was tightened when export landed, because the
+Audit Log now also carries every export attempt — it is an oversight trail over
+*everyone*, including admins, not a day-to-day BK tool. The gate is the role
+check in `Code.gs`; dropping `'auditlog'` from `bk_kesiswaan` in `config.js`
+(and the `roleKey !== 'admin'` guard in `fetchAuditLog`) only stops a request
+that would now be rejected anyway.
+
 ### Tests
 
 `tests/render-smoke.test.js` renders each top-level tab component with a
@@ -304,3 +401,8 @@ fake `React`/`document`/`fetch` shim (no jsdom) and asserts it doesn't throw —
 this is where real render bugs typically surface, per its own header comment.
 It requires `@babel/core` (a devDependency) to transform JSX before running.
 `tests/password.test.js` covers the hashing/migration logic in `Utils.gs`/`Auth.gs`.
+`tests/export-backend.test.js` loads `Utils.gs`+`Auth.gs`+`Code.gs` into a vm with
+stubbed Apps Script services and calls `doGet()` for real — that's where export
+authorization, scope tampering, filter validation, and audit logging are pinned
+down. `tests/export-frontend.test.js` covers the PDF/XLSX writers byte-for-byte
+plus the Export tab's UI gating.

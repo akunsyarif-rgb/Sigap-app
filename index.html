@@ -98,10 +98,11 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 43;
+           var BUILD_VERSION = 44;
            var files = [
                'config.js',
                'helpers.js',
+               'export-format.js',
                'ui-common.js',
                'admin.js',
                'beranda-riwayat.js',
@@ -109,6 +110,7 @@
                'gerbang.js',
                'pelanggaran-bimbingan-upacara.js',
                'rekap-kelas.js',
+               'export-data.js',
                'app.js'
            ];
            try {

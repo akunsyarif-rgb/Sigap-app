@@ -30,6 +30,7 @@ const ROOT = path.join(__dirname, '..');
 const FILES = [
   'config.js',
   'helpers.js',
+  'export-format.js',
   'ui-common.js',
   'admin.js',
   'beranda-riwayat.js',
@@ -37,6 +38,7 @@ const FILES = [
   'gerbang.js',
   'pelanggaran-bimbingan-upacara.js',
   'rekap-kelas.js',
+  'export-data.js',
   'app.js',
 ];
 
@@ -137,6 +139,9 @@ const cases = [
   ['LogTab (guru, own record)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], initialCategory: 'terlambat', canManage: true, isAdmin: false, isBk: false, currentUserName: 'Bu Kartina', onEditEntry: () => {}, onDeleteEntry: () => {} }, 'LogTab'],
   ['LogTab (guru, others record)', { allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], suratList: [suratEntry], initialCategory: 'terlambat', canManage: true, isAdmin: false, isBk: false, currentUserName: 'Guru Lain', onEditEntry: () => {}, onDeleteEntry: () => {} }, 'LogTab'],
   ['RecordModal', { student, customReason: '', setCustomReason: () => {}, onRecord: () => {}, onClose: () => {}, allLogs: [logEntry] }],
+  // Prop onGetLateCount opsional (lihat RecordModal di gerbang.js): dua-duanya
+  // harus aman — dipasang, dan tidak dipasang seperti kasus di atas.
+  ['RecordModal (dengan jumlah dari server)', { student, customReason: '', setCustomReason: () => {}, onRecord: () => {}, onClose: () => {}, allLogs: [logEntry], onGetLateCount: () => Promise.resolve(7) }, 'RecordModal'],
   ['KelolaTab', { teachers: [teacher], students: [student], jadwalPiket: jadwal, onAddTeacher: () => {}, onUpdatePassword: () => {}, onUpdateJabatan: () => {}, onToggleStatus: () => {}, onUpdateRole: () => {}, onUpdateWaliKelas: () => {}, onUpdateName: () => {}, onDeleteTeacher: () => {}, onSetJadwalPiket: () => {}, onDeleteSurat: () => {}, loading: false }],
   ['KelolaTab (view: Kelola Guru)', { teachers: [teacher], students: [student], jadwalPiket: jadwal, onAddTeacher: () => {}, onUpdatePassword: () => {}, onUpdateJabatan: () => {}, onToggleStatus: () => {}, onUpdateRole: () => {}, onUpdateWaliKelas: () => {}, onUpdateName: () => {}, onDeleteTeacher: () => {}, onSetJadwalPiket: () => {}, onDeleteSurat: () => {}, loading: false }, 'KelolaTab', ['guru']],
   ['KelolaTab (view: Jadwal Piket)', { teachers: [teacher], students: [student], jadwalPiket: jadwal, onAddTeacher: () => {}, onUpdatePassword: () => {}, onUpdateJabatan: () => {}, onToggleStatus: () => {}, onUpdateRole: () => {}, onUpdateWaliKelas: () => {}, onUpdateName: () => {}, onDeleteTeacher: () => {}, onSetJadwalPiket: () => {}, onDeleteSurat: () => {}, loading: false }, 'KelolaTab', ['jadwal']],
@@ -162,6 +167,10 @@ const cases = [
   ['PelanggaranTab (modal terbuka)', { students: [student], pelanggaranList: [pelanggaranEntry], onAddPelanggaran: () => {}, onAddBimbingan: () => {}, canSeeClassDetail: true, onGetPelanggaranCount: () => Promise.resolve(0), waliKelasMap }, 'PelanggaranTab', [undefined, student]],
   ['BimbinganTab', { bimbinganList: [{ timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', catatan: 'Perlu bimbingan', logged_by: 'Bu Kartina' }] }],
   ['UpacaraTab (osis)', { students: [student], upacaraList: [{ timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B', jenis_pelanggaran: 'Tidak Tertib', catatan: '', logged_by: 'OSIS' }], onAddUpacara: () => {}, isOsis: true }, 'UpacaraTab'],
+  ['ExportTab (admin/BK)', { isBk: true, waliKelas: '', classes: ['XI A', 'XI B'], onGenerate: () => {} }, 'ExportTab'],
+  ['ExportTab (wali kelas, cakupan terkunci)', { isBk: false, waliKelas: 'XI B', classes: ['XI A', 'XI B'], onGenerate: () => {} }, 'ExportTab'],
+  // idx 5 = busy, idx 6 = msg -- keadaan "sedang generate" & pesan hasil.
+  ['ExportTab (sedang generate + pesan gagal)', { isBk: true, waliKelas: '', classes: [], onGenerate: () => {} }, 'ExportTab', [undefined, undefined, undefined, undefined, undefined, true, { ok: false, text: 'Tidak ada data pada periode & cakupan ini.' }]],
   ['Header', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }],
   ['Header (menu ukuran tulisan terbuka)', { user, roleLabel: 'Guru', onLogout: () => {}, fontScale: 1, onFontScaleChange: () => {} }, 'Header', [true]],
   ['BottomNav (guru, 4 menu primer)', { menus: ['scan', 'dashboard', 'log', 'pelanggaran'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'scan', setActiveTab: () => {} }, 'BottomNav'],
