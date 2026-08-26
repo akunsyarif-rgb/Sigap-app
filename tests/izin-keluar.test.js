@@ -1067,6 +1067,52 @@ test('wali kelas yang BUKAN piket hari ini ditolak memberikan Izin Khusus — ke
   assert.equal(s.izinRows().length, IZIN_FIXTURE.length, 'tidak ada baris yang tersimpan saat ditolak');
 });
 
+test('BK/Kesiswaan yang SEDANG PIKET hari ini dapat memberikan Izin Khusus, tercatat sebagai Guru Piket (bukan BK/Kesiswaan)', () => {
+  // Audit "Izin Khusus disabled untuk BK piket/Admin": mengunci kombinasi yang
+  // sebelumnya TIDAK punya test sendiri — role bk_kesiswaan YANG JUGA terjadwal
+  // piket hari ini, memakai jalur khusus untuk MEMBUAT transaksi (bukan cuma
+  // memverifikasi, yang sudah dikunci test kapasitas di atas). izinKapasitasVerifikasi
+  // mengecek isPiketBertugas LEBIH DULU sebelum fallback isBkRole, jadi kapasitasnya
+  // harus 'guru_piket', bukan 'bk_kesiswaan' — canVerifyIzin() (dipakai addIzinKeluar)
+  // tetap true di kedua kasus, tapi labelnya harus jujur.
+  const s = loadServer({ jadwalPiketRows: jadwalDenganWalasDanBk });
+  const res = s.post('bk', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak dapat dihubungi',
+  });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(res.id)[8], 'khusus');
+  assert.equal(s.izinById(res.id)[10], 'Bu BK');
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Izin Keluar Khusus').pop();
+  assert.match(String(aksi[4]), /alasan pengecualian=/);
+});
+
+test('tombol "Izin Khusus" tidak pernah disabled/gagal untuk Admin karena data Jadwal_Piket — admin selalu lolos canVerifyIzin lepas dari isi Jadwal_Piket', () => {
+  // Admin lolos canVerifyIzin() lewat isBkRole() TANPA PERNAH bergantung pada
+  // Jadwal_Piket sama sekali (isBkRole('admin') selalu true) — jadi Jadwal_Piket
+  // kosong, salah isi, atau formatnya tidak cocok TIDAK PERNAH bisa membuat akun
+  // admin ditolak di sini. Dikunci eksplisit karena ini bagian dari root cause
+  // yang diaudit (lihat laporan): admin TIDAK PERNAH boleh gagal karena data
+  // Jadwal_Piket, apa pun isinya.
+  const s = loadServer({ tanpaJadwalPiket: true });
+  const res = s.post('admin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'Wali kelas & guru mapel tidak dapat dihubungi',
+  });
+  assert.equal(res.status, 'success');
+});
+
+test('klaim kapasitas/role dari client tidak bisa membuat Izin Khusus lolos untuk pengguna tak berwenang', () => {
+  const s = loadServer();
+  const res = s.post('pemberiIzin', {
+    action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'demam',
+    jalur: 'khusus', alasan_khusus: 'saya mau bantu',
+    kapasitas: 'guru_piket', role: 'admin', canVerify: true, // semua diabaikan server
+  });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /Izin Khusus/);
+});
+
 test('alur izin normal tetap berjalan utuh setelah audit Izin Khusus ini (regresi)', () => {
   const s = loadServer();
   const normal = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
