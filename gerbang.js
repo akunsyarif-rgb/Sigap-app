@@ -713,16 +713,24 @@
                                    </p>
                                </div>
 
-                               {/* Jalur khusus hanya muncul untuk yang berwenang — dan
-                                   server tetap menolak kalau tetap dikirim orang lain. */}
+                               {/* Jalur Persetujuan — pilihan jalur, bukan checkbox "tambahan" di
+                                   ekor form. Hanya muncul untuk yang berwenang (canVerify, dari
+                                   getIzinKeluar/canVerifyIzin di server) — dan server tetap menolak
+                                   kalau jalur 'khusus' tetap dikirim orang lain (lihat addIzinKeluar,
+                                   Code.gs: canVerifyIzin() dicek ulang di sana, tidak pernah percaya
+                                   apa pun dari klien). Individual & Kelompok (IzinKelompokPanel di
+                                   bawah) memakai widget yang sama persis — lihat catatan "Konsistensi
+                                   Jalur Persetujuan" di situ. */}
                                {canVerify && (
                                    <div className="border-t border-slate-100 pt-3 space-y-2">
-                                       <label className="flex items-start gap-2 cursor-pointer">
-                                           <input type="checkbox" checked={jalurKhusus} onChange={(e) => setJalurKhusus(e.target.checked)} className="mt-0.5" />
-                                           <span className="text-[11px] text-slate-600 leading-snug">
-                                               <strong className="text-crimson">Izin Khusus</strong> — guru yang menangani siswa ini tidak tersedia dan keputusan harus diambil sekarang.
-                                           </span>
-                                       </label>
+                                       <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Jalur Persetujuan</label>
+                                       <div className="grid grid-cols-2 gap-2">
+                                           <button type="button" onClick={() => setJalurKhusus(false)} className={`py-2.5 rounded-xl text-xs font-bold transition ${!jalurKhusus ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>Persetujuan normal</button>
+                                           <button type="button" onClick={() => setJalurKhusus(true)} className={`py-2.5 rounded-xl text-xs font-bold transition ${jalurKhusus ? 'bg-crimson text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>Izin Khusus</button>
+                                       </div>
+                                       <p className="text-[10px] text-slate-500 leading-relaxed">
+                                           Gunakan Izin Khusus jika guru yang menangani siswa tidak tersedia dan keputusan perlu diambil segera.
+                                       </p>
                                        {jalurKhusus && (
                                            <div className="space-y-2">
                                                <div className="text-[10px] text-crimson bg-crimson/10 border border-crimson/30 rounded-lg px-3 py-2 leading-relaxed">
@@ -1120,14 +1128,24 @@
                            )}
                        </div>
 
+                       {/* Jalur Persetujuan — SAMA PERSIS dengan widget di IzinKeluarPanel
+                           (posisi tetap setelah Peserta, sesuai urutan alur: Kegiatan -> Tujuan
+                           -> Pola Kembali -> Peserta -> Jalur Persetujuan -> Alasan -> Ajukan).
+                           Sengaja bukan checkbox tunggal yang terkesan "opsi tambahan pada
+                           peserta" — audit UX menemukan itu membingungkan karena Izin Khusus
+                           adalah jalur PERSETUJUAN kegiatan, bukan atribut peserta. Hanya
+                           tampil untuk yang berwenang (canVerify); server tetap menolak kalau
+                           jalur 'khusus' tetap dikirim orang lain (canVerifyIzin di Code.gs). */}
                        {canVerify && (
                            <div className="border-t border-slate-100 pt-3 space-y-2">
-                               <label className="flex items-start gap-2 cursor-pointer">
-                                   <input type="checkbox" checked={jalurKhusus} onChange={(e) => setJalurKhusus(e.target.checked)} className="mt-0.5" />
-                                   <span className="text-[11px] text-slate-600 leading-snug">
-                                       <strong className="text-crimson">Izin Khusus</strong> — guru yang menangani siswa ini tidak tersedia dan keputusan harus diambil sekarang.
-                                   </span>
-                               </label>
+                               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Jalur Persetujuan</label>
+                               <div className="grid grid-cols-2 gap-2">
+                                   <button type="button" onClick={() => setJalurKhusus(false)} className={`py-2.5 rounded-xl text-xs font-bold transition ${!jalurKhusus ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>Persetujuan normal</button>
+                                   <button type="button" onClick={() => setJalurKhusus(true)} className={`py-2.5 rounded-xl text-xs font-bold transition ${jalurKhusus ? 'bg-crimson text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>Izin Khusus</button>
+                               </div>
+                               <p className="text-[10px] text-slate-500 leading-relaxed">
+                                   Gunakan Izin Khusus jika guru yang menangani siswa tidak tersedia dan keputusan perlu diambil segera.
+                               </p>
                                {jalurKhusus && (
                                    <div className="space-y-2">
                                        <div className="text-[10px] text-crimson bg-crimson/10 border border-crimson/30 rounded-lg px-3 py-2 leading-relaxed">

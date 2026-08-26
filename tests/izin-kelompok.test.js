@@ -796,6 +796,34 @@ test('wali kelas yang BUKAN piket hari ini ditolak memberikan Izin Khusus untuk 
   assert.equal(s.kelompokRows().length, 0, 'tidak ada kegiatan yang tersimpan saat ditolak');
 });
 
+test('BK/Kesiswaan yang SEDANG PIKET hari ini dapat memberikan Izin Khusus untuk kegiatan kelompok, tercatat sebagai Guru Piket', () => {
+  // Audit "Izin Khusus disabled untuk BK piket/Admin": sebelumnya belum ada
+  // test yang mengkombinasikan role bk_kesiswaan + terjadwal piket hari ini
+  // untuk aksi PEMBUATAN kegiatan (bukan verifikasi). canVerifyIzin() yang
+  // dipakai addIzinKelompok identik dengan addIzinKeluar (Utils.gs), jadi ini
+  // seharusnya selalu lolos — dikunci di sini supaya tidak pernah regresi.
+  const s = loadServer({ jadwalPiketRows: [[HARI_INI, 'G10'], [HARI_INI, 'G11'], [HARI_INI, 'G01'], [HARI_LAIN, 'G12']] });
+  const res = ajukan(s, 'bk', { jalur: 'khusus', alasan_khusus: 'Guru pendamping berhalangan mendadak' });
+  assert.equal(res.status, 'success');
+  assert.equal(s.kelompokRows()[0][9], 'Bu BK');
+});
+
+test('tombol "Izin Khusus" tidak pernah gagal untuk Admin karena isi Jadwal_Piket, saat mengajukan kegiatan kelompok', () => {
+  const s = loadServer({ tanpaJadwalPiket: true });
+  const res = ajukan(s, 'admin', { jalur: 'khusus', alasan_khusus: 'Guru pendamping berhalangan mendadak' });
+  assert.equal(res.status, 'success');
+});
+
+test('klaim kapasitas/role dari client tidak bisa membuat Izin Khusus kelompok lolos untuk pengguna tak berwenang', () => {
+  const s = loadServer();
+  const res = ajukan(s, 'pemberiIzin', {
+    jalur: 'khusus', alasan_khusus: 'saya mau bantu',
+    kapasitas: 'guru_piket', role: 'admin', canVerify: true, // semua diabaikan server
+  });
+  assert.equal(res.status, 'error');
+  assert.equal(s.kelompokRows().length, 0);
+});
+
 test('alur kelompok normal tetap berjalan utuh setelah audit Izin Khusus ini (regresi)', () => {
   const s = loadServer();
   const buat = ajukan(s, 'wali');

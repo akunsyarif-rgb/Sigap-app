@@ -320,6 +320,93 @@ test('form: judul menyesuaikan konteks, tapi tetap satu form yang sama (bukan du
   });
 });
 
+// ===== Audit UX: Izin Khusus sebagai JALUR PERSETUJUAN, bukan checkbox
+// tunggal di bawah peserta/izin kelompok (lihat laporan audit). =====
+
+test('Jalur Persetujuan (individual): dua pilihan eksplisit "Persetujuan normal"/"Izin Khusus" + penjelasan singkat, bukan checkbox tunggal', () => {
+  const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
+  const props = {
+    students: [student], izinList: [], waliKelasMap: [], canVerify: true,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
+  };
+  const form = JSON.stringify(renderWithState('IzinKeluarPanel', props, [undefined, undefined, student]));
+  assert.ok(form.includes('Jalur Persetujuan'));
+  assert.ok(form.includes('Persetujuan normal'));
+  assert.ok(form.includes('Izin Khusus'));
+  assert.ok(form.includes('Gunakan Izin Khusus jika guru yang menangani siswa tidak tersedia dan keputusan perlu diambil segera.'));
+
+  // Bukan lagi checkbox: blok Jalur Persetujuan di source tidak memakai
+  // <input type="checkbox">, melainkan dua tombol pilihan.
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const blokIndividual = gerbang.split('function IzinKelompokPanel(')[0].split('Jalur Persetujuan')[1];
+  assert.doesNotMatch(blokIndividual.split('Button onClick={submitIzin}')[0], /type="checkbox"/);
+});
+
+test('Jalur Persetujuan (kelompok): widget & teks SAMA PERSIS dengan individual — konsisten', () => {
+  const form = JSON.stringify(get('IzinKelompokPanel')(propsKelompok()));
+  assert.ok(form.includes('Jalur Persetujuan'));
+  assert.ok(form.includes('Persetujuan normal'));
+  assert.ok(form.includes('Izin Khusus'));
+  assert.ok(form.includes('Gunakan Izin Khusus jika guru yang menangani siswa tidak tersedia dan keputusan perlu diambil segera.'));
+
+  const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  const [blokIndividualSrc, blokKelompokSrc] = gerbang.split('function IzinKelompokPanel(');
+  const ambilOpsi = (src) => {
+    const blok = src.split('Jalur Persetujuan')[1].split('Ajukan')[0];
+    return {
+      normal: /Persetujuan normal/.test(blok),
+      khusus: /Izin Khusus/.test(blok),
+      penjelasan: /Gunakan Izin Khusus jika guru yang menangani siswa tidak tersedia dan keputusan perlu diambil segera\./.test(blok),
+    };
+  };
+  assert.deepEqual(ambilOpsi(blokIndividualSrc), ambilOpsi(blokKelompokSrc), 'label & penjelasan jalur persetujuan harus identik antara individual dan kelompok');
+});
+
+test('Jalur Persetujuan tidak ditawarkan sama sekali untuk yang tidak berwenang (individual & kelompok konsisten)', () => {
+  const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
+  const formIndividual = JSON.stringify(renderWithState('IzinKeluarPanel', {
+    students: [student], izinList: [], waliKelasMap: [], canVerify: false,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
+  }, [undefined, undefined, student]));
+  assert.ok(!formIndividual.includes('Jalur Persetujuan'));
+  assert.ok(!formIndividual.includes('Izin Khusus'));
+
+  const formKelompok = JSON.stringify(get('IzinKelompokPanel')(propsKelompok({ canVerify: false })));
+  assert.ok(!formKelompok.includes('Jalur Persetujuan'));
+  assert.ok(!formKelompok.includes('Izin Khusus'));
+});
+
+test('tombol Setujui Izin TIDAK disabled saat Izin Khusus dipilih dan semua syarat (keperluan + alasan) terisi', () => {
+  const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
+  const props = {
+    students: [student], izinList: [], waliKelasMap: [], canVerify: true,
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
+  };
+  // idx: 0 searchQuery, 1 pickedStudent, 2 formStudent, 3 keperluan, 4 tujuan,
+  // 5 jalurKhusus, 6 alasanKhusus.
+  const tree = renderWithState('IzinKeluarPanel', props, [undefined, undefined, student, 'kontrol ke dokter', undefined, true, 'wali kelas & guru mapel tidak bisa dihubungi']);
+  const tombol = findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) && n.children.join('').includes('Catat Izin Khusus'))[0];
+  assert.ok(tombol, 'tombol "Catat Izin Khusus" harus ada saat form terbuka dengan jalur khusus dipilih');
+  assert.equal(tombol.props.disabled, false, 'tombol tidak boleh disabled ketika keperluan & alasan sudah terisi');
+});
+
+test('tombol Ajukan Kelompok (Izin Khusus) TIDAK disabled saat semua syarat (kegiatan, keperluan, peserta, alasan) terisi', () => {
+  const overrides = [
+    'Lomba Debat', // kegiatan
+    'lomba debat kota', // keperluan
+    undefined, // tujuan (default 'kembali')
+    undefined, // pola (default 'bersama')
+    undefined, // searchQuery
+    [{ nisn: '111', name: 'Rahma', class: 'XI B' }], // pilihan (peserta)
+    true, // jalurKhusus
+    'guru pendamping berhalangan mendadak', // alasanKhusus
+  ];
+  const tree = renderWithState('IzinKelompokPanel', propsKelompok(), overrides);
+  const tombol = findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) && n.children.join('').includes('Catat Kegiatan (Izin Khusus)'))[0];
+  assert.ok(tombol, 'tombol "Catat Kegiatan (Izin Khusus)" harus ada saat semua field terisi');
+  assert.equal(tombol.props.disabled, false, 'tombol tidak boleh disabled ketika kegiatan/keperluan/peserta/alasan sudah terisi');
+});
+
 test('tidak ada isian yang meminta guru mengaku sebagai Guru Mapel / Wali Kelas', () => {
   const src = ['gerbang.js', 'app.js'].map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
   // Komentar dibuang dulu: menjelaskan KENAPA jadwal mengajar tidak ada justru
