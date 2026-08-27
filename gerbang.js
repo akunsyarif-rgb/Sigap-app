@@ -91,6 +91,22 @@
            const [msg, setMsg] = useState('');
            const [savingSurat, setSavingSurat] = useState(false);
 
+           // Jam berjalan (tanpa detik) supaya guru piket lihat waktu saat ini
+           // tanpa perlu refresh halaman. Dicek tiap 15 detik tapi state cuma
+           // di-update begitu menitnya benar-benar berganti (bukan tiap tick).
+           const [now, setNow] = useState(new Date());
+           useEffect(() => {
+               const id = setInterval(() => {
+                   setNow(prev => {
+                       const fresh = new Date();
+                       return fresh.getMinutes() === prev.getMinutes() && fresh.getHours() === prev.getHours() ? prev : fresh;
+                   });
+               }, 15000);
+               return () => clearInterval(id);
+           }, []);
+           const todayLabel = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+           const timeLabel = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
            // Nama wali kelas wajib tampil di hasil pencarian — guru piket di
            // gerbang sering perlu tahu ini juga (mis. untuk menghubungi wali
            // kelas terkait), bukan cuma di Rekap Kelas.
@@ -152,12 +168,13 @@
 
            return (
                <div className="space-y-5 animate-rise">
+                   <div className="text-center text-[11px] text-slate-500 font-medium mt-6">{todayLabel} &middot; {timeLabel}</div>
                    {/* Mode ketiga (Izin Keluar) menumpang sakelar yang SUDAH ADA di
                        sini — sengaja BUKAN entri BottomNav baru: ruang BottomNav
                        sudah pas untuk 4 ikon + "Lainnya" (lihat catatan panjang di
                        ROLES, config.js), dan alurnya memang milik guru piket yang
                        sudah bekerja di layar ini. */}
-                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 mt-6">
+                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
                        <button onClick={() => setMode('terlambat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
                        <button onClick={() => setMode('surat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
                        <button onClick={() => setMode('izin')} className={`relative py-2.5 px-2 rounded-xl text-xs font-bold transition leading-tight ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
