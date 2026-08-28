@@ -58,13 +58,29 @@ function getSessionUser(token) {
   }
   if (!parsed) return null;
 
-  // Record format lama (objek user polos, tanpa pembungkus) — sesi yang dibuat
-  // sebelum perubahan ini tetap berlaku sampai TTL-nya habis sendiri, tapi
+  // Record format lama (objek user polos, tanpa pembungkus) vs format baru
+  // (dibungkus { user, loginAt }). loginAt = 0 untuk format lama (tidak
+  // diketahui) — itu sengaja, lihat cek invalidasi password di bawah.
+  var userObj = parsed.user || parsed;
+  var loginAt = parsed.user ? (Number(parsed.loginAt) || 0) : 0;
+
+  // Ganti password (action 'changePassword', Code.gs) mencabut SEMUA sesi
+  // user ini — lihat markPasswordChanged()/getPasswordChangedAt() di bawah.
+  // Sesi ini dicabut kalau ia dibuat SEBELUM (atau tepat saat) password
+  // terakhir diubah. Sesi format lama (loginAt=0) selalu ikut tercabut begitu
+  // penanda ini ada sama sekali, karena tidak mungkin dibuktikan ia lebih
+  // baru dari perubahan password itu.
+  var changedAt = getPasswordChangedAt(userObj && userObj.id);
+  if (changedAt && loginAt < changedAt) {
+    cache.remove('sess_' + token);
+    return null;
+  }
+
+  // Record format lama — tetap berlaku sampai TTL-nya habis sendiri, tapi
   // tidak di-put ulang karena waktu login-nya tidak diketahui, jadi batas 6 jam
   // tidak bisa ditegakkan atasnya.
-  if (!parsed.user) return parsed;
+  if (!parsed.user) return userObj;
 
-  var loginAt = Number(parsed.loginAt) || 0;
   var now = Date.now();
   if (loginAt && now - loginAt >= SESSION_ABSOLUTE_MAX_MS) {
     cache.remove('sess_' + token);
@@ -81,7 +97,36 @@ function getSessionUser(token) {
     if (loginAt) until = Math.min(until, loginAt + SESSION_ABSOLUTE_MAX_MS);
     SESSION_RENEWED_UNTIL = until;
   } catch (e) {}
-  return parsed.user;
+  return userObj;
+}
+
+// ===== Invalidasi sesi lewat ganti password (BUKAN logout global) =====
+// CacheService di sini cuma mengenal token sesi ('sess_' + token) — tidak
+// ada indeks "token-token mana saja yang sedang dipegang user X", jadi tidak
+// ada cara murah untuk mencabut token lain milik user yang sama satu per
+// satu (mis. device/tab lain). Alih-alih, tiap user diberi SATU penanda
+// waktu "kapan password-nya terakhir diubah" (key cache TERPISAH dari
+// 'sess_*', per-USER bukan per-token), dan getSessionUser() di atas menolak
+// mentah-mentah record sesi mana pun yang loginAt-nya lebih lama dari
+// penanda itu. Efeknya: SEMUA sesi milik user itu (device/tab mana pun)
+// tercabut sekaligus pada request berikutnya masing-masing, TANPA perlu
+// tahu daftar tokennya, dan TANPA menyentuh sesi user lain sama sekali
+// (kuncinya di-scope per-user, bukan global) — inilah jawaban dari audit
+// "apakah mekanisme sesi existing bisa mencabut seluruh sesi SATU user
+// tanpa mengganggu user lain": bisa, lewat penanda ini, tanpa mekanisme
+// sesi baru.
+// TTL disamakan dengan SESSION_TTL_SECONDS — tidak ada gunanya bertahan
+// lebih lama dari umur maksimum sebuah sesi (SESSION_ABSOLUTE_MAX_MS),
+// karena sesi setua itu sudah pasti ditolak oleh cek loginAt-nya sendiri.
+function markPasswordChanged(userId) {
+  if (!userId) return;
+  CacheService.getScriptCache().put('pwdchanged_' + String(userId), String(Date.now()), SESSION_TTL_SECONDS);
+}
+
+function getPasswordChangedAt(userId) {
+  if (!userId) return 0;
+  var raw = CacheService.getScriptCache().get('pwdchanged_' + String(userId));
+  return raw ? (Number(raw) || 0) : 0;
 }
 
 // ===== Verifikasi password (dua skema, migrasi otomatis) =====

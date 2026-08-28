@@ -627,6 +627,29 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           // Ganti password SENDIRI (self-service, dari ChangePasswordModal di
+           // Header) -- beda dari handleUpdatePassword di atas (admin mereset
+           // password ORANG LAIN). Identitas akun yang diubah ditentukan server
+           // dari sessionToken, bukan dari payload apa pun yang dikirim di sini.
+           const handleChangePassword = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'changePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           callback(true);
+                           // Server sudah mencabut SEMUA sesi akun ini (lihat
+                           // markPasswordChanged di Auth.gs) -- sisi klien ikut
+                           // membersihkan diri seketika supaya guru langsung
+                           // diarahkan ke layar login, bukan menunggu request
+                           // berikutnya gagal dengan "Sesi berakhir".
+                           clearSession(data.message || 'Password berhasil diubah. Silakan login kembali.');
+                       } else if (data.status === 'error') {
+                           callback(false, data.message || 'Gagal mengubah password.');
+                       }
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleUpdateJabatan = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateJabatan', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
@@ -990,7 +1013,7 @@
                        />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
+                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} onChangePassword={handleChangePassword} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
 
                            {toast && (
                                <div className="fixed bottom-24 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">

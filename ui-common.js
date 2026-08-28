@@ -338,13 +338,101 @@
            );
        }
 
+       // ===== Modal Ganti Password (Profil/Akun -> Keamanan) =====
+       // Dipanggil dari menu titik-tiga Header (bukan menu utama/BottomNav —
+       // lihat catatan panjang soal ruang BottomNav yang sudah pas di
+       // config.js). Password saat ini diverifikasi SERVER-SIDE (action
+       // 'changePassword', Code.gs) — form ini murni UI + validasi ringan
+       // untuk umpan balik instan, BUKAN sumber kebenaran. Tidak ada satu
+       // pun nilai form yang pernah ditulis ke localStorage/sessionStorage —
+       // semuanya cuma state React lokal, hilang begitu modal ditutup.
+       function ChangePasswordModal({ onSubmit, onClose }) {
+           const [oldPassword, setOldPassword] = useState('');
+           const [newPassword, setNewPassword] = useState('');
+           const [confirmPassword, setConfirmPassword] = useState('');
+           const [loading, setLoading] = useState(false);
+           const [error, setError] = useState('');
+
+           // Indikator ringan sisi klien — server (PASSWORD_MIN_LENGTH,
+           // Utils.gs) tetap satu-satunya penegak; ini murni supaya guru
+           // tahu SEBELUM menekan simpan, bukan pengganti validasi server.
+           const lengthOk = newPassword.trim().length >= PASSWORD_MIN_LENGTH;
+           const matchOk = newPassword.length > 0 && newPassword === confirmPassword;
+           const sameAsOld = oldPassword.length > 0 && newPassword.length > 0 && newPassword === oldPassword;
+           const canSubmit = oldPassword.length > 0 && newPassword.length > 0 && confirmPassword.length > 0
+               && lengthOk && matchOk && !sameAsOld && !loading;
+
+           const submit = (e) => {
+               e.preventDefault();
+               if (!canSubmit) return;
+               setLoading(true);
+               setError('');
+               onSubmit({ oldPassword, newPassword: newPassword.trim(), confirmPassword: confirmPassword.trim() }, (ok, message) => {
+                   // Sukses: App() langsung memaksa logout (lihat
+                   // handleChangePassword di app.js) begitu server
+                   // mengonfirmasi, jadi modal ini ikut lenyap sendiri saat
+                   // layar login dirender ulang — tidak perlu ditutup manual
+                   // atau menampilkan pesan di sini.
+                   if (ok) return;
+                   setLoading(false);
+                   setError(message || 'Gagal mengubah password.');
+               });
+           };
+
+           return (
+               <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                   <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-3 animate-pop my-4">
+                       <div className="flex items-center justify-between">
+                           <h3 className="text-sm font-display font-bold text-slate-800">Ganti Password</h3>
+                           <button onClick={onClose} aria-label="Tutup" className="text-slate-400 text-xl leading-none p-2.5 -m-2.5">×</button>
+                       </div>
+                       <form onSubmit={submit} className="space-y-3">
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Password Saat Ini</label>
+                               <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} autoComplete="current-password" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Password Baru</label>
+                               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                               {newPassword.length > 0 && (
+                                   <div className={`text-[10px] mt-1 ${lengthOk ? 'text-sky-dim' : 'text-crimson'}`}>
+                                       {lengthOk ? `✓ Minimal ${PASSWORD_MIN_LENGTH} karakter` : `Minimal ${PASSWORD_MIN_LENGTH} karakter`}
+                                   </div>
+                               )}
+                               {sameAsOld && <div className="text-[10px] mt-1 text-crimson">Tidak boleh sama dengan password saat ini</div>}
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Ulangi Password Baru</label>
+                               <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" required />
+                               {confirmPassword.length > 0 && (
+                                   <div className={`text-[10px] mt-1 ${matchOk ? 'text-sky-dim' : 'text-crimson'}`}>
+                                       {matchOk ? '✓ Cocok' : 'Belum cocok dengan password baru'}
+                                   </div>
+                               )}
+                           </div>
+                           {error && <div className="text-xs text-crimson font-medium text-center bg-crimson/10 border border-crimson/30 py-2 rounded-lg">{error}</div>}
+                           <Button type="submit" disabled={!canSubmit} className="w-full">
+                               {loading ? 'Menyimpan...' : 'Ganti Password'}
+                           </Button>
+                       </form>
+                   </div>
+               </div>
+           );
+       }
+
        // Header dibuat seringkas mungkin — Aa-/Aa+/Keluar dipindah ke menu kecil
        // (bukan tombol permanen) karena jarang dipakai, supaya tidak memakan
        // ruang layar yang berharga bagi guru piket yang kerja satu tangan.
        // Prinsip "satu tangan, satu pandangan, satu keputusan": zona atas cuma
        // untuk identitas & pengaturan yang jarang disentuh.
-       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange, activeTab }) {
+       function Header({ user, roleLabel, onLogout, onChangePassword, fontScale, onFontScaleChange, activeTab }) {
            const [showMenu, setShowMenu] = useState(false);
+           // Profil/Akun -> Keamanan -> Ganti Password. Sengaja BUKAN menu
+           // BottomNav (lihat catatan ruang BottomNav yang sudah pas di
+           // config.js) -- dijangkau lewat menu titik-tiga ini, tempat
+           // Aa-/Aa+/Keluar juga tinggal, karena semuanya sama-sama
+           // "pengaturan akun, jarang disentuh".
+           const [showChangePassword, setShowChangePassword] = useState(false);
            // Menu ini tumpang tindih z-index dengan BottomNav (z-40 > overlay
            // penutup z-10 milik menu ini), jadi tap di BottomNav untuk pindah tab
            // tidak pernah "kena" overlay-nya -- menu tetap terbuka nyangkut di atas
@@ -352,11 +440,12 @@
            // activeTab berubah, supaya pindah tab = menu ikut tertutup.
            useEffect(() => { setShowMenu(false); }, [activeTab]);
            return (
-               // bg-navy/95 (bukan opak) + backdrop-blur: pengecualian glassmorphism
-               // yang memang diizinkan audit desain untuk header sticky. Hanya WARNA
-               // yang berubah di sini -- padding/ukuran logo/struktur SAMA PERSIS
-               // dengan sebelumnya, supaya tinggi header (dan pt-20 di app.js:688
-               // yang bergantung padanya) tidak bergeser.
+               <React.Fragment>
+               {/* bg-navy/95 (bukan opak) + backdrop-blur: pengecualian glassmorphism
+                   yang memang diizinkan audit desain untuk header sticky. Hanya WARNA
+                   yang berubah di sini -- padding/ukuran logo/struktur SAMA PERSIS
+                   dengan sebelumnya, supaya tinggi header (dan pt-20 di app.js:688
+                   yang bergantung padanya) tidak bergeser. */}
                <div className="fixed top-0 inset-x-0 z-30 bg-navy/95 backdrop-blur-md border-b border-white/10">
                    <div className="max-w-2xl mx-auto px-4 pt-4 pb-2.5 flex items-center justify-between">
                        <div className="flex items-center space-x-3 min-w-0">
@@ -385,10 +474,14 @@
                                            <button onClick={() => onFontScaleChange(-1)} aria-label="Perkecil huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-600 transition">Aa−</button>
                                            <button onClick={() => onFontScaleChange(1)} aria-label="Perbesar huruf" className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 text-sm font-bold text-slate-600 transition">Aa+</button>
                                        </div>
-                                       {/* border-t + mt-1.5 pt-1.5 (bukan langsung nempel di bawah
-                                           Aa+/Aa-) -- dilaporkan: menu ukuran tulisan terlalu dekat
-                                           dengan Keluar, gampang ke-tap keluar tanpa sengaja saat
-                                           mau atur ukuran huruf. */}
+                                       {/* border-t + mt-1.5 pt-1.5 di sini dan di Keluar di bawah
+                                           (bukan langsung nempel di bawah Aa+/Aa-) -- dilaporkan: menu
+                                           ukuran tulisan terlalu dekat dengan Keluar, gampang ke-tap
+                                           tanpa sengaja. Ganti Password ikut memakai jarak yang sama. */}
+                                       <div className="border-t border-slate-200 mt-1.5 pt-1.5">
+                                           <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wide px-2 pb-1">Keamanan</div>
+                                           <button onClick={() => { setShowMenu(false); setShowChangePassword(true); }} className="w-full text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 px-2.5 py-2.5 rounded-lg transition">Ganti Password</button>
+                                       </div>
                                        <div className="border-t border-slate-200 mt-1.5 pt-1.5">
                                            <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2.5 rounded-lg transition">Keluar</button>
                                        </div>
@@ -398,6 +491,10 @@
                        </div>
                    </div>
                </div>
+               {showChangePassword && (
+                   <ChangePasswordModal onSubmit={onChangePassword} onClose={() => setShowChangePassword(false)} />
+               )}
+               </React.Fragment>
            );
        }
 

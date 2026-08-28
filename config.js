@@ -41,6 +41,14 @@
            osis:          { label: 'OSIS',          menus: ['upacara'],                                                                             primaryMenus: ['upacara'], canExport: false, canViewRanking: false },
        };
 
+       // Cuma indikator UI di form Ganti Password (ChangePasswordModal,
+       // ui-common.js) — server (PASSWORD_MIN_LENGTH di Utils.gs) tetap
+       // satu-satunya penegak sesungguhnya. Dua runtime terpisah tanpa
+       // import bersama, jadi nilainya diduplikasi manual di sini — sama
+       // seperti HARI_PIKET/HARI_PIKET_SERVER di bawah. Kalau nilai server
+       // berubah, ubah juga di sini supaya indikatornya tidak menyesatkan.
+       const PASSWORD_MIN_LENGTH = 6;
+
        // Nama hari tetap (bukan Date.toLocaleDateString) supaya "hari ini" untuk
        // Jadwal Piket tidak tergantung locale browser/OS pengguna.
        const HARI_PIKET = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
