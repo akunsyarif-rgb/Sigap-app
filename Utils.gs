@@ -59,6 +59,23 @@ function generateSalt() {
   return Utilities.getUuid().replace(/-/g, '');
 }
 
+// ===== Policy password baru (Ganti Password sendiri) =====
+// SIGAP TIDAK PERNAH punya kebijakan panjang/kerumitan password sebelum ini
+// — addTeacher & updatePassword (admin, Code.gs) hanya mensyaratkan field
+// tidak kosong (lihat submitAdd/submitReset di admin.js), tanpa batas
+// panjang atau syarat kerumitan sama sekali. Angka di bawah SENGAJA dipilih
+// sebagai batas bawah paling minimal (menolak password kosong/1-2 karakter
+// yang jelas rawan tebak), BUKAN kebijakan kerumitan baru (tidak
+// mewajibkan huruf besar/angka/simbol) — menambah syarat kerumitan bukan
+// business rule yang diminta untuk fitur ini. Dipakai HANYA oleh action
+// 'changePassword' (Code.gs); tidak diterapkan mundur ke addTeacher/
+// updatePassword admin supaya tidak mengubah perilaku existing yang tidak
+// terkait. Mirror di sisi klien: PASSWORD_MIN_LENGTH di config.js (indikator
+// UI saja, server tetap satu-satunya penegak sesungguhnya) — sama seperti
+// HARI_PIKET/HARI_PIKET_SERVER yang juga sengaja diduplikasi karena .gs dan
+// .js adalah dua runtime terpisah tanpa import bersama.
+var PASSWORD_MIN_LENGTH = 6;
+
 // Nama kelas diketik manual di beberapa tempat (Master_Siswa, Kelola > Wali
 // Kelas, dst.) — jadi dicocokkan toleran spasi berlebih/huruf besar-kecil, DAN
 // toleran beda format antara catatan lama vs Master_Siswa yang sudah diubah

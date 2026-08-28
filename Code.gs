@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-izin-kapasitas-piket-vs-bk';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin'];
+var BACKEND_VERSION = '2026-08-28-change-password';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'changePassword'];
 
 // ===== doPost =====
 
@@ -217,6 +217,93 @@ function doPost(e) {
       CacheService.getScriptCache().remove('login_users');
       logAudit(sessionUser, 'Tambah Guru', data.newName + ' (' + data.newId + ', role: ' + data.newRole + ')');
       return jsonOut({ status: 'success' });
+    }
+
+    // ---- Ganti password sendiri (self-service, oleh & untuk SESI yang
+    // sedang login — beda dari 'updatePassword' di bawah yang admin-only dan
+    // menyasar akun ORANG LAIN). Semua role termasuk OSIS boleh (akun OSIS
+    // tetap satu baris Master_Guru seperti role lain, lihat alur login di
+    // atas) — tidak ada gerbang isAdminRole/isBkRole di sini, karena ini
+    // murni mengubah akun milik diri sendiri.
+    //
+    // Identitas SELALU dari sessionUser.id (server, hasil getSessionUser),
+    // TIDAK PERNAH dari targetId/userId/id apa pun yang mungkin dikirim
+    // klien — data.* dari body request tidak dibaca sama sekali untuk
+    // menentukan AKUN mana yang diubah, jadi tidak ada payload yang bisa
+    // mengarahkan aksi ini ke akun lain (pola yang sama seperti
+    // deleteTeacher/toggleTeacherStatus di atas yang membandingkan
+    // data.targetId ke sessionUser.id — di sini malah lebih ketat: baris
+    // yang dicari SELALU baris sessionUser.id sendiri). ----
+    if (action === 'changePassword') {
+      var oldPassword = String(data.oldPassword || '');
+      var newPasswordTrim = String(data.newPassword || '').trim();
+      var confirmPasswordTrim = String(data.confirmPassword || '').trim();
+
+      if (!oldPassword || !newPasswordTrim || !confirmPasswordTrim) {
+        return jsonOut({ status: 'error', message: 'Semua kolom wajib diisi.' });
+      }
+      if (newPasswordTrim !== confirmPasswordTrim) {
+        return jsonOut({ status: 'error', message: 'Konfirmasi password baru tidak cocok.' });
+      }
+      if (newPasswordTrim.length < PASSWORD_MIN_LENGTH) {
+        return jsonOut({ status: 'error', message: 'Password baru minimal ' + PASSWORD_MIN_LENGTH + ' karakter.' });
+      }
+
+      var pwSheet = ss.getSheetByName('Master_Guru');
+      var pwRows = pwSheet.getDataRange().getValues();
+      var pwRowIndex = -1;
+      for (var pi = 1; pi < pwRows.length; pi++) {
+        if (String(pwRows[pi][0]) === String(sessionUser.id)) { pwRowIndex = pi; break; }
+      }
+      if (pwRowIndex === -1) {
+        // Baris akun sudah tidak ada lagi (mis. dihapus admin di sela-sela
+        // sesi ini masih hidup) — pesan generik, tidak membeberkan detail.
+        return jsonOut({ status: 'error', message: 'Akun tidak ditemukan. Silakan login ulang.' });
+      }
+
+      // Kolom C (index 2) = Hash, kolom H (index 7) = Salt — sama seperti
+      // yang dibaca alur login di atas.
+      var storedHash = String(pwRows[pwRowIndex][2]);
+      var storedSalt = String(pwRows[pwRowIndex][7] || '');
+
+      var oldCheck = verifyPassword(oldPassword, storedHash, storedSalt);
+      if (!oldCheck || !oldCheck.matched) {
+        // Pesan generik yang SAMA persis pola-nya dengan "Password salah!"
+        // di login — tidak membedakan "akun tidak ada" vs "password salah"
+        // vs alasan lain, supaya tidak bocor informasi lewat pesan.
+        return jsonOut({ status: 'error', message: 'Password saat ini salah.' });
+      }
+
+      // Password lama & baru harus berbeda — dicek lewat verifyPassword
+      // (bukan cuma String equality) supaya skema legacy yang case-insensitive
+      // juga ikut terdeteksi "sama saja", bukan cuma perbandingan literal.
+      var sameAsOld = verifyPassword(newPasswordTrim, storedHash, storedSalt);
+      if (sameAsOld && sameAsOld.matched) {
+        return jsonOut({ status: 'error', message: 'Password baru tidak boleh sama dengan password lama.' });
+      }
+
+      var newSalt = generateSalt();
+      pwSheet.getRange(pwRowIndex + 1, 3).setValue(hashPasswordSalted(newPasswordTrim, newSalt));
+      pwSheet.getRange(pwRowIndex + 1, 8).setValue(newSalt);
+
+      // Mencabut SEMUA sesi user ini (device/tab lain sekalipun) tanpa
+      // menyentuh sesi user lain — lihat markPasswordChanged() di Auth.gs.
+      markPasswordChanged(sessionUser.id);
+      // Sesi yang sedang dipakai request INI juga dicabut seketika, sama
+      // seperti action 'logout' — tidak menunggu request berikutnya untuk
+      // mengecek loginAt-vs-changedAt.
+      CacheService.getScriptCache().remove('sess_' + data.sessionToken);
+      // Respons ini tidak boleh membawa sessionExpiresAt untuk sesi yang
+      // baru saja dicabut sendiri (jsonOut menempelkannya otomatis kalau
+      // field ini masih > 0 dari getSessionUser() di atas tadi).
+      SESSION_RENEWED_UNTIL = 0;
+
+      // Audit Log: HANYA metadata (siapa & kapan) — TIDAK PERNAH mencatat
+      // password lama/baru dalam bentuk apa pun, sesuai pola logAudit di
+      // seluruh file ini (mis. buildExportAuditDetail di Utils.gs).
+      logAudit(sessionUser, 'Ganti Password', 'Self-service oleh ' + sessionUser.name + ' (' + sessionUser.id + ')');
+
+      return jsonOut({ status: 'success', message: 'Password berhasil diubah. Silakan login kembali.' });
     }
 
     // ---- Reset password (admin only) ----
