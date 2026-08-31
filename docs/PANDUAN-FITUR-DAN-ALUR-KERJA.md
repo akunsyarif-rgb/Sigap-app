@@ -188,7 +188,7 @@ Satu halaman berisi tiga kelompok pengaturan:
 
 - **Guru & Akun**: menambah guru baru (ID, nama, password awal, peran, jabatan), mengatur ulang password yang lupa, mengubah jabatan, mengubah peran, menetapkan **wali kelas** (dipilih dari daftar kelas yang ada, bukan diketik manual agar tidak salah ketik), serta **menonaktifkan/mengaktifkan** akun guru yang pindah/pensiun. Ada kotak pencarian nama guru.
 - **Jadwal Piket**: menyusun jadwal piket mingguan (Senin–Sabtu) dengan memilih hari dan guru, lalu menyimpan. Jadwal ini yang muncul di Beranda semua guru sebagai "Guru Piket Hari Ini".
-- **Hapus data surat per bulan**: pembersihan arsip surat dalam jumlah besar, dengan dialog konfirmasi sebelum benar-benar dihapus.
+- **Pemeliharaan Data (Hapus Data)**: menghapus data operasional lama (Keterlambatan, Pelanggaran, Surat/Izin, Izin Keluar) berdasarkan rentang **Tanggal Mulai – Tanggal Selesai** bebas (ada pintasan Hari Ini/Bulan Ini/Bulan Lalu), bisa memilih beberapa jenis data sekaligus. Selalu dua tahap: pilih periode & jenis data dulu, lalu **pratinjau** jumlah data yang akan terhapus (dihitung ulang oleh server, bukan tebakan di layar) sebelum tombol hapus bisa ditekan — disertai peringatan untuk mengekspor data dulu (tombol "Export Data Terlebih Dahulu") dan centang konfirmasi eksplisit. Audit Log dan data guru/siswa tidak termasuk yang bisa dihapus lewat menu ini.
 
 ### 3.10 Audit Log — Jejak Siapa Melakukan Apa
 

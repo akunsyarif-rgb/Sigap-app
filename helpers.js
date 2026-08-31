@@ -294,6 +294,19 @@
        const isSameDay = (a, b) => a.toDateString() === b.toDateString();
        const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+       const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+       // Format <input type="date"> (YYYY-MM-DD, LOKAL bukan UTC — beda dari
+       // toISOString() yang bisa mundur/maju satu hari dekat tengah malam
+       // tergantung zona waktu perangkat). Dulu didefinisikan sendiri-sendiri
+       // di export-data.js; dipindah ke sini (helpers.js, dimuat lebih awal)
+       // supaya admin.js (Pemeliharaan Data > Hapus Data) bisa memakainya juga
+       // tanpa menduplikasi logika yang sama persis.
+       function toDateInputValue(d) {
+           const x = d instanceof Date && !isNaN(d.getTime()) ? d : new Date();
+           const pad = (n) => (n < 10 ? '0' + n : String(n));
+           return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+       }
 
        function getSemesterInfo(d) {
            const m = d.getMonth();

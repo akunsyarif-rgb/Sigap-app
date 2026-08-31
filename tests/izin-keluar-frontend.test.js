@@ -888,7 +888,7 @@ test('routing pintasan: App membuka Gerbang di mode Izin Keluar, tanpa kewenanga
   // GerbangTab menerimanya sebagai mode AWAL.
   assert.match(app, /initialMode=\{gerbangMode\}/);
   // Pindah tab lewat BottomNav mengembalikan Gerbang ke mode normal — tidak nyangkut.
-  assert.match(app, /const navigateTab = \(tab\) => \{ setGerbangMode\('terlambat'\); setActiveTab\(tab\); \};/);
+  assert.match(app, /const navigateTab = \(tab\) => \{ setGerbangMode\('terlambat'\); setExportPrefill\(null\); setActiveTab\(tab\); \};/);
   assert.match(app, /<BottomNav[^>]*setActiveTab=\{navigateTab\}/);
   // canVerifyIzin TETAP datang dari server; pintasan tidak menyentuhnya.
   assert.ok(!/goToIzinKeluar[\s\S]{0,200}canVerify/.test(app), 'pintasan tidak boleh menyentuh canVerifyIzin');
