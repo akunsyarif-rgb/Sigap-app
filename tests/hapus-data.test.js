@@ -131,6 +131,13 @@ function buildSheets() {
           D('2026-03-01T08:05:00'), D('2026-03-01T09:00:00'), 'Pak Piket', 'G10', ''],
       ]
     ),
+    Pelanggaran_Upacara: makeSheet(
+      ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID'],
+      [
+        [D('2025-12-15T07:00:00'), '1001', 'Rahma', 'XI A', 'Tidak pakai topi', '', 'Ketua OSIS', 'S99'],
+        [D('2026-01-12T07:00:00'), '2002', 'Budi', 'XI B', 'Bicara saat upacara', '', 'Ketua OSIS', 'S99'],
+      ]
+    ),
     Audit_Log: makeSheet(['Timestamp', 'Nama', 'ID', 'Aksi', 'Detail'], []),
   };
 }
@@ -311,6 +318,38 @@ test('Hapus Data: beberapa kategori sekaligus dalam satu eksekusi', () => {
   assert.equal(s.sheets.Surat_Masuk.getLastRow(), 2, '2 data + header - 1 terhapus = 2 tersisa (termasuk header)');
   // Kategori yang tidak diminta (Pelanggaran) tidak tersentuh.
   assert.equal(s.sheets.Pelanggaran.getLastRow(), 3);
+});
+
+// ================= PELANGGARAN UPACARA =================
+
+test('Hapus Data: jenis upacara (Pelanggaran_Upacara) bisa dipratinjau dan dihapus seperti empat jenis lainnya', () => {
+  const s = loadServer();
+  const pratinjau = s.preview('admin', { jenis: ['upacara'], ...JAN });
+  assert.equal(pratinjau.status, 'success');
+  assert.equal(pratinjau.counts.upacara, 1, 'satu baris Pelanggaran_Upacara di Januari 2026');
+
+  const eksekusi = s.hapus('admin', { jenis: ['upacara'], ...JAN, confirm: true });
+  assert.equal(eksekusi.status, 'success');
+  assert.equal(eksekusi.counts.upacara, 1);
+  assert.equal(eksekusi.total, 1);
+  assert.equal(s.sheets.Pelanggaran_Upacara.getLastRow(), 2, '2 data + header - 1 terhapus = 2 baris tersisa (termasuk header)');
+
+  const sisa = s.sheets.Pelanggaran_Upacara._data.slice(1).map((r) => r[0].toISOString());
+  assert.ok(sisa.includes(D('2025-12-15T07:00:00').toISOString()), 'baris Desember (sebelum periode) tetap ada');
+
+  // Kategori lain tidak tersentuh.
+  assert.equal(s.sheets.Log_Gerbang.getLastRow(), 6);
+  assert.equal(s.sheets.Pelanggaran.getLastRow(), 3);
+});
+
+test('Hapus Data: menghapus upacara bareng jenis lain dalam satu eksekusi', () => {
+  const s = loadServer();
+  const res = s.hapus('admin', { jenis: ['pelanggaran', 'upacara'], ...JAN, confirm: true });
+  assert.equal(res.status, 'success');
+  assert.equal(res.counts.pelanggaran, 1);
+  assert.equal(res.counts.upacara, 1);
+  assert.equal(res.total, 2);
+  assert.equal(s.sheets.Pelanggaran_Upacara.getLastRow(), 2);
 });
 
 // ================= MANIPULASI PAYLOAD =================
