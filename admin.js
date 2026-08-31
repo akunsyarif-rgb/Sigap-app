@@ -11,6 +11,19 @@
            { value: 'admin', label: 'Admin' },
        ];
 
+       // Cermin dari HAPUS_DATA_JENIS di Utils.gs (pola yang sama dengan
+       // EXPORT_JENIS_UI di export-data.js) — daftar pilihan di layar ini
+       // cuma cermin dari yang server izinkan, bukan sumber kebenarannya.
+       // Bimbingan Khusus & Pelanggaran Upacara SENGAJA tidak ada di sini —
+       // lihat catatan panjang di HAPUS_DATA_JENIS kenapa baru empat jenis
+       // ini yang disertakan Pemeliharaan Data > Hapus Data.
+       const HAPUS_DATA_JENIS_UI = [
+           { key: 'keterlambatan', label: 'Keterlambatan' },
+           { key: 'pelanggaran', label: 'Pelanggaran' },
+           { key: 'surat', label: 'Surat/Izin' },
+           { key: 'izin', label: 'Izin Keluar' },
+       ];
+
        // Kartu hub "Kelola" — satu tombol besar per sub-area (Guru / Jadwal
        // Piket / Pemeliharaan Data), dipakai di layar hub KelolaTab supaya
        // daftar guru yang panjang (54+ guru di sekolah nyata) tidak lagi
@@ -45,7 +58,7 @@
            );
        }
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onDeleteSurat, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onPreviewHapusData, onHapusData, onGoToExportData, loading }) {
            // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
            // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
            // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
@@ -209,33 +222,86 @@
                });
            };
 
-           // ===== Hapus Data Surat per Bulan/Tahun — dipindah dari Gerbang ke
-           // sini (Roadmap: Gerbang tidak lagi jadi tempat browsing/kelola data,
-           // cuma cari-pilih-catat; ini murni tugas admin, bukan guru piket). =====
-           const [showDeleteSuratPanel, setShowDeleteSuratPanel] = useState(false);
-           const [delSuratMonth, setDelSuratMonth] = useState(String(new Date().getMonth() + 1));
-           const [delSuratYear, setDelSuratYear] = useState(String(new Date().getFullYear()));
-           // Hapus massal (1 bulan penuh, tidak bisa dibatalkan) sebelumnya
-           // langsung eksekusi begitu tombol ditekan — beda dari hapus 1 baris
-           // di Riwayat yang sudah punya dialog konfirmasi (confirmDeleteTarget).
-           // confirmDeleteSurat MENYIMPAN snapshot bulan/tahun saat tombol
-           // ditekan (bukan baca ulang delSuratMonth/delSuratYear saat eksekusi)
-           // supaya kalau dropdown sempat berubah selagi dialog terbuka, yang
-           // benar-benar terhapus tetap sesuai yang ditampilkan di dialog.
-           const [confirmDeleteSurat, setConfirmDeleteSurat] = useState(null);
-           const [deletingSurat, setDeletingSurat] = useState(false);
-           const monthLabel = (m) => new Date(2000, parseInt(m, 10) - 1).toLocaleDateString('id-ID', { month: 'long' });
-           const requestDeleteSurat = () => {
-               setConfirmDeleteSurat({ month: delSuratMonth, year: delSuratYear });
+           // ===== Pemeliharaan Data > Hapus Data — evolusi dari "Hapus Data
+           // Surat per Bulan/Tahun" yang lama (satu sheet, satu bulan/tahun,
+           // tanpa pratinjau, langsung eksekusi begitu tombol ditekan). Alur
+           // barunya SELALU dua tahap: Tahap 1 di halaman ini (periode bebas +
+           // pilih beberapa jenis data), Tahap 2 di modal confirmHapusData di
+           // bawah (jumlah data hasil pratinjau server + centang konfirmasi
+           // eksplisit) — tombol hapus di modal itu satu-satunya jalan
+           // eksekusi, tidak ada cara langsung menghapus dari Tahap 1. =====
+           const [hapusStart, setHapusStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
+           const [hapusEnd, setHapusEnd] = useState(() => toDateInputValue(new Date()));
+           const [hapusJenis, setHapusJenis] = useState({ keterlambatan: false, pelanggaran: false, surat: false, izin: false });
+           const [hapusPreviewMsg, setHapusPreviewMsg] = useState('');
+           const [hapusPreviewLoading, setHapusPreviewLoading] = useState(false);
+           // confirmHapusData MENYIMPAN snapshot jenis+periode+hasil pratinjau
+           // saat pratinjau berhasil dimuat (bukan baca ulang state periode
+           // saat eksekusi ditekan) — pola sama seperti confirmDeleteSurat
+           // lama, supaya kalau form Tahap 1 sempat berubah selagi modal
+           // Tahap 2 terbuka, yang benar-benar dikirim ke server tetap sesuai
+           // yang ditampilkan di dialog konfirmasi.
+           const [confirmHapusData, setConfirmHapusData] = useState(null);
+           const [hapusConfirmChecked, setHapusConfirmChecked] = useState(false);
+           const [hapusDeleting, setHapusDeleting] = useState(false);
+
+           const hapusJenisTerpilih = () => HAPUS_DATA_JENIS_UI.map(j => j.key).filter(k => hapusJenis[k]);
+
+           const applyHapusShortcut = (kind) => {
+               const now = new Date();
+               if (kind === 'hari_ini') {
+                   const t = toDateInputValue(now);
+                   setHapusStart(t); setHapusEnd(t);
+               } else if (kind === 'bulan_ini') {
+                   setHapusStart(toDateInputValue(startOfMonth(now)));
+                   setHapusEnd(toDateInputValue(now));
+               } else if (kind === 'bulan_lalu') {
+                   const bulanLalu = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                   setHapusStart(toDateInputValue(startOfMonth(bulanLalu)));
+                   setHapusEnd(toDateInputValue(endOfMonth(bulanLalu)));
+               }
+               setHapusPreviewMsg('');
            };
-           const executeDeleteSurat = () => {
-               if (!confirmDeleteSurat) return;
-               setDeletingSurat(true);
-               onDeleteSurat({ month: confirmDeleteSurat.month, year: confirmDeleteSurat.year }, (ok, text) => {
-                   setDeletingSurat(false);
-                   showMsg(ok, text);
-                   setConfirmDeleteSurat(null);
-                   setShowDeleteSuratPanel(false);
+
+           const toggleHapusJenis = (key) => {
+               setHapusJenis(prev => ({ ...prev, [key]: !prev[key] }));
+               setHapusPreviewMsg('');
+           };
+
+           // Pratinjau di sini HANYA kenyamanan layar (biar admin tidak perlu
+           // ke server dulu untuk tahu formnya belum lengkap) — server TETAP
+           // memvalidasi ulang semuanya (lihat previewHapusData di Code.gs),
+           // jadi longgar-ketatnya pengecekan di sini tidak pernah jadi celah.
+           const requestPreviewHapusData = () => {
+               const jenis = hapusJenisTerpilih();
+               if (!hapusStart || !hapusEnd) { setHapusPreviewMsg('Isi tanggal mulai dan tanggal selesai.'); return; }
+               if (hapusStart > hapusEnd) { setHapusPreviewMsg('Tanggal mulai tidak boleh melewati tanggal selesai.'); return; }
+               if (!jenis.length) { setHapusPreviewMsg('Pilih minimal satu jenis data.'); return; }
+               setHapusPreviewMsg('');
+               setHapusPreviewLoading(true);
+               onPreviewHapusData({ jenis, start: hapusStart, end: hapusEnd }, (ok, result) => {
+                   setHapusPreviewLoading(false);
+                   if (!ok) { setHapusPreviewMsg(typeof result === 'string' ? result : 'Gagal memuat pratinjau.'); return; }
+                   setHapusConfirmChecked(false);
+                   setConfirmHapusData({
+                       jenis, start: hapusStart, end: hapusEnd,
+                       counts: result.counts || {}, total: result.total || 0, periodeLabel: result.periodeLabel || '',
+                   });
+               });
+           };
+
+           const executeHapusData = () => {
+               if (!confirmHapusData || !hapusConfirmChecked) return;
+               setHapusDeleting(true);
+               onHapusData({ jenis: confirmHapusData.jenis, start: confirmHapusData.start, end: confirmHapusData.end, confirm: true }, (ok, result) => {
+                   setHapusDeleting(false);
+                   if (ok) {
+                       showMsg(true, `✓ Berhasil menghapus ${result && result.total || 0} data.`);
+                       setConfirmHapusData(null);
+                       setHapusConfirmChecked(false);
+                   } else {
+                       showMsg(false, typeof result === 'string' ? result : 'Gagal menghapus data.');
+                   }
                });
            };
 
@@ -390,21 +456,59 @@
                                    {msg}
                                </div>
                            )}
+                           <p className="text-[11px] text-slate-500 leading-relaxed">
+                               Hapus data operasional lama berdasarkan rentang tanggal. Jumlah data yang
+                               akan terhapus SELALU ditampilkan dulu untuk dikonfirmasi — tidak ada
+                               penghapusan langsung dari halaman ini.
+                           </p>
+
                            <Card className="space-y-3">
-                               <h3 className="text-xs font-display font-bold text-slate-800">Data Surat</h3>
-                               <button onClick={() => setShowDeleteSuratPanel(v => !v)} className="text-[10px] font-semibold text-crimson">Hapus Data per Bulan/Tahun</button>
-                               {showDeleteSuratPanel && (
-                                   <div className="space-y-2 animate-pop">
-                                       <div className="grid grid-cols-2 gap-2">
-                                           <select value={delSuratMonth} onChange={(e) => setDelSuratMonth(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900">
-                                               {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('id-ID', { month: 'long' })}</option>)}
-                                           </select>
-                                           <input type="number" value={delSuratYear} onChange={(e) => setDelSuratYear(e.target.value)} className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900" />
-                                       </div>
-                                       <Button onClick={requestDeleteSurat} variant="danger" className="w-full">Hapus Data Periode Ini</Button>
+                               <h3 className="text-xs font-display font-bold text-slate-800">Periode Data</h3>
+                               <div className="grid grid-cols-3 gap-2">
+                                   <Button size="compact" variant="ghost" onClick={() => applyHapusShortcut('hari_ini')}>Hari Ini</Button>
+                                   <Button size="compact" variant="ghost" onClick={() => applyHapusShortcut('bulan_ini')}>Bulan Ini</Button>
+                                   <Button size="compact" variant="ghost" onClick={() => applyHapusShortcut('bulan_lalu')}>Bulan Lalu</Button>
+                               </div>
+                               <div className="grid grid-cols-2 gap-2">
+                                   <div>
+                                       <span className="block text-[10px] text-slate-500 mb-1">Tanggal Mulai</span>
+                                       <input type="date" value={hapusStart} onChange={(e) => { setHapusStart(e.target.value); setHapusPreviewMsg(''); }} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                    </div>
-                               )}
+                                   <div>
+                                       <span className="block text-[10px] text-slate-500 mb-1">Tanggal Selesai</span>
+                                       <input type="date" value={hapusEnd} onChange={(e) => { setHapusEnd(e.target.value); setHapusPreviewMsg(''); }} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                                   </div>
+                               </div>
                            </Card>
+
+                           <Card className="space-y-2">
+                               <h3 className="text-xs font-display font-bold text-slate-800">Pilih Data</h3>
+                               <p className="text-[10px] text-slate-500">Hanya jenis data operasional yang aman dihapus massal. Audit Log serta data guru & siswa tidak ada di menu ini.</p>
+                               <div className="space-y-1.5">
+                                   {HAPUS_DATA_JENIS_UI.map(j => (
+                                       <label key={j.key} className="flex items-center gap-2.5 bg-white/60 rounded-xl px-3 py-2.5 cursor-pointer">
+                                           <input type="checkbox" checked={!!hapusJenis[j.key]} onChange={() => toggleHapusJenis(j.key)} className="h-4 w-4 flex-shrink-0" />
+                                           <span className="text-xs font-semibold text-slate-700">{j.label}</span>
+                                       </label>
+                                   ))}
+                               </div>
+                           </Card>
+
+                           <Card tone="crimson" className="space-y-2.5">
+                               <h3 className="text-xs font-display font-bold text-crimson">Keamanan Data</h3>
+                               <p className="text-[11px] text-slate-600 leading-relaxed">Data yang dihapus tidak dapat dipulihkan dari SIGAP. Pastikan data penting telah diekspor.</p>
+                               <Button variant="secondary" className="w-full" onClick={() => onGoToExportData({ jenis: hapusJenisTerpilih()[0], start: hapusStart, end: hapusEnd })}>
+                                   Export Data Terlebih Dahulu
+                               </Button>
+                           </Card>
+
+                           {hapusPreviewMsg && (
+                               <div className="text-xs font-medium text-center py-2 rounded-lg border text-crimson bg-crimson/10 border-crimson/30">{hapusPreviewMsg}</div>
+                           )}
+
+                           <Button onClick={requestPreviewHapusData} variant="danger" className="w-full" disabled={hapusPreviewLoading}>
+                               {hapusPreviewLoading ? 'Menghitung...' : 'Lihat Pratinjau & Hapus'}
+                           </Button>
                        </React.Fragment>
                    )}
 
@@ -544,21 +648,50 @@
                        </div>
                    )}
 
-                   {/* Konfirmasi hapus massal — pola sama persis dengan confirmDeleteTarget
-                       di Riwayat (beranda-riwayat.js), supaya hapus 1 baris & hapus 1
-                       bulan penuh sama-sama tidak bisa langsung tereksekusi dari 1 tap. */}
-                   {confirmDeleteSurat && (
+                   {/* Tahap 2 dari alur Hapus Data: jumlah data hasil pratinjau SERVER
+                       (bukan tebakan klien) + konfirmasi eksplisit lewat checkbox — pola
+                       yang sama semangatnya dengan confirmDeleteGuru/confirmDeleteTarget
+                       (Riwayat), cuma di sini tombol hapus TETAP nonaktif sampai
+                       checkbox-nya dicentang, karena cakupannya bisa lintas kategori &
+                       lintas periode bebas (bukan cuma satu bulan seperti sebelumnya). */}
+                   {confirmHapusData && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
                                <div className="text-center">
-                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Data Surat?</h3>
-                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{monthLabel(confirmDeleteSurat.month)} {confirmDeleteSurat.year}</div>
-                                   <p className="text-[11px] text-slate-500 mt-2">Anda akan menghapus seluruh data surat bulan {monthLabel(confirmDeleteSurat.month)} {confirmDeleteSurat.year}. Tindakan ini tidak bisa dibatalkan.</p>
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Pratinjau Penghapusan</h3>
+                                   <div className="font-display text-sm font-extrabold text-slate-900 mt-1">{confirmHapusData.periodeLabel}</div>
                                </div>
-                               <Button onClick={executeDeleteSurat} disabled={deletingSurat} variant="danger" className="w-full">
-                                   {deletingSurat ? 'Menghapus...' : 'Ya, Hapus'}
+                               <div className="space-y-1.5">
+                                   {confirmHapusData.jenis.map(key => {
+                                       const def = HAPUS_DATA_JENIS_UI.find(j => j.key === key);
+                                       return (
+                                           <div key={key} className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+                                               <span>{def ? def.label : key}</span>
+                                               <span className="font-bold text-slate-900">{confirmHapusData.counts[key] || 0}</span>
+                                           </div>
+                                       );
+                                   })}
+                                   <div className="flex items-center justify-between text-xs font-bold text-crimson bg-crimson/10 rounded-lg px-3 py-2">
+                                       <span>Total</span>
+                                       <span>{confirmHapusData.total}</span>
+                                   </div>
+                               </div>
+                               {confirmHapusData.total === 0 ? (
+                                   <p className="text-[11px] text-slate-500 text-center">Tidak ada data pada periode & jenis ini — tidak ada yang perlu dihapus.</p>
+                               ) : (
+                                   <React.Fragment>
+                                       <label className="flex items-start gap-2.5 text-[11px] text-slate-600 leading-relaxed cursor-pointer">
+                                           <input type="checkbox" checked={hapusConfirmChecked} onChange={(e) => setHapusConfirmChecked(e.target.checked)} className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                           <span>Saya memahami bahwa data yang dipilih akan dihapus permanen dan tidak dapat dipulihkan dari SIGAP.</span>
+                                       </label>
+                                       <Button onClick={executeHapusData} disabled={!hapusConfirmChecked || hapusDeleting} variant="danger" className="w-full">
+                                           {hapusDeleting ? 'Menghapus...' : `Ya, Hapus ${confirmHapusData.total} Data Ini`}
+                                       </Button>
+                                   </React.Fragment>
+                               )}
+                               <Button onClick={() => { setConfirmHapusData(null); setHapusConfirmChecked(false); }} variant="secondary" className="w-full" disabled={hapusDeleting}>
+                                   {confirmHapusData.total === 0 ? 'Tutup' : 'Batal'}
                                </Button>
-                               <Button onClick={() => setConfirmDeleteSurat(null)} variant="secondary" className="w-full" disabled={deletingSurat}>Batal</Button>
                            </div>
                        </div>
                    )}

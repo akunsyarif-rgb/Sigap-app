@@ -41,11 +41,9 @@
            return false;
        }
 
-       function toDateInputValue(d) {
-           const x = d instanceof Date && !isNaN(d.getTime()) ? d : new Date();
-           const pad = (n) => (n < 10 ? '0' + n : String(n));
-           return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
-       }
+       // toDateInputValue() dipindah ke helpers.js (dipakai juga oleh
+       // Pemeliharaan Data > Hapus Data di admin.js) — lihat definisinya di
+       // sana, bukan lagi didefinisikan di file ini.
 
        // Pemeriksaan cepat di layar supaya kesalahan yang jelas tidak perlu
        // menunggu satu perjalanan ke server. Server TETAP memvalidasi ulang
@@ -59,14 +57,23 @@
            return '';
        }
 
-       function ExportTab({ isBk, waliKelas, classes, onGenerate }) {
+       // initialJenis/initialStart/initialEnd: prefill OPSIONAL, dipakai
+       // tombol "Export Data Terlebih Dahulu" di Pemeliharaan Data > Hapus
+       // Data (admin.js) lewat goToExportData() di app.js — pola yang sama
+       // dengan initialMode di GerbangTab (lihat goToIzinKeluar). Sengaja
+       // cuma navigasi + isi awal form, BUKAN jalur export baru: submit tetap
+       // lewat onGenerate yang sama, dan server tetap memvalidasi ulang
+       // semuanya (resolveExportAccess/validateExportPeriod) seperti biasa.
+       function ExportTab({ isBk, waliKelas, classes, onGenerate, initialJenis, initialStart, initialEnd }) {
            const lockedKelas = isBk ? '' : String(waliKelas || '').trim();
            const jenisOptions = exportJenisOptions(!!isBk);
 
-           const [jenis, setJenis] = useState(jenisOptions[0] ? jenisOptions[0].key : 'keterlambatan');
+           const [jenis, setJenis] = useState(() => (
+               initialJenis && jenisOptions.some(j => j.key === initialJenis) ? initialJenis : (jenisOptions[0] ? jenisOptions[0].key : 'keterlambatan')
+           ));
            const [kelas, setKelas] = useState(lockedKelas);
-           const [start, setStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
-           const [end, setEnd] = useState(() => toDateInputValue(new Date()));
+           const [start, setStart] = useState(() => initialStart || toDateInputValue(startOfMonth(new Date())));
+           const [end, setEnd] = useState(() => initialEnd || toDateInputValue(new Date()));
            const [format, setFormat] = useState('pdf');
            const [busy, setBusy] = useState(false);
            const [msg, setMsg] = useState(null);

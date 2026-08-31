@@ -1353,3 +1353,122 @@ function appendRowsBatch(sheet, rows) {
   if (butuh > maks) sheet.insertRowsAfter(maks, butuh - maks);
   sheet.getRange(mulai, 1, list.length, list[0].length).setValues(list);
 }
+
+// ===== HAPUS DATA (Pemeliharaan Data, admin only) =====
+// Evolusi dari aksi lama 'deleteSurat' ("Hapus Data Surat per Bulan/Tahun" —
+// satu sheet, satu bulan/tahun, langsung eksekusi tanpa pratinjau) menjadi
+// penghapusan Tanggal Mulai - Tanggal Selesai bebas, untuk BEBERAPA jenis
+// data sekaligus, dengan pratinjau jumlah WAJIB dulu sebelum apa pun
+// dihapus (action 'previewHapusData' di doGet, action 'hapusDataPeriode' di
+// doPost — Code.gs). Aksi 'deleteSurat' yang lama DIHAPUS, bukan
+// dipertahankan berdampingan — fitur ini menggantikannya sepenuhnya, dan
+// tidak ada test lama yang menggantungkan aksi tersebut.
+//
+// TIDAK ADA sheet/kolom baru: memakai sheet operasional APA ADANYA, kolom
+// Timestamp (kolom A) yang sudah dipakai getRowsSince/EXPORT_JENIS.
+//
+// HANYA EMPAT jenis data disertakan, sengaja bukan semua sheet SIGAP:
+//   keterlambatan (Log_Gerbang), pelanggaran (Pelanggaran),
+//   surat (Surat_Masuk), izin (Izin_Keluar).
+// Bimbingan_Khusus & Pelanggaran_Upacara SENGAJA belum disertakan — Bimbingan
+// Khusus adalah catatan konseling yang lebih sensitif daripada catatan
+// disiplin biasa (alasan yang sama yang membuat getBimbingan/getAuditLog
+// dibatasi ketat), dan menambah kategori baru bukan bagian dari kebutuhan
+// yang diajukan untuk audit ini — bisa menyusul lewat pola identik kalau
+// memang dibutuhkan nanti, tinggal menambah entri di HAPUS_DATA_JENIS.
+// Audit_Log TIDAK PERNAH masuk daftar ini — itu jejak akuntabilitas dengan
+// kebijakan retensinya sendiri (admin-only, lihat getAuditLog), bukan data
+// operasional yang boleh dibersihkan lewat menu ini.
+var HAPUS_DATA_JENIS = {
+  keterlambatan: { label: 'Keterlambatan', sheet: 'Log_Gerbang', cacheCategory: 'terlambat' },
+  pelanggaran: { label: 'Pelanggaran', sheet: 'Pelanggaran', cacheCategory: 'pelanggaran' },
+  surat: { label: 'Surat/Izin', sheet: 'Surat_Masuk', cacheCategory: 'surat' },
+  // izin tidak dipetakan lewat cacheCategory (clearCacheForCategory tidak
+  // mengenal kategori ini) — cache-nya dibuang lewat clearIzinCache() secara
+  // terpisah, dipanggil eksplisit di action 'hapusDataPeriode' (Code.gs).
+  izin: { label: 'Izin Keluar', sheet: 'Izin_Keluar', cacheCategory: null },
+};
+
+// Pagar jumlah baris yang boleh diproses SEKALI panggilan — alasannya sama
+// dengan EXPORT_MAX_ROWS: menghapus baris satu-per-satu (deleteRow) sambil
+// memegang script lock GLOBAL (sigapLock di doPost) untuk jumlah baris yang
+// sangat besar bisa membuat semua guru lain menunggu lama. Admin yang perlu
+// menghapus lebih banyak dari ini disarankan mempersempit periodenya jadi
+// beberapa tahap — jauh lebih aman daripada satu panggilan raksasa yang
+// menahan lock terlalu lama.
+var HAPUS_DATA_MAX_ROWS = 3000;
+
+// Terima array (dari body JSON doPost) ATAU string dipisah koma (dari query
+// string doGet) — dibersihkan jadi daftar key yang valid & unik, urutan
+// permintaan klien dipertahankan supaya rincian pratinjau/Audit Log tetap
+// runtut. Key yang tidak dikenal (typo, atau field lama) DIBUANG DIAM-DIAM,
+// bukan ditolak — validasi "minimal satu jenis" di pemanggil yang
+// memutuskan apakah permintaannya sah.
+function normalizeHapusDataJenisList(input) {
+  var list = Array.isArray(input) ? input : (typeof input === 'string' ? input.split(',') : []);
+  var seen = {};
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var key = String(list[i] || '').trim();
+    if (key && HAPUS_DATA_JENIS[key] && !seen[key]) {
+      seen[key] = true;
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+// Hitung SAJA (tidak menghapus apa pun) baris yang timestamp-nya (kolom A)
+// jatuh di [start, end] — dipakai pratinjau (doGet, murni baca) DAN sebagai
+// pagar volume sebelum eksekusi (doPost) benar-benar menghapus, supaya
+// definisi "cocok" di keduanya tidak pernah berselisih. Membaca HANYA kolom
+// Timestamp (1 panggilan Sheets API), pola yang sama dengan getRowsSince.
+function countRowsInRange(sheet, start, end) {
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  var startMs = start.getTime(), endMs = end.getTime();
+  var tsValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var count = 0;
+  for (var i = 0; i < tsValues.length; i++) {
+    var ts = new Date(tsValues[i][0]).getTime();
+    if (!isNaN(ts) && ts >= startMs && ts <= endMs) count++;
+  }
+  return count;
+}
+
+// Hapus baris yang timestamp-nya ada di [start, end], dari BAWAH ke ATAS
+// supaya deleteRow() tidak pernah menggeser baris yang belum diperiksa —
+// pola yang sama dengan aksi 'deleteSurat' yang digantikan fitur ini, cuma
+// lebih ringan (baca kolom Timestamp saja, bukan getDataRange() penuh
+// seperti sebelumnya). Dipanggil DI DALAM sigapLock (lihat doPost), jadi
+// jumlah yang dikembalikan di sini adalah kebenaran final — angka pratinjau
+// (dari countRowsInRange lewat doGet, di luar lock) tidak pernah dipercaya
+// sebagai jumlah yang benar-benar terhapus; lihat catatan race condition di
+// action 'hapusDataPeriode' (Code.gs).
+function deleteRowsInRange(sheet, start, end) {
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  var startMs = start.getTime(), endMs = end.getTime();
+  var tsValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var deleted = 0;
+  for (var i = tsValues.length - 1; i >= 0; i--) {
+    var ts = new Date(tsValues[i][0]).getTime();
+    if (isNaN(ts) || ts < startMs || ts > endMs) continue;
+    sheet.deleteRow(i + 2);
+    deleted++;
+  }
+  return deleted;
+}
+
+// Detail Audit Log untuk Hapus Data — SENGAJA cuma metadata (periode, jenis,
+// jumlah per kategori, total, status), sama seperti buildExportAuditDetail:
+// tidak ada satu pun nama/NISN siswa yang ikut tercatat di sini.
+function buildHapusDataAuditDetail(jenisList, periodeLabel, counts, total, status) {
+  var rincian = (jenisList || []).map(function (j) {
+    var def = HAPUS_DATA_JENIS[j];
+    return (def ? def.label : j) + '=' + ((counts && counts[j]) || 0);
+  }).join(', ');
+  return 'periode=' + periodeLabel + ' | jenis=' + (rincian || '-') + ' | total=' + total + ' | status=' + status;
+}

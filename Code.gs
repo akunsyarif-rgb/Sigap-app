@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-25-izin-kapasitas-piket-vs-bk';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin'];
+var BACKEND_VERSION = '2026-08-31-hapus-data-periode';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode'];
 
 // ===== doPost =====
 
@@ -548,30 +548,84 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
-    // ---- Hapus data surat per bulan/tahun (admin only) ----
-    if (action === 'deleteSurat') {
+    // ---- Hapus Data (Pemeliharaan Data, admin only) — menggantikan aksi
+    // lama 'deleteSurat' ("Hapus Data Surat per Bulan/Tahun": satu sheet,
+    // satu bulan/tahun, langsung eksekusi tanpa pratinjau). Sekarang: Tanggal
+    // Mulai - Tanggal Selesai bebas, beberapa jenis data sekaligus, dan WAJIB
+    // sudah lewat pratinjau di klien (action 'previewHapusData' di doGet)
+    // sebelum tombol hapus aktif — lihat HAPUS_DATA_JENIS di Utils.gs untuk
+    // jenis data mana saja yang disertakan & kenapa.
+    //
+    // Urutan WAJIB (semangatnya sama dengan exportData): sesi valid & rate
+    // limit tulis (sudah dicek sebelum blok lock ini) -> lock (sudah dipegang
+    // di titik ini) -> OTORISASI -> VALIDASI PERIODE -> VALIDASI JENIS ->
+    // KONFIRMASI EKSPLISIT -> baru hitung ulang & hapus. Jumlah dari
+    // pratinjau klien TIDAK PERNAH dipercaya sebagai kebenaran — baris yang
+    // benar-benar cocok dihitung ULANG dari sheet sebenarnya, PERSIS sebelum
+    // dihapus (countRowsInRange lalu deleteRowsInRange, keduanya di
+    // Utils.gs).
+    //
+    // Race condition pratinjau vs eksekusi: pratinjau (doGet) sengaja tidak
+    // memegang sigapLock (murni baca, sama seperti exportData) — kalau ada
+    // baris baru masuk di antara pratinjau & eksekusi (mis. guru piket
+    // mencatat saat admin masih membaca dialog konfirmasi), eksekusi ini
+    // tetap menghitung ULANG & menghapus persis yang cocok SAAT eksekusi
+    // berjalan, bukan angka pratinjau — jadi tidak pernah ada data yang
+    // "salah hapus" gara-gara angka pratinjau basi; paling hasil akhirnya
+    // (dikembalikan di respons ini) berbeda sedikit dari yang sempat
+    // ditampilkan sebelum konfirmasi, dan klien menampilkan angka HASIL ini,
+    // bukan angka pratinjau. Double-click/double request: seluruh blok ini
+    // berjalan DI DALAM sigapLock yang sama dengan semua aksi tulis lain,
+    // jadi dua permintaan hapus yang identik diproses berurutan —
+    // permintaan kedua otomatis menemukan 0 baris tersisa untuk kriteria
+    // yang sama (idempotent), tidak perlu penjaga tambahan.
+    if (action === 'hapusDataPeriode') {
       if (!isAdminRole(sessionUser.role)) {
-        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus data surat' });
+        logAudit(sessionUser, 'Hapus Data Ditolak', 'alasan=unauthorized');
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus data.' });
       }
-      var sheet = ss.getSheetByName('Surat_Masuk');
-      if (!sheet) {
-        return jsonOut({ status: 'error', message: 'Belum ada data surat' });
+      var hapusPeriod = validateExportPeriod(data.start, data.end);
+      if (!hapusPeriod.valid) {
+        logAudit(sessionUser, 'Hapus Data Ditolak', 'alasan=periode tidak valid | ' + String(data.start || '-') + ' - ' + String(data.end || '-'));
+        return jsonOut({ status: 'error', message: hapusPeriod.message });
       }
-      var rows = sheet.getDataRange().getValues();
-      var month = parseInt(data.month, 10);
-      var year = parseInt(data.year, 10);
-      var deletedCount = 0;
-      for (var i = rows.length - 1; i >= 1; i--) {
-        var ts = new Date(rows[i][0]);
-        if ((ts.getMonth() + 1) === month && ts.getFullYear() === year) {
-          sheet.deleteRow(i + 1);
-          deletedCount++;
-        }
+      var hapusJenisList = normalizeHapusDataJenisList(data.jenis);
+      if (!hapusJenisList.length) {
+        logAudit(sessionUser, 'Hapus Data Ditolak', 'alasan=jenis tidak dipilih | periode=' + hapusPeriod.label);
+        return jsonOut({ status: 'error', message: 'Pilih minimal satu jenis data.' });
       }
-      CacheService.getScriptCache().remove('surat_list');
-      CacheService.getScriptCache().remove('today_data');
-      logAudit(sessionUser, 'Hapus Data Surat', deletedCount + ' data (bulan ' + month + '/' + year + ')');
-      return jsonOut({ status: 'success', deletedCount: deletedCount });
+      if (!data.confirm) {
+        return jsonOut({ status: 'error', message: 'Konfirmasi penghapusan diperlukan.' });
+      }
+
+      // Pagar volume DIHITUNG DULU (belum menghapus apa pun dari kategori
+      // mana pun) supaya kalau ternyata kegedean, batalnya bersih — bukan
+      // berhenti di tengah setelah separuh kategori sudah terlanjur terhapus.
+      var hapusCekTotal = 0;
+      for (var hc = 0; hc < hapusJenisList.length; hc++) {
+        var hcDef = HAPUS_DATA_JENIS[hapusJenisList[hc]];
+        hapusCekTotal += countRowsInRange(ss.getSheetByName(hcDef.sheet), hapusPeriod.start, hapusPeriod.end);
+      }
+      if (hapusCekTotal > HAPUS_DATA_MAX_ROWS) {
+        logAudit(sessionUser, 'Hapus Data Gagal', buildHapusDataAuditDetail(hapusJenisList, hapusPeriod.label, {}, hapusCekTotal, 'melebihi batas baris'));
+        return jsonOut({ status: 'error', message: 'Data terlalu banyak (' + hapusCekTotal + ' baris, batas ' + HAPUS_DATA_MAX_ROWS + '). Persempit periodenya lalu ulangi bertahap.' });
+      }
+
+      var hapusCounts = {};
+      var hapusTotal = 0;
+      for (var hj = 0; hj < hapusJenisList.length; hj++) {
+        var jenisKey = hapusJenisList[hj];
+        var hjDef = HAPUS_DATA_JENIS[jenisKey];
+        var hjDeleted = deleteRowsInRange(ss.getSheetByName(hjDef.sheet), hapusPeriod.start, hapusPeriod.end);
+        hapusCounts[jenisKey] = hjDeleted;
+        hapusTotal += hjDeleted;
+        if (hjDef.cacheCategory) clearCacheForCategory(hjDef.cacheCategory);
+        if (jenisKey === 'izin') clearIzinCache();
+      }
+
+      var hapusDetail = buildHapusDataAuditDetail(hapusJenisList, hapusPeriod.label, hapusCounts, hapusTotal, hapusTotal ? 'berhasil' : 'tidak ada data');
+      logAudit(sessionUser, hapusTotal ? 'Hapus Data Massal' : 'Hapus Data Massal Kosong', hapusDetail);
+      return jsonOut({ status: 'success', periodeLabel: hapusPeriod.label, counts: hapusCounts, total: hapusTotal });
     }
 
     // ---- Catat pelanggaran & sanksi (bukan untuk OSIS) ----
@@ -1814,6 +1868,39 @@ function doGet(e) {
         dibuatPada: formatExportDate(exportNow) + ' ' + formatExportTime(exportNow),
       },
     });
+  }
+
+  // ---- Pratinjau Hapus Data: hitung dampak SEBELUM ada apa pun yang
+  // terhapus (Pemeliharaan Data, menu Kelola > admin only) — Tahap 1 dari
+  // alur konfirmasi berlapis di admin.js. Murni baca, sama seperti
+  // exportData: tidak pernah mengubah satu baris pun. Jumlah yang
+  // dikembalikan di sini BUKAN sumber kebenaran final — eksekusi
+  // ('hapusDataPeriode' di doPost) menghitung ULANG dari sheet sebenarnya
+  // persis sebelum menghapus, lihat catatan race condition di sana. ----
+  if (action === 'previewHapusData') {
+    if (!isAdminRole(sessionUser.role)) {
+      return jsonOut({ status: 'error', message: 'Hanya admin yang bisa melihat pratinjau penghapusan data.' });
+    }
+    if (!checkExportRateLimit(e.parameter.sessionToken)) {
+      return jsonOut({ status: 'error', message: 'Terlalu banyak permintaan. Coba lagi beberapa menit lagi.' });
+    }
+    var previewPeriod = validateExportPeriod(e.parameter.start, e.parameter.end);
+    if (!previewPeriod.valid) {
+      return jsonOut({ status: 'error', message: previewPeriod.message });
+    }
+    var previewJenisList = normalizeHapusDataJenisList(e.parameter.jenis || '');
+    if (!previewJenisList.length) {
+      return jsonOut({ status: 'error', message: 'Pilih minimal satu jenis data.' });
+    }
+    var previewCounts = {};
+    var previewTotal = 0;
+    for (var pj = 0; pj < previewJenisList.length; pj++) {
+      var pDef = HAPUS_DATA_JENIS[previewJenisList[pj]];
+      var pCount = countRowsInRange(ss.getSheetByName(pDef.sheet), previewPeriod.start, previewPeriod.end);
+      previewCounts[previewJenisList[pj]] = pCount;
+      previewTotal += pCount;
+    }
+    return jsonOut({ status: 'success', periodeLabel: previewPeriod.label, counts: previewCounts, total: previewTotal });
   }
 
   return jsonOut({ status: 'active', message: 'SIGAP API Ready' });

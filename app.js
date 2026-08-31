@@ -157,11 +157,21 @@
            // canVerifyIzin dari server, dan tiap aksi diperiksa ulang lagi oleh
            // canVerifyIzin() di Utils.gs.
            const [gerbangMode, setGerbangMode] = useState('terlambat');
-           // Perpindahan tab lewat BottomNav mengembalikan Gerbang ke mode
-           // normalnya. Tanpa ini, sekali datang lewat pintasan, Gerbang akan
-           // selalu terbuka di Izin Keluar setiap kali dibuka lagi dari nav.
-           const navigateTab = (tab) => { setGerbangMode('terlambat'); setActiveTab(tab); };
+           // Prefill OPSIONAL untuk Export Data, diisi tombol "Export Data
+           // Terlebih Dahulu" di Pemeliharaan Data > Hapus Data (admin.js)
+           // lewat goToExportData() di bawah — pintasan navigasi yang sama
+           // polanya dengan gerbangMode/goToIzinKeluar. Murni membawa
+           // KONTEKS (jenis+periode yang sedang mau dihapus) supaya admin
+           // tidak mengetik ulang, BUKAN jalur export baru: ExportTab tetap
+           // memakai onGenerate & validasi server yang sama persis.
+           const [exportPrefill, setExportPrefill] = useState(null);
+           // Perpindahan tab lewat BottomNav mengembalikan Gerbang/Export ke
+           // keadaan normalnya. Tanpa ini, sekali datang lewat pintasan,
+           // layar tujuan akan selalu terbuka dalam mode pintasan itu setiap
+           // kali dibuka lagi dari nav.
+           const navigateTab = (tab) => { setGerbangMode('terlambat'); setExportPrefill(null); setActiveTab(tab); };
            const goToIzinKeluar = () => { setGerbangMode('izin'); setActiveTab('scan'); };
+           const goToExportData = (prefill) => { setExportPrefill(prefill || null); setActiveTab('export'); };
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
@@ -755,18 +765,44 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
-           const handleDeleteSurat = (payload, callback) => {
-               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSurat', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+           // ---- Pemeliharaan Data > Hapus Data: pratinjau (baca-saja) lalu
+           // eksekusi, menggantikan handleDeleteSurat/'deleteSurat' yang lama
+           // (satu sheet, satu bulan/tahun, tanpa pratinjau). Sama seperti
+           // handleExportData: server yang memutuskan otorisasi & menghitung
+           // ULANG jumlah datanya — di sini cuma membungkus fetch-nya. ----
+           const handlePreviewHapusData = (payload, callback) => {
+               const query = [
+                   'action=previewHapusData',
+                   'jenis=' + encodeURIComponent((payload.jenis || []).join(',')),
+                   'start=' + encodeURIComponent(payload.start || ''),
+                   'end=' + encodeURIComponent(payload.end || ''),
+                   'token=' + API_TOKEN,
+                   'sessionToken=' + sessionToken,
+               ].join('&');
+               fetch(`${API_URL}?${query}`)
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') callback(true, data);
+                       else callback(false, data.message || 'Gagal memuat pratinjau.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
+           const handleHapusData = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'hapusDataPeriode', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
-                           const month = parseInt(payload.month, 10);
-                           const year = parseInt(payload.year, 10);
-                           setSuratList(prev => prev.filter(s => {
-                               const dt = parseTimestamp(s.timestamp);
-                               return !((dt.getMonth() + 1) === month && dt.getFullYear() === year);
-                           }));
-                           callback(true, `Berhasil hapus ${data.deletedCount || 0} data.`);
+                           // Sheet mentah yang sudah dihapus di server tidak
+                           // ditarik ulang otomatis di sini — refresh manual
+                           // (tarik ulang tab terkait) sudah menjadi pola yang
+                           // ada di seluruh app.js untuk perubahan lintas
+                           // kategori; menyinkronkan 4 state list sekaligus
+                           // dari satu respons ringkasan cuma menambah risiko
+                           // salah cocok tanpa manfaat nyata (Pemeliharaan
+                           // Data bukan layar yang dilihat bolak-balik dengan
+                           // Riwayat dalam satu sesi yang sama).
+                           callback(true, data);
                        } else callback(false, data.message || 'Gagal menghapus data.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
@@ -1047,7 +1083,7 @@
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onDeleteSurat={handleDeleteSurat} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onPreviewHapusData={handlePreviewHapusData} onHapusData={handleHapusData} onGoToExportData={goToExportData} loading={loadingTeacherAction} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
@@ -1064,6 +1100,9 @@
                                        waliKelas={user.waliKelas || ''}
                                        classes={students.map(s => s.class)}
                                        onGenerate={handleExportData}
+                                       initialJenis={exportPrefill ? exportPrefill.jenis : undefined}
+                                       initialStart={exportPrefill ? exportPrefill.start : undefined}
+                                       initialEnd={exportPrefill ? exportPrefill.end : undefined}
                                    />
                                )}
                                {activeTab === 'upacara' && effectiveMenus.includes('upacara') && (
