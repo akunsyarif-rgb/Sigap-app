@@ -175,6 +175,8 @@
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
+           const [showChangePassword, setShowChangePassword] = useState(false);
+           const [loadingChangePassword, setLoadingChangePassword] = useState(false);
            // Nilai awal diambil dari cache klien kalau ada (lihat bootCache di
            // atas) — inilah yang membuat refresh langsung menampilkan layar
            // terakhir alih-alih layar kosong sambil menunggu Apps Script.
@@ -592,6 +594,22 @@
            const handleLogout = () => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', sessionToken: sessionToken, token: API_TOKEN }) }).catch(() => {});
                clearSession();
+           };
+
+           // Ganti password sendiri (semua role) — beda dari handleUpdatePassword
+           // di bawah (admin-only, reset password guru LAIN tanpa perlu tahu
+           // password lamanya). Sesi tidak perlu diputus setelah ini: token yang
+           // sedang dipakai tetap sah, cuma login berikutnya yang butuh password baru.
+           const handleChangeMyPassword = (payload, callback) => {
+               setLoadingChangePassword(true);
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'changeMyPassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       setLoadingChangePassword(false);
+                       if (data.status === 'success') { setToast('✓ Password berhasil diubah'); setTimeout(() => setToast(null), 2000); callback(true); }
+                       else callback(false, data.message || 'Gagal mengubah password.');
+                   })
+                   .catch(() => { setLoadingChangePassword(false); callback(false, 'Koneksi gagal, coba lagi.'); });
            };
 
            const handleRecord = (type) => {
@@ -1026,7 +1044,11 @@
                        />
                    ) : (
                        <div className="min-h-screen bg-slate-100 text-slate-900 relative select-none">
-                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
+                           <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} onOpenChangePassword={() => setShowChangePassword(true)} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
+
+                           {showChangePassword && (
+                               <ChangePasswordModal onSubmit={handleChangeMyPassword} onClose={() => setShowChangePassword(false)} loading={loadingChangePassword} />
+                           )}
 
                            {toast && (
                                <div className="fixed bottom-24 inset-x-0 z-50 px-4 flex justify-center pointer-events-none">

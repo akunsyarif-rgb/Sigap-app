@@ -220,6 +220,7 @@ Batasan ini diperiksa **di server**, bukan sekadar menyembunyikan tombol: kalau 
 
 - **Ukuran huruf bisa diperbesar** lewat tombol di bagian atas layar, dan pilihan itu diingat untuk kunjungan berikutnya.
 - **Tetap login sampai 6 jam** — tidak perlu memasukkan password ulang setiap membuka aplikasi dalam rentang itu.
+- **Ganti password sendiri** — semua peran (Admin, BK/Kesiswaan, Guru, OSIS) bisa mengganti password akunnya sendiri lewat menu titik-tiga di pojok kanan atas → **Ganti Password**, dengan memasukkan password lama + password baru (minimal 6 karakter). Tidak perlu lagi minta admin reset password hanya untuk ganti password sendiri — fitur reset oleh admin di menu Kelola tetap ada untuk kasus lupa password.
 - Tampilan dirancang untuk **layar HP** dengan tombol besar, karena sebagian besar pencatatan dilakukan sambil berdiri di gerbang.
 
 ---
