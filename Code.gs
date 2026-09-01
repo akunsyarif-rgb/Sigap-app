@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-08-31-hapus-data-periode';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode'];
+var BACKEND_VERSION = '2026-09-01-ganti-password-sendiri';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword'];
 
 // ===== doPost =====
 
@@ -242,6 +242,36 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'ID tidak ditemukan' });
       }
       logAudit(sessionUser, 'Reset Password', targetName + ' (' + data.targetId + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ---- Ganti password sendiri (semua role yang sudah login, termasuk
+    // guru/BK/OSIS) — beda dari 'updatePassword' di atas yang admin-only dan
+    // menimpa password ORANG LAIN tanpa perlu tahu password lamanya.
+    // Fitur ini sebelumnya belum ada sama sekali: guru biasa yang mau ganti
+    // password sendiri harus minta admin reset lewat Kelola > Guru & Akun.
+    if (action === 'changeMyPassword') {
+      var cmpSheet = ss.getSheetByName('Master_Guru');
+      var cmpRows = cmpSheet.getDataRange().getValues();
+      var cmpRowIndex = -1;
+      for (var cmpI = 1; cmpI < cmpRows.length; cmpI++) {
+        if (String(cmpRows[cmpI][0]) === String(sessionUser.id)) { cmpRowIndex = cmpI; break; }
+      }
+      if (cmpRowIndex === -1) {
+        return jsonOut({ status: 'error', message: 'Akun tidak ditemukan.' });
+      }
+      // Kolom H (index 7) = Salt, sama seperti pengecekan login di atas.
+      var cmpCheck = verifyPassword(data.oldPassword, String(cmpRows[cmpRowIndex][2]), String(cmpRows[cmpRowIndex][7] || ''));
+      if (!cmpCheck || !cmpCheck.matched) {
+        return jsonOut({ status: 'error', message: 'Password lama salah.' });
+      }
+      if (!data.newPassword || String(data.newPassword).trim().length < 6) {
+        return jsonOut({ status: 'error', message: 'Password baru minimal 6 karakter.' });
+      }
+      var cmpSalt = generateSalt();
+      cmpSheet.getRange(cmpRowIndex + 1, 3).setValue(hashPasswordSalted(data.newPassword, cmpSalt));
+      cmpSheet.getRange(cmpRowIndex + 1, 8).setValue(cmpSalt);
+      logAudit(sessionUser, 'Ganti Password Sendiri', '');
       return jsonOut({ status: 'success' });
     }
 

@@ -343,7 +343,7 @@
        // ruang layar yang berharga bagi guru piket yang kerja satu tangan.
        // Prinsip "satu tangan, satu pandangan, satu keputusan": zona atas cuma
        // untuk identitas & pengaturan yang jarang disentuh.
-       function Header({ user, roleLabel, onLogout, fontScale, onFontScaleChange, activeTab }) {
+       function Header({ user, roleLabel, onLogout, onOpenChangePassword, fontScale, onFontScaleChange, activeTab }) {
            const [showMenu, setShowMenu] = useState(false);
            // Menu ini tumpang tindih z-index dengan BottomNav (z-40 > overlay
            // penutup z-10 milik menu ini), jadi tap di BottomNav untuk pindah tab
@@ -390,6 +390,9 @@
                                            dengan Keluar, gampang ke-tap keluar tanpa sengaja saat
                                            mau atur ukuran huruf. */}
                                        <div className="border-t border-slate-200 mt-1.5 pt-1.5">
+                                           <button onClick={() => { setShowMenu(false); onOpenChangePassword(); }} className="w-full text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 px-2.5 py-2.5 rounded-lg transition">Ganti Password</button>
+                                       </div>
+                                       <div className="border-t border-slate-200 mt-1.5 pt-1.5">
                                            <button onClick={() => { setShowMenu(false); onLogout(); }} className="w-full text-left text-xs font-semibold text-crimson hover:bg-crimson/10 px-2.5 py-2.5 rounded-lg transition">Keluar</button>
                                        </div>
                                    </div>
@@ -397,6 +400,57 @@
                            )}
                        </div>
                    </div>
+               </div>
+           );
+       }
+
+       // Ganti password sendiri — dipicu dari menu titik-tiga di Header, dipakai
+       // SEMUA role (guru/BK/OSIS/admin sekalian bisa ganti password sendiri
+       // tanpa lewat admin). Beda dari reset password di Kelola (admin-only,
+       // menimpa password guru lain) -- di sini wajib password lama yang benar
+       // dulu, dicek server (action 'changeMyPassword' di Code.gs), supaya sesi
+       // yang ketinggalan login di perangkat orang lain tidak bisa dipakai
+       // untuk mengunci pemilik akun sebenarnya.
+       function ChangePasswordModal({ onSubmit, onClose, loading }) {
+           const [oldPassword, setOldPassword] = useState('');
+           const [newPassword, setNewPassword] = useState('');
+           const [confirmPassword, setConfirmPassword] = useState('');
+           const [error, setError] = useState('');
+
+           const submit = (e) => {
+               e.preventDefault();
+               if (!oldPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+                   setError('Semua kolom wajib diisi.');
+                   return;
+               }
+               if (newPassword.trim().length < 6) {
+                   setError('Password baru minimal 6 karakter.');
+                   return;
+               }
+               if (newPassword !== confirmPassword) {
+                   setError('Konfirmasi password baru tidak cocok.');
+                   return;
+               }
+               setError('');
+               onSubmit({ oldPassword: oldPassword.trim(), newPassword: newPassword.trim() }, (ok, text) => {
+                   if (ok) { onClose(); } else { setError(text); }
+               });
+           };
+
+           return (
+               <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                   <form onSubmit={submit} className="bg-white w-full max-w-sm rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                       <div className="text-center">
+                           <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Ganti Password</h3>
+                           <div className="font-display text-lg font-extrabold text-slate-900 mt-1">Akun Saya</div>
+                       </div>
+                       <input type="password" autoComplete="current-password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="Password lama" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                       <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                       <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Konfirmasi password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                       {error && <p className="text-[11px] text-crimson text-center">{error}</p>}
+                       <Button type="submit" disabled={loading} className="w-full">{loading ? 'Menyimpan...' : 'Simpan Password Baru'}</Button>
+                       <Button type="button" onClick={onClose} variant="secondary" className="w-full">Batal</Button>
+                   </form>
                </div>
            );
        }
