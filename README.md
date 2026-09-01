@@ -11,6 +11,8 @@ Untuk panduan pemakaian versi non-teknis (ditujukan ke guru/kepala
 sekolah), lihat **[docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md](docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md)**.
 Untuk struktur data Google Sheet secara lengkap (nama sheet + urutan
 kolom persis), lihat **[SCHEMA.md](SCHEMA.md)**.
+Untuk referensi lengkap seluruh action `doGet`/`doPost` (parameter, otorisasi,
+bentuk respons), lihat **[API.md](API.md)**.
 Untuk catatan teknis mendalam (alasan di balik tiap keputusan desain,
 kebijakan deploy, dsb.), lihat **[CLAUDE.md](CLAUDE.md)**.
 
@@ -117,4 +119,5 @@ docs/                        panduan fitur untuk pengguna non-teknis
 .github/workflows/           CI (test.yml), deploy backend manual (deploy-gas.yml),
                               & deteksi drift versi backend (check-backend-drift.yml)
 SCHEMA.md                    struktur lengkap 13 sheet Google Sheet
+API.md                       referensi lengkap seluruh action doGet/doPost
 ```
