@@ -101,6 +101,39 @@ ever auto-deploys one of them:
   `clasp status`) runs before the first write (`clasp push`). Keep new steps on
   the correct side of that line.
 
+### Backend drift detection (`check-backend-drift.yml`)
+
+Deploy staying manual (above) means drift between `main` and the live Web App
+is a standing risk — every `.gs`-touching PR needs someone to *remember* to
+deploy it, and nothing used to notice if they forgot. `.github/workflows/check-backend-drift.yml`
+closes that gap **without** touching the deploy model at all: it runs on push
+to `main` (paths `Code.gs`/`Auth.gs`/`Utils.gs`) and on a daily schedule, hits
+the same unauthenticated-except-`API_TOKEN` status ping described at
+`BACKEND_VERSION` above, and fails the job (red X, not a blocked merge — it's
+independent of `test.yml` and never runs on `pull_request`) when the live
+`version` doesn't match `BACKEND_VERSION` in `Code.gs` on `main`. A GitHub
+Environment with required reviewers would have been the other way to close
+this gap (auto-deploy gated on approval) but was deliberately rejected: it
+needs a paid plan for a private repo, and misconfiguring it (environment
+created without the protection rule actually turned on) fails *open* — the
+deploy would fire with no gate at all, which is worse than today's
+click-to-run-manually baseline. A read-only version check has no such failure
+mode.
+
+`.github/scripts/check-backend-drift.js` does the comparison — `extractBackendVersion`/`extractApiConfig`
+are pure regex extraction (tested by `tests/check-backend-drift.test.js`),
+`evaluateDrift` is pure comparison logic taking the expected version and the
+raw status-ping body as strings, so the whole decision tree (sync/drift/
+unreachable/error) is unit-tested without any network call. The actual HTTP
+fetch happens in the workflow via `curl -L` (Apps Script `/exec` URLs 302 to
+a `googleusercontent.com` URL; a plain `https.get` in Node would not follow
+that redirect), written to a `RUNNER_TEMP` file that the script's `--compare`
+mode then reads — kept as two steps specifically so the comparison logic
+never needs a mocked network layer to test. `API_URL`/`API_TOKEN` are read
+straight from `config.js` in the checkout, not a secret: both are already
+sent by every browser (see `config.js`), so there is nothing this workflow
+could leak that isn't already public.
+
 ## Commands
 
 ```bash
