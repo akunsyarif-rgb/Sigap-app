@@ -321,7 +321,7 @@ function scopePelanggaranForUser(list, sessionUser) {
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).
 // Juga hapus cache 'today_data' agar Beranda ikut ke-refresh.
 function clearCacheForCategory(category) {
-  var cacheKeys = { terlambat: 'today_logs', pelanggaran: 'pelanggaran_list_raw', surat: 'surat_list' };
+  var cacheKeys = { terlambat: 'today_logs', pelanggaran: 'pelanggaran_list_raw', surat: 'surat_list', upacara: 'pelanggaran_upacara_raw' };
   var key = cacheKeys[category];
   if (key) CacheService.getScriptCache().remove(key);
   // Tambahan: bersihkan cache Beranda (today_data)
@@ -1367,15 +1367,13 @@ function appendRowsBatch(sheet, rows) {
 // TIDAK ADA sheet/kolom baru: memakai sheet operasional APA ADANYA, kolom
 // Timestamp (kolom A) yang sudah dipakai getRowsSince/EXPORT_JENIS.
 //
-// HANYA EMPAT jenis data disertakan, sengaja bukan semua sheet SIGAP:
+// LIMA jenis data disertakan, sengaja bukan semua sheet SIGAP:
 //   keterlambatan (Log_Gerbang), pelanggaran (Pelanggaran),
-//   surat (Surat_Masuk), izin (Izin_Keluar).
-// Bimbingan_Khusus & Pelanggaran_Upacara SENGAJA belum disertakan — Bimbingan
-// Khusus adalah catatan konseling yang lebih sensitif daripada catatan
-// disiplin biasa (alasan yang sama yang membuat getBimbingan/getAuditLog
-// dibatasi ketat), dan menambah kategori baru bukan bagian dari kebutuhan
-// yang diajukan untuk audit ini — bisa menyusul lewat pola identik kalau
-// memang dibutuhkan nanti, tinggal menambah entri di HAPUS_DATA_JENIS.
+//   surat (Surat_Masuk), izin (Izin_Keluar), upacara (Pelanggaran_Upacara).
+// Bimbingan_Khusus SENGAJA belum disertakan — itu catatan konseling yang
+// lebih sensitif daripada catatan disiplin biasa (alasan yang sama yang
+// membuat getBimbingan/getAuditLog dibatasi ketat) — bisa menyusul lewat pola
+// identik kalau memang dibutuhkan nanti, tinggal menambah entri di sini.
 // Audit_Log TIDAK PERNAH masuk daftar ini — itu jejak akuntabilitas dengan
 // kebijakan retensinya sendiri (admin-only, lihat getAuditLog), bukan data
 // operasional yang boleh dibersihkan lewat menu ini.
@@ -1387,6 +1385,7 @@ var HAPUS_DATA_JENIS = {
   // mengenal kategori ini) — cache-nya dibuang lewat clearIzinCache() secara
   // terpisah, dipanggil eksplisit di action 'hapusDataPeriode' (Code.gs).
   izin: { label: 'Izin Keluar', sheet: 'Izin_Keluar', cacheCategory: null },
+  upacara: { label: 'Pelanggaran Upacara', sheet: 'Pelanggaran_Upacara', cacheCategory: 'upacara' },
 };
 
 // Pagar jumlah baris yang boleh diproses SEKALI panggilan — alasannya sama

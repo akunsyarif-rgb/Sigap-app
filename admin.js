@@ -14,14 +14,15 @@
        // Cermin dari HAPUS_DATA_JENIS di Utils.gs (pola yang sama dengan
        // EXPORT_JENIS_UI di export-data.js) — daftar pilihan di layar ini
        // cuma cermin dari yang server izinkan, bukan sumber kebenarannya.
-       // Bimbingan Khusus & Pelanggaran Upacara SENGAJA tidak ada di sini —
-       // lihat catatan panjang di HAPUS_DATA_JENIS kenapa baru empat jenis
-       // ini yang disertakan Pemeliharaan Data > Hapus Data.
+       // Bimbingan Khusus SENGAJA tidak ada di sini — lihat catatan panjang
+       // di HAPUS_DATA_JENIS kenapa jenis itu belum disertakan Pemeliharaan
+       // Data > Hapus Data.
        const HAPUS_DATA_JENIS_UI = [
            { key: 'keterlambatan', label: 'Keterlambatan' },
            { key: 'pelanggaran', label: 'Pelanggaran' },
            { key: 'surat', label: 'Surat/Izin' },
            { key: 'izin', label: 'Izin Keluar' },
+           { key: 'upacara', label: 'Pelanggaran Upacara' },
        ];
 
        // Kartu hub "Kelola" — satu tombol besar per sub-area (Guru / Jadwal
