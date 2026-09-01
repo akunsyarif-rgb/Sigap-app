@@ -1,0 +1,54 @@
+name: Cek sinkronisasi backend
+
+# Bukan bagian dari deploy, dan TIDAK PERNAH menyentuh Apps Script -- workflow
+# ini murni MEMBACA status ping publik (doGet tanpa action, sama seperti yang
+# bisa dibuka siapa pun lewat browser) dan membandingkan `version`-nya dengan
+# BACKEND_VERSION di Code.gs pada `main`. Tujuannya cuma satu: memberi tahu
+# begitu ada perubahan Code.gs/Auth.gs/Utils.gs yang sudah merge tapi BELUM
+# di-deploy manual ke Apps Script (lihat CLAUDE.md -- merge != deploy untuk
+# backend). Sebelum ini ada, drift semacam itu cuma ketahuan kalau seseorang
+# kebetulan membuka status ping-nya sendiri dan membandingkan manual.
+#
+# Deploy backend TETAP manual sepenuhnya lewat deploy-gas.yml
+# (workflow_dispatch saja, lihat komentar di sana kenapa deploy harus selalu
+# tindakan sadar) -- workflow ini tidak mengubah itu sama sekali, cuma
+# mengingatkan. Job MERAH di sini artinya "ada yang perlu di-deploy manual
+# atau dicek", bukan bug kode, dan tidak menghalangi merge PR mana pun --
+# dipicu terpisah dari test.yml (push ke main sendiri + jadwal), bukan dari
+# pull_request.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Code.gs'
+      - 'Auth.gs'
+      - 'Utils.gs'
+  schedule:
+    # 03:00 UTC tiap hari -- cukup jarang untuk tidak berisik, cukup sering
+    # supaya drift yang lolos dari trigger push (mis. ditambahkan belakangan,
+    # atau backend sempat di-deploy manual ke versi yang salah) tidak terus
+    # tidak ketahuan berminggu-minggu.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # API_URL/API_TOKEN di config.js bukan rahasia yang perlu GitHub Secret
+      # -- keduanya memang terkirim dari SETIAP klien (lihat komentar di
+      # config.js) -- jadi aman dibaca langsung dari checkout.
+      - name: Ambil status ping backend live
+        run: |
+          set -euo pipefail
+          STATUS_URL=$(node .github/scripts/check-backend-drift.js --print-status-url)
+          curl -sS -L --max-time 20 "$STATUS_URL" -o "$RUNNER_TEMP/backend-status.json" \
+            || echo 'tidak dapat dihubungi' > "$RUNNER_TEMP/backend-status.json"
+
+      - name: Bandingkan versi live vs Code.gs di main
+        run: node .github/scripts/check-backend-drift.js --compare "$RUNNER_TEMP/backend-status.json"

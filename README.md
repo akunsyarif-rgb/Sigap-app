@@ -114,6 +114,7 @@ Code.gs, Auth.gs, Utils.gs   backend (Google Apps Script)
 index.html, *.js             frontend (React tanpa bundler)
 tests/                       test backend (vm.runInContext) & smoke-test render frontend
 docs/                        panduan fitur untuk pengguna non-teknis
-.github/workflows/           CI (test.yml) & deploy backend manual (deploy-gas.yml)
+.github/workflows/           CI (test.yml), deploy backend manual (deploy-gas.yml),
+                              & deteksi drift versi backend (check-backend-drift.yml)
 SCHEMA.md                    struktur lengkap 13 sheet Google Sheet
 ```
