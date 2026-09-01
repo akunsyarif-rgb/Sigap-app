@@ -101,22 +101,68 @@ function getOrCreateSheet(ss, name, headers) {
 // (Code.gs) soal kenapa kolomnya tidak dihapus dari struktur baris.
 
 // ===== RATE LIMIT LOGIN =====
-// Login SIGAP cuma minta password, tanpa username (lihat LoginScreen di
-// ui-common.js) — server mencocokkan password yang dikirim ke SEMUA baris
-// Master_Guru sampai ketemu. Karena itu, saat password SALAH, server belum
-// tahu itu menyasar akun siapa — rate-limit di sini scoped GLOBAL (semua
-// user sekaligus), bukan per-akun.
-// Fixed window (bukan sliding, bukan extend-on-write): counter dikunci ke
-// blok waktu LOGIN_RATE_WINDOW_MS yang tetap (mis. semua request 10:00:00-
-// 10:04:59 pakai key yang sama), lalu reset otomatis begitu masuk blok
-// berikutnya. Ini sengaja supaya traffic sah yang tersebar sepanjang hari
-// (typo sesekali dari guru berbeda-beda) TIDAK menumpuk jadi lockout permanen
-// — beda dari skema "extend TTL tiap gagal" yang bisa terus mengunci selama
-// masih ada 1 saja percobaan gagal per window.
-var LOGIN_RATE_WINDOW_MS = 5 * 60 * 1000; // 5 menit per window
-var LOGIN_RATE_MAX_FAILURES = 15; // percobaan password-salah per window sebelum lockout
+// Login SIGAP punya DUA jalur (lihat LoginScreen di ui-common.js dan "Login
+// flow" di CLAUDE.md): guru memilih namanya lewat pencarian (mengirim
+// `teacherId`, dicocokkan HANYA ke baris itu), atau — kalau daftar guru
+// gagal dimuat — password-only tanpa nama, dicocokkan ke SEMUA baris
+// Master_Guru sampai ketemu.
+//
+// Audit Agustus 2026 (evaluasi rate limit global vs per-akun): pada jalur
+// TANPA teacherId, server belum tahu percobaan gagal itu menyasar akun
+// siapa, jadi rate-limit di sana TETAP scoped GLOBAL seperti sebelumnya
+// (isLoginRateLimitedGlobal/recordLoginFailureGlobal) — ini tidak berubah,
+// dan alasannya juga tidak berubah.
+//
+// Pada jalur DENGAN teacherId, kegagalan SUDAH bisa diatribusikan ke satu
+// akun, jadi dipisah ke counter PER-AKUN sendiri (key ikut memuat
+// teacherId). Kegagalan di jalur ini TIDAK ikut menaikkan counter global —
+// inilah yang memperbaiki keluhan lama: guru yang berkali-kali salah ketik
+// password AKUNNYA SENDIRI di jam sibuk pagi dulu ikut mengunci SEMUA guru
+// lain (counter global dipakai bersama oleh siapa pun yang login),
+// walaupun jelas-jelas cuma satu akun yang sedang "diserang" typo. Sekarang
+// begitu counter per-akun itu sendiri habis, PEMILIK akun itu yang
+// tertahan — bukan seluruh sekolah — sementara guru lain yang memilih nama
+// mereka sendiri sama sekali tidak terpengaruh.
+//
+// Batas per-akun (10) sengaja LEBIH KETAT dari batas global (15): begitu
+// identitas target diketahui pasti, tidak ada alasan mengizinkan tebakan
+// sebanyak jalur yang masih anonim. Trade-off yang disadari & diterima:
+// counter global TIDAK LAGI jadi plafon gabungan untuk jalur teacherId —
+// seseorang yang mencoba banyak teacherId berbeda (masing-masing di bawah
+// 10 percobaan) tidak akan tersandung counter global. SIGAP tidak pernah
+// punya pertahanan terhadap serangan terdistribusi semacam itu di lapisan
+// mana pun (tidak ada rate limit per-IP, tidak captcha) — trade-off ini
+// diterima demi menghilangkan penguncian kolega yang tidak bersalah, bukan
+// pengurangan proteksi nyata terhadap ancaman yang memang belum pernah
+// ditangani.
+//
+// Fixed window (bukan sliding, bukan extend-on-write) di KEDUA skema:
+// counter dikunci ke blok waktu LOGIN_RATE_WINDOW_MS yang tetap (mis. semua
+// request 10:00:00-10:04:59 pakai key yang sama), lalu reset otomatis
+// begitu masuk blok berikutnya — supaya typo sesekali yang tersebar
+// sepanjang hari tidak menumpuk jadi lockout permanen, beda dari skema
+// "extend TTL tiap gagal".
+var LOGIN_RATE_WINDOW_MS = 5 * 60 * 1000; // 5 menit per window, dipakai kedua skema
+var LOGIN_RATE_MAX_FAILURES = 15; // skema GLOBAL (jalur tanpa teacherId) — tidak berubah
+var LOGIN_RATE_MAX_FAILURES_PER_ACCOUNT = 10; // skema PER-AKUN (jalur dengan teacherId)
 
-function isLoginRateLimited() {
+// Cache key per-akun ikut memuat teacherId APA ADANYA dari klien (tidak
+// perlu diverifikasi dulu ke Master_Guru — teacherId palsu/asal cuma
+// membuat counter miliknya sendiri yang tidak berpengaruh ke akun mana
+// pun). Dipotong pendek supaya teacherId sangat panjang yang sengaja
+// dikirim iseng tidak melanggar batas panjang key CacheService (maks 250
+// karakter) — ID guru sungguhan jauh lebih pendek dari ini.
+function loginRateLimitAccountKey(teacherId) {
+  return 'login_fail_acct_' + String(teacherId).slice(0, 50) + '_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
+}
+
+function isLoginRateLimited(teacherId) {
+  var id = String(teacherId || '').trim();
+  if (id) {
+    var acctRaw = CacheService.getScriptCache().get(loginRateLimitAccountKey(id));
+    var acctCount = acctRaw ? parseInt(acctRaw, 10) : 0;
+    return acctCount >= LOGIN_RATE_MAX_FAILURES_PER_ACCOUNT;
+  }
   var key = 'login_fail_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
   var raw = CacheService.getScriptCache().get(key);
   var count = raw ? parseInt(raw, 10) : 0;
@@ -124,10 +170,13 @@ function isLoginRateLimited() {
 }
 
 // Return jumlah kegagalan SETELAH ditambah (dipakai pemanggil untuk deteksi
-// momen pertama kali lockout terpicu, supaya cuma dicatat sekali ke Audit Log).
-function recordLoginFailure() {
+// momen pertama kali lockout terpicu, supaya cuma dicatat sekali ke Audit
+// Log) — juga dipakai memilih batas mana (global/per-akun) yang barusan
+// tersentuh, lihat pemanggilnya di action 'login' (Code.gs).
+function recordLoginFailure(teacherId) {
   var cache = CacheService.getScriptCache();
-  var key = 'login_fail_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
+  var id = String(teacherId || '').trim();
+  var key = id ? loginRateLimitAccountKey(id) : 'login_fail_' + Math.floor(Date.now() / LOGIN_RATE_WINDOW_MS);
   var raw = cache.get(key);
   var count = (raw ? parseInt(raw, 10) : 0) + 1;
   // TTL sedikit lebih lama dari window supaya key masih kebaca request lain

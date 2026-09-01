@@ -49,9 +49,13 @@ mis. deployment tidak ditemukan) — klien HARUS memeriksa `status` di body,
 bukan status HTTP.
 
 **Rate limit** (di luar batas per-aksi yang disebutkan di bawah):
-- Login gagal: **global** (bukan per-akun), maksimal 15 kegagalan / 5 menit
-  — lihat `isLoginRateLimited()`/`recordLoginFailure()` (`Utils.gs`) dan
-  catatan kenapa ini masih global di `CLAUDE.md`.
+- Login gagal: **dua skema terpisah**, tergantung apakah `teacherId` dikirim
+  — kalau ya, dibatasi **per akun** (maksimal 10 kegagalan beruntun / 5
+  menit, hanya mengunci akun itu); kalau tidak (mode legacy password-only),
+  dibatasi **global** seperti sebelumnya (maksimal 15 kegagalan / 5 menit,
+  mengunci SEMUA percobaan lewat jalur itu). Lihat
+  `isLoginRateLimited()`/`recordLoginFailure()` (`Utils.gs`) dan audit
+  Agustus 2026 di `CLAUDE.md` untuk alasan pemisahannya.
 - Semua aksi `doPost` (kecuali `login`/`logout`/`logClientError`): rate
   limit **per sesi** lewat `checkWriteRateLimit()`.
 - `exportData` & `previewHapusData`: rate limit tambahan lewat
@@ -143,7 +147,8 @@ hidup (lihat "Login flow" di `CLAUDE.md`):
 
 Respons sukses: `{ status, user: {id, name, role, jabatan, waliKelas}, sessionToken }`.
 Respons gagal: `{ status: 'error', message }` — termasuk pesan khusus untuk
-akun `nonaktif` dan rate limit global (lihat "Aturan Umum").
+akun `nonaktif` dan rate limit (per-akun kalau `teacherId` terisi, global
+kalau tidak — lihat "Aturan Umum").
 
 #### `logout` (POST)
 Tidak ada field lain. Menghapus record sesi di `CacheService` dan mencatat

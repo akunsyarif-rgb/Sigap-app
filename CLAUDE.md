@@ -185,11 +185,45 @@ order does for anything not hoisted.
   in sync if changed), `logAudit` (writes to a separate `Audit_Log` sheet, never
   throws; readable by admin only — see `getAuditLog`), `getRowsSince` (binary-search over timestamps to avoid scanning
   full sheets), and **login rate limiting** (`isLoginRateLimited`/
-  `recordLoginFailure`): the rate limiter is a **global, fixed 5-minute
-  window** (not per-account, not sliding) capped at 15 failures. It's global
-  because login used to be password-only, so a failed attempt couldn't be
-  attributed to one account — still true of the legacy path below, so it stays
-  global.
+  `recordLoginFailure`): fixed 5-minute window (not sliding) on both schemes
+  below.
+
+  **Split global vs per-account (audit August 2026).** The limiter used to
+  be a single global counter (15 failures/5min) covering every failed
+  login regardless of path — deliberately global because the legacy
+  password-only path can't attribute a failure to one account. That
+  reasoning is still correct for that path, but it was being applied even
+  when the client *had* picked a name via `teacherId` (the normal
+  `LoginScreen` flow), where the target account is known with certainty.
+  The practical cost: one teacher mistyping their own password repeatedly
+  during the morning rush shared the *same* counter as everyone else, so
+  their typos could lock every other teacher out of login too — an
+  accidental, self-inflicted DoS with no attacker involved.
+
+  Now the two paths use **separate counters**: the `teacherId`-present path
+  increments a per-account counter (`loginRateLimitAccountKey`, key
+  includes the teacherId, capped at `LOGIN_RATE_MAX_FAILURES_PER_ACCOUNT` =
+  10 — deliberately *tighter* than the global 15, since a known target
+  earns less benefit of the doubt) and **never touches the global
+  counter**; the teacherId-absent (legacy) path is unchanged, still global,
+  capped at `LOGIN_RATE_MAX_FAILURES` = 15. `isLoginRateLimited(teacherId)`/
+  `recordLoginFailure(teacherId)` branch on whether `teacherId` is
+  non-empty to pick which counter to check/increment — same functions,
+  now parameterized rather than a second pair. A disabled (`nonaktif`)
+  account match returns its own message before either counter is touched,
+  unchanged from before.
+
+  Trade-off accepted deliberately, not overlooked: failures against many
+  *different* known `teacherId`s no longer sum toward one shared ceiling,
+  so a distributed guesser cycling through accounts (each staying under 10)
+  is caught later than the old global-only scheme would have caught it.
+  SIGAP has never defended against that class of distributed attack at any
+  other layer (no per-IP limiting, no CAPTCHA), so this isn't a regression
+  against a threat actually being mitigated — it's removing collateral
+  damage to innocent teachers in exchange for a threat model that was
+  already out of scope. `tests/concurrency-session.test.js` pins both: a
+  burst of failures on one account never nudges the global counter, and a
+  locked-out account doesn't affect anyone else's ability to log in.
 
 ### Login flow (two paths, both live)
 
