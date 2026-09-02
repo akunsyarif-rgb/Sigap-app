@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-01-ganti-password-sendiri';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword'];
+var BACKEND_VERSION = '2026-09-01-rate-limit-login-per-akun';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun'];
 
 // ===== doPost =====
 
@@ -33,9 +33,17 @@ function doPost(e) {
 
     // ---- Login ----
     if (action === 'login') {
+      // Dikirim kalau guru memilih namanya lewat pencarian di layar login.
+      // Kosong = mode legacy (password-only, tanpa pilih nama) yang SENGAJA
+      // masih dipertahankan — lihat komentar isLoginRateLimited() di Utils.gs.
+      // Diambil di SINI (sebelum gerbang rate limit) karena sejak audit
+      // Agustus 2026 rate limit-nya sendiri bercabang berdasarkan nilai ini:
+      // per-akun kalau terisi, global (seperti sebelumnya) kalau kosong.
+      var requestedTeacherId = String(data.teacherId || '').trim();
+
       // Cek lockout SEBELUM sentuh sheet sama sekali — lihat komentar
-      // isLoginRateLimited() di Utils.gs kenapa ini global, bukan per-akun.
-      if (isLoginRateLimited()) {
+      // isLoginRateLimited() di Utils.gs untuk skema global vs per-akun.
+      if (isLoginRateLimited(requestedTeacherId)) {
         return jsonOut({ status: 'error', message: 'Terlalu banyak percobaan login gagal. Coba lagi dalam beberapa menit.' });
       }
 
@@ -46,10 +54,6 @@ function doPost(e) {
       var isDisabled = false;
       var matchedRowIndex = -1;
       var needsMigration = false;
-      // Dikirim kalau guru memilih namanya lewat pencarian di layar login.
-      // Kosong = mode legacy (password-only, tanpa pilih nama) yang SENGAJA
-      // masih dipertahankan — lihat komentar isLoginRateLimited() di Utils.gs.
-      var requestedTeacherId = String(data.teacherId || '').trim();
       for (var i = 1; i < rows.length; i++) {
         // Kalau ID-nya sudah diketahui, cukup cek baris itu saja — password
         // guru lain tidak ikut dicocokkan, jadi PIN yang kebetulan sama
@@ -90,10 +94,15 @@ function doPost(e) {
       // Password tidak cocok ke akun mana pun — hitung sebagai percobaan
       // gagal untuk rate limit. Lockout baru dicatat ke Audit Log SEKALI
       // (saat count baru menyentuh batas), bukan tiap request, supaya log
-      // tidak banjir kalau ada percobaan brute-force beneran.
-      var failCount = recordLoginFailure();
-      if (failCount === LOGIN_RATE_MAX_FAILURES) {
-        logAudit({ name: 'System', id: '-' }, 'Login Rate Limit Triggered', 'Lockout global aktif ' + (LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + failCount + ' percobaan gagal');
+      // tidak banjir kalau ada percobaan brute-force beneran. Skema mana
+      // yang tersentuh (per-akun/global) mengikuti requestedTeacherId, sama
+      // seperti gerbang isLoginRateLimited() di atas.
+      var failCount = recordLoginFailure(requestedTeacherId);
+      var failThreshold = requestedTeacherId ? LOGIN_RATE_MAX_FAILURES_PER_ACCOUNT : LOGIN_RATE_MAX_FAILURES;
+      if (failCount === failThreshold) {
+        logAudit({ name: 'System', id: '-' }, 'Login Rate Limit Triggered',
+          (requestedTeacherId ? 'Lockout akun ' + requestedTeacherId + ' aktif ' : 'Lockout global aktif ') +
+          (LOGIN_RATE_WINDOW_MS / 60000) + ' menit setelah ' + failCount + ' percobaan gagal');
       }
       return jsonOut({ status: 'error', message: 'Password salah!' });
     }

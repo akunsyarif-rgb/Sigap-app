@@ -288,11 +288,46 @@ test('[simulated concurrency] password salah untuk satu akun tidak pernah membuk
   assert.equal(salahA.status, 'error');
   assert.equal(salahB.status, 'error');
   assert.match(salahA.message, /password salah/i);
-  // Akun yang benar tetap bisa login normal setelah itu (rate limit GLOBAL,
-  // bukan per akun, memang baru memblokir di 15 kegagalan per 5 menit --
-  // lihat Utils.gs; dua kegagalan di atas tidak sampai memicu itu).
+  // Akun yang benar tetap bisa login normal setelah itu -- rate limit untuk
+  // jalur dengan teacherId sekarang PER-AKUN (baru memblokir di 10 kegagalan
+  // BERUNTUN pada akun yang sama, lihat Utils.gs); dua kegagalan di atas,
+  // masing-masing di akun BERBEDA, tidak sampai memicu apa pun.
   const sukses = s.login('G02');
   assert.equal(sukses.status, 'success');
+});
+
+test('[audit Agustus 2026] percobaan gagal berulang pada SATU akun (teacherId terisi) tidak ikut menaikkan counter rate-limit GLOBAL -- ini yang mencegah guru lain ikut terkunci', () => {
+  const s = loadServer();
+  for (let i = 0; i < 9; i++) {
+    const r = s.rawPost({ action: 'login', teacherId: 'G02', password: 'salah-' + i });
+    assert.equal(r.status, 'error');
+  }
+  // Counter GLOBAL (jalur tanpa teacherId) sama sekali tidak tersentuh oleh
+  // 9 kegagalan G02 di atas -- kuncinya cuma pernah ditulis oleh recordLoginFailure
+  // versi per-akun (loginRateLimitAccountKey), bukan versi global.
+  const globalKey = 'login_fail_' + Math.floor(Date.now() / (5 * 60 * 1000));
+  assert.equal(s.cacheStore[globalKey], undefined);
+  // Guru LAIN (G03) sama sekali tidak terpengaruh -- login dengan password
+  // benar tetap berhasil walau G02 baru saja gagal 9 kali beruntun.
+  const g03 = s.login('G03');
+  assert.equal(g03.status, 'success');
+});
+
+test('[audit Agustus 2026] batas per-akun (10) menutup HANYA akun itu, bukan seluruh sekolah', () => {
+  const s = loadServer();
+  for (let i = 0; i < 10; i++) {
+    s.rawPost({ action: 'login', teacherId: 'G02', password: 'salah-' + i });
+  }
+  // G02 sendiri sekarang terkunci, walau password berikutnya benar.
+  const g02Locked = s.rawPost({ action: 'login', teacherId: 'G02', password: PASSWORD });
+  assert.equal(g02Locked.status, 'error');
+  assert.match(g02Locked.message, /terlalu banyak percobaan/i);
+  // G03 (akun lain) tetap bisa login normal -- inilah perbaikan utamanya:
+  // dulu 10-15 kegagalan di SATU akun (mis. gara-gara guru piket pagi
+  // salah ketik password sendiri berulang kali) ikut mengunci SEMUA guru
+  // lain karena counternya dibagi bersama.
+  const g03 = s.login('G03');
+  assert.equal(g03.status, 'success');
 });
 
 test('perubahan role oleh admin untuk user X tidak bocor/mempengaruhi sesi user Y yang aktif bersamaan', () => {
@@ -377,7 +412,7 @@ test('[simulated concurrency] beberapa pembaca (Gerbang/Riwayat/Beranda) berbeda
 // 9/10. RAPID LOGIN CLICK & RATE-LIMIT (temuan minor, bukan korupsi data)
 // ============================================================
 
-test('[reentrancy nyata] percobaan login gagal yang BENAR-BENAR bersamaan (rate limiter global) tidak mengizinkan lebih dari batas -> lihat catatan race minor di laporan audit', () => {
+test('[reentrancy nyata] percobaan login gagal yang BENAR-BENAR bersamaan (rate limiter GLOBAL, jalur tanpa teacherId) tidak mengizinkan lebih dari batas -> lihat catatan race minor di laporan audit', () => {
   // isLoginRateLimited()/recordLoginFailure() (Utils.gs) TIDAK dilindungi
   // sigapLock (login ada SEBELUM lock diambil, lihat Code.gs baris ~35-99 vs
   // ~159) -- desain yang disengaja (lock baru dipasang setelah sesi valid ada,
@@ -389,6 +424,11 @@ test('[reentrancy nyata] percobaan login gagal yang BENAR-BENAR bersamaan (rate 
   // di laporan audit; TIDAK diperbaiki dengan memasukkan login ke sigapLock
   // (itu akan menyerialkan SELURUH login sekolah, termasuk yang berhasil,
   // demi kasus tepi brute-force yang sudah dibatasi 15/5menit).
+  //
+  // Jalur TANPA teacherId sengaja dipakai di sini (bukan G02 seperti
+  // sebelum audit Agustus 2026) -- itu satu-satunya jalur yang masih
+  // memakai counter GLOBAL sejak rate limit dipecah per-akun, lihat dua
+  // test "[audit Agustus 2026]" di atas untuk jalur dengan teacherId.
   const s = loadServer();
   const cache = s.cacheStore;
   const key = 'login_fail_' + Math.floor(Date.now() / (5 * 60 * 1000));
@@ -399,10 +439,16 @@ test('[reentrancy nyata] percobaan login gagal yang BENAR-BENAR bersamaan (rate 
   // membaca cache SEBELUM memanggil recordLoginFailure kedua kalinya (representasi
   // paling jujur yang bisa dibuat tanpa mengubah kode produksi menjadi async).
   const before = parseInt(cache[key], 10);
-  s.rawPost({ action: 'login', teacherId: 'G02', password: 'salah' }); // -> count jadi 15 -> lockout aktif
+  s.rawPost({ action: 'login', password: 'salah' }); // -> count jadi 15 -> lockout global aktif
   const afterOne = parseInt(cache[key], 10);
   assert.equal(afterOne, before + 1);
-  const lockedOut = s.rawPost({ action: 'login', teacherId: 'G02', password: PASSWORD });
+  const lockedOut = s.rawPost({ action: 'login', password: 'salah-lagi' });
   assert.equal(lockedOut.status, 'error');
   assert.match(lockedOut.message, /terlalu banyak percobaan/i);
+  // Lockout global tetap berlaku untuk SIAPA PUN yang lewat jalur tanpa
+  // teacherId, termasuk yang passwordnya sebenarnya benar -- inilah sifat
+  // "global" yang memang dipertahankan untuk jalur yang tidak teratribusi.
+  const jugaTerkunci = s.rawPost({ action: 'login', password: PASSWORD });
+  assert.equal(jugaTerkunci.status, 'error');
+  assert.match(jugaTerkunci.message, /terlalu banyak percobaan/i);
 });
