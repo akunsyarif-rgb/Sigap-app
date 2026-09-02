@@ -105,6 +105,8 @@ nama+NISN siswa secara eksplisit (ditandai di tabel).
 | `deleteTeacher` | Admin | Hapus akun guru permanen |
 | `setJadwalPiket` | Admin | Timpa seluruh Jadwal Piket mingguan |
 | `hapusDataPeriode` | Admin | Hapus massal data operasional per rentang tanggal |
+| `savePushSubscription` | Non-OSIS | Simpan/upsert subscription Web Push perangkat ini, terikat ke sesi |
+| `deletePushSubscription` | Non-OSIS | Hapus subscription perangkat ini (hanya milik sesi yang sama) |
 
 ### `doGet` — aksi baca (`?action=...`, butuh `sessionToken` kecuali ditandai *)
 
@@ -345,6 +347,38 @@ Batas 3000 baris (`HAPUS_DATA_MAX_ROWS`) dicek **sebelum** satu baris pun
 dihapus. `previewHapusData` murni baca; jumlah aktual saat eksekusi dihitung
 ULANG dari sheet (lihat race-condition note di `CLAUDE.md`), tidak pernah
 memercayai angka pratinjau. `Bimbingan_Khusus` sengaja tidak termasuk.
+
+---
+
+### Push Notification
+
+Lihat `CLAUDE.md` bagian "Push Notification" untuk arsitektur lengkap
+(kenapa pengiriman sesungguhnya lewat relay Vercel, bukan GAS sendiri) dan
+`Notifikasi.gs` untuk kode sumbernya. Dua aksi di bawah ini HANYA mengelola
+subscription perangkat — tidak ada aksi untuk "mengirim notifikasi", itu
+dihitung & diantrekan otomatis dari dalam aksi lain (`record`, `addPelanggaran`,
+`addIzinKeluar`, dst.) lewat `notifyRelevantUsers()`.
+
+#### `savePushSubscription` (POST)
+| Field | Wajib | Keterangan |
+|---|---|---|
+| `subscription` | ya | Objek `PushSubscription.toJSON()` browser: `{endpoint, keys: {p256dh, auth}}` |
+| `userAgent` | tidak | Dipotong 200 karakter, murni untuk keterbacaan baris di sheet |
+
+Upsert berdasarkan `endpoint` (kunci alami satu subscription), **selalu**
+ditulis atas nama `sessionUser.id` dari sesi — field id guru yang dikirim
+klien (kalaupun ada) tidak pernah dibaca. Memanggil ini lagi dengan endpoint
+yang sama tapi sesi guru LAIN memindahkan kepemilikan baris ke guru itu
+(skenario perangkat bersama/kiosk).
+
+#### `deletePushSubscription` (POST)
+| Field | Wajib | Keterangan |
+|---|---|---|
+| `endpoint` | ya | |
+
+Hanya menghapus baris yang `Guru_ID`-nya cocok dengan sesi yang memanggil —
+endpoint milik pengguna lain tidak berefek apa pun (dan tidak membocorkan
+apakah endpoint itu ada/milik siapa).
 
 ---
 

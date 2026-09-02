@@ -172,6 +172,16 @@
            const navigateTab = (tab) => { setGerbangMode('terlambat'); setExportPrefill(null); setActiveTab(tab); };
            const goToIzinKeluar = () => { setGerbangMode('izin'); setActiveTab('scan'); };
            const goToExportData = (prefill) => { setExportPrefill(prefill || null); setActiveTab('export'); };
+           // Deep-link dari notifikasi push (lihat notifikasi.js/sw.js) — cuma
+           // memindahkan tab yang ditampilkan lewat pintasan yang SUDAH ADA di
+           // atas, sama sekali tidak memberi akses baru. Token tidak dikenal
+           // diabaikan (bukan error) supaya versi lama sw.js yang masih
+           // ter-cache di perangkat lama tidak pernah bisa merusak navigasi.
+           const handlePushGoto = (token) => {
+               if (token === 'izin' && effectiveMenus.includes('scan')) goToIzinKeluar();
+               else if (token === 'log' && effectiveMenus.includes('log')) navigateTab('log');
+           };
+           const pendingPushGoto = useRef(null);
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
            const [toast, setToast] = useState(null);
@@ -234,9 +244,19 @@
            // untuk rekap, resolveExportAccess untuk export) — menu yang tidak
            // muncul di sini BUKAN pengamanannya.
            const waliKelasExtraMenus = ['rekap', 'export'].filter(m => !roleConfig.menus.includes(m));
-           const effectiveMenus = roleKey === 'guru' && user && user.waliKelas && waliKelasExtraMenus.length
+           const baseEffectiveMenus = roleKey === 'guru' && user && user.waliKelas && waliKelasExtraMenus.length
                ? [...roleConfig.menus, ...waliKelasExtraMenus]
                : roleConfig.menus;
+           // 'notifikasi' ditambahkan runtime per-orang, sama polanya dengan
+           // 'rekap'/'export' di atas — HANYA untuk pengguna yang termasuk
+           // salah satu dari dua kelompok penerima push (lihat pushIsEligible
+           // di notifikasi.js, cerminan resolvePushRecipients server di
+           // Notifikasi.gs). Server tetap satu-satunya yang menentukan siapa
+           // BENAR-BENAR menerima notifikasi — ini murni supaya menu setelan
+           // tidak muncul untuk orang yang tidak akan pernah menerima apa pun.
+           const effectiveMenus = pushIsEligible(user, jadwalPiket) && !baseEffectiveMenus.includes('notifikasi')
+               ? [...baseEffectiveMenus, 'notifikasi']
+               : baseEffectiveMenus;
 
            // Dipakai baik untuk logout manual maupun logout paksa (sesi expired)
            // — bedanya cuma pesan yang ditampilkan di layar login.
@@ -506,6 +526,30 @@
                    }
                }
            }, [user]);
+
+           // Token '?goto=' (SW membuka tab baru lewat clients.openWindow saat
+           // tidak ada tab SIGAP yang terbuka) dibaca & dibuang dari URL SEKALI
+           // di boot, sebelum tentu tahu penggunanya sudah login atau belum —
+           // disimpan di ref, baru dieksekusi begitu `user` tersedia (efek di
+           // bawah), supaya tidak hilang kalau boot masih di layar login.
+           useEffect(() => { pendingPushGoto.current = consumePushGotoParam(); }, []);
+           useEffect(() => {
+               if (user && pendingPushGoto.current) {
+                   handlePushGoto(pendingPushGoto.current);
+                   pendingPushGoto.current = null;
+               }
+           }, [user]);
+
+           // Registrasi service worker + "self-heal" subscription (lihat
+           // notifikasi.js) — dijalankan ulang tiap jadwalPiket berubah karena
+           // itu satu-satunya sinyal async yang menentukan eligibility guru
+           // piket (eligibility wali kelas sudah tahu dari `user` sejak awal).
+           // initPushRuntime aman dipanggil berkali-kali (idempotent).
+           useEffect(() => {
+               if (user && sessionToken && pushIsEligible(user, jadwalPiket)) {
+                   initPushRuntime(user, sessionToken, handlePushGoto);
+               }
+           }, [user, sessionToken, jadwalPiket]);
 
            // Snapshot ke localStorage setiap kali dataset inti berubah, supaya
            // refresh berikutnya punya sesuatu untuk ditampilkan seketika.
@@ -1091,7 +1135,13 @@
                                    />
                                )}
                                {activeTab === 'dashboard' && (
-                                   <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onGoToIzin={effectiveMenus.includes('scan') ? goToIzinKeluar : null} />
+                                   <React.Fragment>
+                                       <NotifikasiOnboardingBanner user={user} eligible={effectiveMenus.includes('notifikasi')} onOpenSettings={() => navigateTab('notifikasi')} />
+                                       <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onGoToIzin={effectiveMenus.includes('scan') ? goToIzinKeluar : null} />
+                                   </React.Fragment>
+                               )}
+                               {activeTab === 'notifikasi' && effectiveMenus.includes('notifikasi') && (
+                                   <NotifikasiTab user={user} sessionToken={sessionToken} />
                                )}
                                {activeTab === 'log' && effectiveMenus.includes('log') && (
                                    <LogTab

@@ -773,6 +773,280 @@ check in `Code.gs`; dropping `'auditlog'` from `bk_kesiswaan` in `config.js`
 (and the `roleKey !== 'admin'` guard in `fetchAuditLog`) only stops a request
 that would now be rejected anyway.
 
+### Push Notification (Web Push, VAPID)
+
+SIGAP can notify a teacher even when the app isn't open, using standards-based
+Web Push (the W3C Push API + VAPID) delivered through an installed PWA — no
+native app, no paid SaaS. Read this whole section (and `Notifikasi.gs`'s own
+header comment) before touching any part of this feature; it has more moving
+pieces than most, and several of them exist specifically to route around a
+real technical constraint rather than by choice.
+
+**Why GAS can't send the push itself.** Actually sending a Web Push message
+requires signing a VAPID JWT with ECDSA (P-256/ES256) for the `Authorization`
+header, and encrypting the payload with an ECDH-derived key (RFC 8291/8292).
+Apps Script's `Utilities` class only has hashing/HMAC — no ECDSA, no ECDH, no
+AES-GCM. Implementing elliptic-curve crypto by hand in Apps Script JS was
+rejected as too risky to get right and too fragile to maintain. So sending is
+delegated to `api/push-send.js`, a small Node serverless function in the
+**same Vercel project** that already hosts the static frontend (see the two
+deploy targets note at the top of this file) — not a new vendor, not a new
+hosting account. It uses the `web-push` npm package (a real dependency, not
+dev-only — see `package.json`'s comment on why) purely to sign and encrypt;
+it has **zero knowledge** of students, classes, wali kelas, or piket. GAS
+remains the only place that decides *who* gets notified.
+
+**Alternatives considered and rejected, with why:**
+- **A third-party push SaaS** (OneSignal-style) would be simpler to wire up,
+  but puts every teacher's subscription data on an external vendor's servers
+  and ties the school to that vendor's free-tier terms. Rejected in favor of
+  keeping subscriptions inside SIGAP's own Sheet, on infrastructure already
+  used (Vercel).
+- **Firebase Cloud Messaging** (Google, already Google-ecosystem-adjacent)
+  was considered since GAS *can* call arbitrary Google APIs via a service
+  account. Rejected because its web SDK is Chrome/FCM-endpoint-centric and
+  would mean two different code paths depending on which browser handed back
+  which kind of push endpoint — the raw W3C Push API is truly cross-browser
+  (Chrome/Edge/Firefox on Android/desktop, and Safari on iOS/iPadOS 16.4+
+  when installed) with one code path, which is what "prioritize cross-platform
+  standards-based Web Push" in the brief for this feature actually asked for.
+
+**Free tier, honestly.** Web Push itself has no per-message cost — it rides
+each browser vendor's own push infrastructure for free. The only paid-service
+surface is Vercel's serverless function invocations, which for one school's
+volume (a handful of notifications per event, a few events per day) sits far
+inside any free/hobby plan. There is no ongoing cost this introduces beyond
+what already exists for hosting the frontend.
+
+#### The two — and only two — recipient groups
+
+Enforced entirely server-side in `resolvePushRecipients()` (`Notifikasi.gs`),
+never by the client:
+
+1. **Wali kelas** of the affected student's class — resolved by scanning
+   `Master_Guru` for a non-`nonaktif` row whose `Kelas_Wali` matches (via the
+   existing `sameClass()`, the same tolerant matcher used everywhere else)
+   the student's class **as read from `Master_Siswa`**, never from
+   `data.class_name` sent by the client. This matters concretely: `record`,
+   `addSurat`, `addPelanggaran`, and `addPelanggaranUpacara` all *write*
+   whatever class name the client sent (pre-existing behavior, unrelated to
+   this feature — see their handlers in `Code.gs`), so before notifying,
+   each of those hooks calls `resolveSiswaForIzin(ss, data.nisn)` (the same
+   Master_Siswa lookup Izin Keluar already uses) purely to get a
+   server-trusted class for recipient resolution. If the NISN isn't found
+   there, no wali kelas notification is sent — never a guess from client data.
+2. **Guru piket on duty on the day of the event** — from `Jadwal_Piket`,
+   matched via the existing `hariPiketServer()`, and only when
+   `event.needsPiketAction` is true (a real verification is actually
+   waiting, not just "a request was filed"). Same "capacity from data, not
+   from permanent role" principle as `izinKapasitasVerifikasi()`: a BK
+   account that happens to be on today's piket roster is notified as piket;
+   a BK account that isn't, is not notified at all by this feature (BK,
+   Kesiswaan, Admin, and ordinary Guru Mapel never receive push notifications
+   *because of their role* — only because of what the data says about them
+   today).
+
+Both groups are recomputed fresh on every event — there is no caching layer
+between `Jadwal_Piket`/`Master_Guru` and a notification decision, so a
+same-day piket shift change or a wali kelas reassignment takes effect on the
+very next event, same as everywhere else piket/wali kelas is checked.
+
+#### Event Notification Engine
+
+One entry point, `notifyRelevantUsers(event)` (`Notifikasi.gs`), called from
+`Code.gs` after the underlying write succeeds (never before, never replacing
+it) in: `record`, `addSurat`, `addPelanggaran`, `addPelanggaranUpacara`,
+`addIzinKeluar`, `verifikasiIzinKeluar`, `tandaiKembaliIzinKeluar`,
+`tandaiPulangIzinKeluar`, `addIzinKelompok`, `verifikasiIzinKelompok`, and
+`tandaiKembaliKelompok`. It never throws (wrapped in try/catch, same
+guarantee as `logAudit()`) — a notification failure must never fail the
+teacher's actual action. `Bimbingan_Khusus` is **deliberately excluded**:
+it's already the one category with tighter-than-normal read access
+(admin/BK only), and a push notification's mere existence would signal to a
+wali kelas that a confidential counseling note was created about their
+class's student, which is a different kind of leak than the notification
+text itself revealing details — so it's left out of this feature entirely
+rather than guessed at.
+
+`notifyRelevantUsers()` doesn't call the network — it **enqueues** into the
+`Push_Queue` sheet (see `SCHEMA.md`) and returns immediately, so recording a
+lateness or an izin never waits on a round-trip to Vercel or to a push
+service. A separate function, `processPushQueue()`, does the actual sending;
+it's wired to a **time-based trigger, installed once manually** by running
+`installPushQueueTrigger()` from the Apps Script editor (idempotent — safe to
+run again, it checks for an existing trigger first). This is a manual
+one-time step, consistent with this repo's existing "nothing auto-deploys
+itself" posture for anything that touches the live Apps Script project — see
+the clasp section above.
+
+Izin Kelompok events are batched **per class, not per student**: a group
+activity involving 8 students from the same class produces one wali-kelas
+notification for that class, not 8 identical ones — see the `kelKelasNotified`/
+`vkKelasNotified`/`tkKelasNotified` de-dupe maps in the three `addIzinKelompok`/
+`verifikasiIzinKelompok`/`tandaiKembaliKelompok` handlers in `Code.gs`. The
+piket ping for a group activity (jalur normal only) is sent once per
+activity, separately from the per-class wali kelas notifications.
+
+#### Privacy: what the notification is allowed to say
+
+`pushSalinan(jenis, kind)` (`Notifikasi.gs`) is the **only** place notification
+title/body text is produced. Title is always the literal string `"SIGAP"` —
+never the event type. Body text for anything not explicitly listed in that
+function's `switch` falls through to one fully generic sentence ("Terdapat
+kejadian baru terkait salah satu siswa di kelas Anda.") — this is a
+deliberate default-safe design: adding a new event type later and forgetting
+to think about its sensitivity still produces a safe, generic notification,
+never an accidental leak. `keterlambatan`/`surat`/the various `izin_*`
+statuses get slightly more specific (but still never a student's name, NISN,
+or note content) because a late-arrival or an izin status change was judged
+low-sensitivity; `pelanggaran` and `pelanggaran_upacara` deliberately fall
+through to the generic case. Piket notifications are always the literal copy
+from the brief: "Izin siswa menunggu verifikasi. Buka SIGAP untuk memproses."
+Tapping a notification only changes which tab is shown (via the `?goto=izin`/
+`?goto=log` deep-link tokens, see below) — session and RBAC are re-checked in
+full by every API call the destination screen makes, exactly as if the
+teacher had navigated there by hand. A push notification is never treated as
+proof of anything.
+
+#### Idempotency & concurrency
+
+`pushEventAlreadyQueued()` de-dupes on `Event_ID` (`jenis|refId|guruId|kind`)
+within a rolling 2-minute window (`PUSH_QUEUE_DEDUPE_WINDOW_MS`), scanning
+only the most recent `PUSH_QUEUE_DEDUPE_SCAN_ROWS` queue rows (the queue is
+drained every minute, so it never grows large enough for a full scan to
+matter). For the Izin Keluar/Kelompok family, this rides on top of guards
+that already exist for other reasons: a double-submit of `addIzinKeluar` is
+rejected by the existing open-transaction check (`findIzinTerbukaForNisn`)
+*before* `notifyRelevantUsers()` is ever reached, and a retried
+`verifikasiIzinKeluar`/`tandaiKembaliIzinKeluar`/`tandaiPulangIzinKeluar` is
+rejected by the existing state-machine guard (status no longer matches the
+required prior status) for the same reason — so the dedupe window in
+`Notifikasi.gs` is a second, independent layer, not the only thing standing
+between a flaky client and a duplicate notification. For `record`/
+`addPelanggaran`/`addSurat`/`addPelanggaranUpacara`, which have no equivalent
+business-key guard against a genuine double-click (a pre-existing property
+of those actions, not something this feature changes), the 2-minute dedupe
+window is what actually protects against a duplicate notification. Sending
+itself is protected by `LockService.getScriptLock()` inside
+`processPushQueue()` (a busy lock just skips that tick — the next one retries)
+and per-row `Attempts`/`Processed` bookkeeping so a send failure doesn't lose
+the row, and a send success doesn't accidentally resend it.
+
+#### Device subscriptions
+
+One row per browser/device in `Push_Subscriptions` (see `SCHEMA.md`), keyed
+by `Endpoint` (upsert, not append) — **not** keyed by `Guru_ID`, so a shared
+device (e.g. one tablet at the gate) re-subscribing under a different
+logged-in teacher correctly **transfers ownership** of that endpoint rather
+than accumulating stale rows under whoever subscribed first.
+`savePushSubscription`/`deletePushSubscription` (`Code.gs`) always resolve
+the owner from `sessionUser.id` — an id sent by the client is never trusted.
+Logging out does **not** delete a device's subscription (that would defeat
+the entire point — push has to keep working while the app is closed and the
+teacher is logged out); the client instead self-heals on next boot
+(`initPushRuntime()` in `notifikasi.js` silently re-sends the browser's
+existing subscription if the browser still holds one and permission is still
+granted). A subscription the push service reports as gone (404/410 from
+`api/push-send.js`, surfaced back as `{gone: true}`) is pruned from
+`Push_Subscriptions` by `processPushQueue()` the next time it's used — never
+proactively polled.
+
+#### PWA shell
+
+`manifest.json` and `sw.js` (both new, at repo root, alongside `index.html`)
+and `icons/icon-192.png`/`icons/icon-512.png` (a small navy-bell icon,
+hand-generated with a pure Python PNG encoder — see the comment in
+`Notifikasi.gs`'s neighborhood in git history if it ever needs
+regenerating; no PIL/canvas/sharp is installed anywhere this repo builds).
+`sw.js` is **deliberately minimal**: it has no `fetch` handler and touches no
+Cache Storage API at all — `index.html`'s own `BUILD_VERSION` query-string
+cache-busting (see the top of this file) is the *only* cache-versioning
+mechanism for the app's JS, and a service worker that also tried to cache
+those files would create two competing versioning schemes, which is exactly
+the "stuck on an old frontend forever" failure mode this feature was told
+not to introduce. `sw.js`'s only two jobs are the `push` event (show the
+notification from the payload `pushSalinan()` already made privacy-safe) and
+`notificationclick` (focus an existing tab and `postMessage` it a
+`{type:'sigap-push-goto', goto}`, or open a new one at `/?goto=<token>` if
+none is open). It is registered lazily, only for users `pushIsEligible()`
+actually applies to (`notifikasi.js`, called from `app.js`), not for every
+visitor — a plain guru who will never receive a notification never gets a
+service worker registered on their device for this feature. `index.html`
+itself never calls `serviceWorker.register` directly.
+
+#### Onboarding & the settings screen
+
+Per the brief: never trigger the browser's permission prompt without context
+first. `NotifikasiOnboardingBanner` (`notifikasi.js`) shows the required
+explanatory sentence on Beranda, for eligible users only, until the teacher
+either activates or dismisses it (`localStorage`, per-teacher-id key — a
+dismissal is remembered, not re-asked every visit). Only *after* a button
+press does `Notification.requestPermission()` ever get called — never on
+mount, never automatically. `NotifikasiTab` (reachable from the "Lainnya"
+panel, added to `effectiveMenus` at runtime the same way `rekap`/`export`
+are for a wali-kelas guru — see `pushIsEligible()`) is the "🔔 Notifikasi
+Aktif" / "🔕 Notifikasi Belum Diaktifkan" status screen with Aktifkan/
+Nonaktifkan, plus adaptive copy (`pushUnavailableReason()`) that tells an
+iPhone/iPad user *specifically* to Add to Home Screen first (Safari only
+supports Web Push for an installed/standalone PWA, iOS/iPadOS 16.4+) rather
+than assuming everyone is on Android — while still defaulting to an
+Android-appropriate message otherwise, since most users are expected to be
+on Android.
+
+#### One-time manual setup (this is not live until all of these are done)
+
+None of this activates by merely merging the PR — consistent with this
+repo's existing "nothing auto-deploys the backend" posture:
+
+1. Generate a VAPID key pair once: `npx web-push generate-vapid-keys`.
+2. Put the **public** key in `config.js` as `VAPID_PUBLIC_KEY` (replacing the
+   `GANTI_DENGAN_...` placeholder) — it's meant to be public, safe to ship
+   in the frontend, same trust level as `API_URL`/`API_TOKEN`.
+3. In the Vercel project's dashboard (the same project already hosting the
+   frontend), set env vars `VAPID_PUBLIC_KEY` (same value as step 2),
+   `VAPID_PRIVATE_KEY` (the pair's private half — **never** put this in the
+   repo), `VAPID_SUBJECT` (a `mailto:` contact address), and
+   `PUSH_RELAY_SECRET` (any random string).
+4. In Apps Script's Script Properties (Project Settings), add
+   `PUSH_RELAY_URL` (the deployed `https://<your-vercel-domain>/api/push-send`
+   URL) and `PUSH_RELAY_SECRET` (**must match** the Vercel value from step 3
+   exactly).
+5. Deploy the updated `.gs` files (`clasp:deploy`, per the existing manual
+   process above) — `Notifikasi.gs` is now part of what `.claspignore` allows
+   through.
+6. From the Apps Script editor, run `installPushQueueTrigger()` **once**.
+7. Bump `BUILD_VERSION` in `index.html` on this deploy (already done as part
+   of adding `notifikasi.js` to the file list — bump it again on any later
+   change to these files).
+
+Skipping step 6 means events queue in `Push_Queue` forever and nothing is
+ever sent (silently — worth checking `Push_Queue` for a growing backlog of
+unprocessed rows if notifications don't seem to arrive). Skipping steps 3–4
+means `processPushQueue()` keeps incrementing `Attempts`/`Last_Error =
+'relay_not_configured'` on every row without ever giving up, and
+self-recovers automatically the moment the env vars are filled in — no
+re-deploy needed for that part.
+
+#### Verified vs. not verified in this environment
+
+Every piece of *logic* this feature depends on is covered by real tests (see
+below) run against `doPost`/`doGet` and `processPushQueue()` executed for
+real in a vm sandbox with Apps Script services stubbed. What could **not**
+be verified from this development environment — no real Vercel deployment,
+no real VAPID keys, no physical Android/iPhone device, no browser with a real
+push subscription — is actual end-to-end delivery of a push notification to
+a physical device while SIGAP is closed. That is the proof-of-concept a human
+needs to run once, after completing the one-time setup above: log in as a
+wali kelas on an Android phone and (if available) an iPhone/iPad, activate
+notifications on both from the Notifikasi settings screen, close the app
+completely on both, then have another account record a keterlambatan for a
+student in that wali kelas's class, and confirm both devices receive it. If
+that doesn't work, the failure is almost certainly in step 1–4 above (a
+mismatched VAPID key pair between `config.js`/Vercel, a `PUSH_RELAY_SECRET`
+mismatch between Vercel/Script Properties, or the Vercel env vars not being
+set) rather than in the recipient-computation or queueing logic, which the
+test suite already pins down.
+
 ### Tests
 
 `tests/render-smoke.test.js` renders each top-level tab component with a
@@ -809,3 +1083,31 @@ and multiple same-day piket teachers each verify independently) live in
 those same two izin files; Export Izin Keluar is in `tests/export-backend.test.js`
 (scope, tampering, leaked identifiers, audit) and `tests/export-frontend.test.js`
 (14-column PDF/XLSX, and that narrow reports keep their old font size).
+
+`tests/push-notifications.test.js` drives Push Notification through real
+`doPost()`/`doGet()`/`processPushQueue()` calls (`Utils.gs`+`Auth.gs`+
+`Notifikasi.gs`+`Code.gs` in one vm sandbox, `UrlFetchApp` stubbed to capture
+the relay call instead of hitting a network): wali kelas receives only their
+own class's events, BK/Kesiswaan/Admin/plain guru never receive wali-kelas
+notifications, guru piket on duty (including a BK account that happens to be
+on duty, and multiple simultaneous piket teachers) receives the
+verification-needed ping while an off-duty guru does not, a verified izin
+never produces a second verification ping, double-submit and a direct
+`notifyRelevantUsers()` retry both produce exactly one queued row, one
+teacher's subscription is never used or deleted by another's request, logout
+leaves a subscription intact while re-subscribing the same endpoint under a
+different login transfers ownership, a relay response marking a subscription
+`gone` prunes it, subscription actions still require a valid session, a
+pelanggaran notification body is always the generic safe sentence (never the
+actual jenis/sanksi/catatan), and a same-day `Jadwal_Piket` edit changes the
+very next event's recipients. `tests/push-frontend.test.js` covers
+`notifikasi.js`'s pure logic (`pushIsEligible`, `urlBase64ToUint8Array`,
+`pushUnavailableReason`'s iOS/Android branches, `consumePushGotoParam`'s URL
+handling) plus static checks that `sw.js` never adds a `fetch`/Cache Storage
+handler, that `manifest.json`'s icons actually exist on disk, and that
+`index.html`/`package.json`/`.claspignore` are wired correctly (files array,
+`BUILD_VERSION`, no direct `serviceWorker.register`, `web-push` as a real
+dependency, `Notifikasi.gs` allowed through clasp). `NotifikasiOnboardingBanner`/
+`NotifikasiTab` themselves are exercised (never throw, across eligible/
+ineligible/dismissed states) as additional cases in `render-smoke.test.js`,
+same as every other tab component.

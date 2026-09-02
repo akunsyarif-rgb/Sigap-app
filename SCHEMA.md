@@ -2,7 +2,7 @@
 
 SIGAP tidak punya database terpisah — **satu Google Spreadsheet** adalah
 database-nya (dibaca/ditulis lewat `SpreadsheetApp` di `Code.gs`/`Utils.gs`).
-Dokumen ini mencantumkan **semua 13 sheet** yang dipakai backend saat ini,
+Dokumen ini mencantumkan **semua 15 sheet** yang dipakai backend saat ini,
 beserta **urutan kolom persis** — posisi kolom itu signifikan (dibaca *by
 index*, bukan by nama header) di banyak tempat, jadi kolom yang tertukar
 urutannya akan salah baca data tanpa error yang jelas.
@@ -16,11 +16,11 @@ urutannya akan salah baca data tanpa error yang jelas.
 | Kategori | Sheet | Dibuat otomatis? |
 |---|---|---|
 | **Data induk** — harus disiapkan **manual** dengan data asli sekolah sebelum SIGAP dipakai | `Master_Guru`, `Master_Siswa`, `Log_Gerbang` | **Tidak** — backend cuma `getSheetByName()`, tidak pernah membuatkan sheet ini kalau belum ada |
-| **Data operasional** — dibuat otomatis begitu aksi terkait pertama kali dipanggil | `Pelanggaran`, `Surat_Masuk`, `Bimbingan_Khusus`, `Pelanggaran_Upacara`, `Izin_Keluar`, `Izin_Kelompok`, `Jadwal_Piket`, `Tindak_Lanjut`, `Audit_Log`, `Error_Log` | **Ya** — lewat `getOrCreateSheet(ss, nama, headers)` (`Utils.gs`): kalau sheet belum ada, dibuat lalu baris header ditulis persis sesuai urutan di dokumen ini |
+| **Data operasional** — dibuat otomatis begitu aksi terkait pertama kali dipanggil | `Pelanggaran`, `Surat_Masuk`, `Bimbingan_Khusus`, `Pelanggaran_Upacara`, `Izin_Keluar`, `Izin_Kelompok`, `Jadwal_Piket`, `Tindak_Lanjut`, `Audit_Log`, `Error_Log`, `Push_Subscriptions`, `Push_Queue` | **Ya** — lewat `getOrCreateSheet(ss, nama, headers)` (`Utils.gs`): kalau sheet belum ada, dibuat lalu baris header ditulis persis sesuai urutan di dokumen ini |
 
 Untuk replikasi ke sekolah lain: **cukup buat 3 sheet data induk** dengan
 kolom sesuai dokumen ini dan isi datanya (guru + siswa), lalu deploy
-backend (lihat `CLAUDE.md`). 10 sheet operasional lainnya akan membuat
+backend (lihat `CLAUDE.md`). 12 sheet operasional lainnya akan membuat
 dirinya sendiri dengan header yang benar saat pertama kali dipakai — tidak
 perlu dibuat manual, dan **sebaiknya jangan dibuat manual** (kalau dibuat
 manual dengan header yang salah/tertukar urutan, `getOrCreateSheet` tidak
@@ -230,3 +230,44 @@ laporan tetap masuk walau sesi baru habis saat render gagal).
 | 4 | D | `Pesan` |
 | 5 | E | `Detail` |
 | 6 | F | `Halaman` |
+
+### `Push_Subscriptions`
+Sumber: `Notifikasi.gs`, action `savePushSubscription`/`deletePushSubscription`
+(`Code.gs`). Satu baris = satu subscription Web Push (satu browser/perangkat).
+Kunci alami adalah `Endpoint` (upsert lewat itu, bukan lewat `Guru_ID`) — lihat
+CLAUDE.md bagian Push Notification untuk kenapa.
+
+| # | Kolom | Header | Keterangan |
+|---|---|---|---|
+| 1 | A | `Timestamp` | Terakhir disimpan/diperbarui |
+| 2 | B | `Guru_ID` | Merujuk kolom A `Master_Guru` — **selalu** dari sesi, tidak pernah dari klaim klien |
+| 3 | C | `Endpoint` | URL subscription unik dari browser (`PushSubscription.endpoint`) |
+| 4 | D | `P256dh` | `subscription.keys.p256dh` — kunci publik ECDH perangkat |
+| 5 | E | `Auth` | `subscription.keys.auth` — auth secret perangkat |
+| 6 | F | `User_Agent` | Opsional, dipotong 200 karakter, murni keterbacaan |
+
+### `Push_Queue`
+Sumber: `Notifikasi.gs`, fungsi `notifyRelevantUsers()` (tulis) dan
+`processPushQueue()` (baca+proses, dipanggil trigger waktu tiap 1 menit —
+lihat `installPushQueueTrigger()`). Satu baris = satu notifikasi yang HARUS
+dikirim ke SATU guru untuk SATU kejadian. Antrean ini yang memisahkan
+"kejadian ditulis" (cepat, sheet lokal, di dalam `sigapLock` yang sama dengan
+aksi utama) dari "notifikasi benar-benar dikirim" (panggilan jaringan ke
+relay Vercel, di luar `sigapLock`, lihat `api/push-send.js`).
+
+| # | Kolom | Header | Keterangan |
+|---|---|---|---|
+| 1 | A | `Timestamp` | Waktu diantrekan |
+| 2 | B | `Event_ID` | Kunci idempotency (`jenis|refId|guruId|kind`) — lihat `pushEventAlreadyQueued` |
+| 3 | C | `Jenis_Kejadian` | Mis. `keterlambatan`, `izin_dibuat` — lihat `pushSalinan()` |
+| 4 | D | `NISN` | Untuk bookkeeping saja, BUKAN sumber kelas |
+| 5 | E | `Guru_ID` | Penerima baris ini |
+| 6 | F | `Title` | Selalu `"SIGAP"` |
+| 7 | G | `Body` | Teks notifikasi — SUDAH disaring privasi sebelum ditulis (lihat `pushSalinan()`) |
+| 8 | H | `Url` | Token deep-link pendek (`izin` / `log`), dibaca `app.js`/`sw.js` |
+| 9 | I | `Tag` | Sama dengan `Event_ID` — dipakai OS mengganti notifikasi lama yang senasib |
+| 10 | J | `Priority` | `normal` \| `high` |
+| 11 | K | `Processed` | `true` setelah terkirim (atau menyerah — lihat `Last_Error`) |
+| 12 | L | `Processed_At` | |
+| 13 | M | `Attempts` | Maks `PUSH_QUEUE_MAX_ATTEMPTS` (6) sebelum menyerah |
+| 14 | N | `Last_Error` | `no_subscription` \| `relay_not_configured` \| `relay_unreachable` \| `send_failed` \| `max_attempts` |

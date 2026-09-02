@@ -1,12 +1,15 @@
 {
   "name": "sigap-app",
   "private": true,
-  "description": "Frontend (index.html + *.js) tidak punya build step, ter-deploy otomatis lewat Vercel — lihat index.html. Backend (*.gs) TIDAK otomatis ter-deploy sama sekali; package.json ini juga dipakai untuk clasp (push/deploy manual ke Apps Script, lihat script clasp:* di bawah) selain untuk menjalankan test lokal (npm install sekali, lalu npm test).",
+  "description": "Frontend (index.html + *.js) tidak punya build step, ter-deploy otomatis lewat Vercel — lihat index.html. Backend (*.gs) TIDAK otomatis ter-deploy sama sekali; package.json ini juga dipakai untuk clasp (push/deploy manual ke Apps Script, lihat script clasp:* di bawah) selain untuk menjalankan test lokal (npm install sekali, lalu npm test). `dependencies` HANYA dipakai fungsi serverless api/push-send.js (relay Web Push di project Vercel yang sama) — TIDAK menambah build step ke frontend statis, yang tetap dimuat browser apa adanya lewat index.html.",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "clasp:login": "clasp login",
     "clasp:push": "clasp push",
     "clasp:deploy": "node .github/scripts/clasp-deploy-existing.js"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
