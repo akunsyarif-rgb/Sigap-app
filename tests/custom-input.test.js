@@ -28,6 +28,7 @@ const FILES = [
   'pelanggaran-bimbingan-upacara.js',
   'rekap-kelas.js',
   'export-data.js',
+  'notifikasi.js',
   'app.js',
 ];
 

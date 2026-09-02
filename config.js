@@ -9,6 +9,16 @@
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "sigap2026rahasia8x9zK2mP";
 
+       // Kunci PUBLIK VAPID untuk Web Push (lihat notifikasi.js, CLAUDE.md bagian
+       // Push Notification). Kunci publik VAPID memang dirancang untuk diketahui
+       // klien — bukan rahasia seperti API_TOKEN — tapi tetap HARUS diganti sesuai
+       // pasangan privatnya di Vercel (env var VAPID_PRIVATE_KEY, project yang
+       // sama dengan hosting frontend ini). Generate SATU pasang lewat
+       // `npx web-push generate-vapid-keys` dan ganti KEDUA nilai ini & di sana —
+       // subscription yang dibuat dengan kunci publik lama tidak akan pernah bisa
+       // dikirimi notifikasi oleh kunci privat yang baru.
+       const VAPID_PUBLIC_KEY = "GANTI_DENGAN_VAPID_PUBLIC_KEY_ANDA";
+
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
        // - bk_kesiswaan: sama seperti guru + Bimbingan Khusus + Pelanggaran Upacara (guru BK & tim kesiswaan)
@@ -63,4 +73,13 @@
            // app.js (per-orang, sama seperti 'rekap') — bukan lewat ROLES.
            export:      { label: 'Export Data',  icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /> },
            auditlog:    { label: 'Audit Log',    icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> },
+           // 'notifikasi' TIDAK masuk ke `menus` role mana pun di ROLES di atas —
+           // sama seperti 'rekap'/'export' untuk wali kelas, ditambahkan runtime
+           // di app.js HANYA untuk pengguna yang benar-benar termasuk salah satu
+           // dari dua golongan penerima push (wali kelas / guru piket — lihat
+           // CLAUDE.md bagian Push Notification). BK/Kesiswaan/Admin/guru biasa
+           // yang tidak masuk keduanya tidak akan melihat menu ini sama sekali,
+           // supaya tidak membingungkan (menampilkan setelan notifikasi untuk
+           // fitur yang tidak pernah mengirimi mereka apa pun).
+           notifikasi:  { label: 'Notifikasi',   icon: (a) => <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /> },
        };

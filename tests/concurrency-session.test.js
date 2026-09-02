@@ -150,7 +150,7 @@ function loadServer(opts) {
     Logger: { log: () => {} },
   };
   vm.createContext(sandbox);
-  ['Utils.gs', 'Auth.gs', 'Code.gs'].forEach((f) => {
+  ['Utils.gs', 'Auth.gs', 'Notifikasi.gs', 'Code.gs'].forEach((f) => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
   });
   const doPost = vm.runInContext('doPost', sandbox);

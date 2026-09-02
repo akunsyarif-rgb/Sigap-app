@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-01-rate-limit-login-per-akun';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun'];
+var BACKEND_VERSION = '2026-09-02-push-notifications';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications'];
 
 // ===== doPost =====
 
@@ -199,6 +199,16 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.type, sessionUser.name]);
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
+      // Notifikasi Wali Kelas — kelas diambil ULANG dari Master_Siswa (BUKAN
+      // data.class_name dari klien di atas, yang tidak diverifikasi untuk
+      // aksi ini) lewat resolveSiswaForIzin, satu-satunya sumber kebenaran
+      // NISN->kelas yang sudah ada. Siswa yang tidak ketemu di Master_Siswa
+      // (data.class_name kosong/typo) berarti tidak ada wali kelas yang bisa
+      // ditentukan dengan pasti — TIDAK dinotifikasi, bukan menebak dari klien.
+      var recordSiswa = resolveSiswaForIzin(ss, data.nisn);
+      if (recordSiswa) {
+        notifyRelevantUsers({ jenis: 'keterlambatan', nisn: recordSiswa.nisn, kelas: recordSiswa.class, needsPiketAction: false });
+      }
       return jsonOut({ status: 'success' });
     }
 
@@ -584,6 +594,10 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', '', sessionUser.name]);
       CacheService.getScriptCache().remove('surat_list');
       CacheService.getScriptCache().remove('today_data');
+      var suratSiswa = resolveSiswaForIzin(ss, data.nisn);
+      if (suratSiswa) {
+        notifyRelevantUsers({ jenis: 'surat', nisn: suratSiswa.nisn, kelas: suratSiswa.class, needsPiketAction: false });
+      }
       return jsonOut({ status: 'success' });
     }
 
@@ -676,6 +690,10 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
+      var pelanggaranSiswa = resolveSiswaForIzin(ss, data.nisn);
+      if (pelanggaranSiswa) {
+        notifyRelevantUsers({ jenis: 'pelanggaran', nisn: pelanggaranSiswa.nisn, kelas: pelanggaranSiswa.class, needsPiketAction: false });
+      }
       return jsonOut({ status: 'success' });
     }
 
@@ -697,6 +715,10 @@ function doPost(e) {
       var sheet = getOrCreateSheet(ss, 'Pelanggaran_Upacara', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID']);
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
       CacheService.getScriptCache().remove('pelanggaran_upacara_raw');
+      var upacaraSiswa = resolveSiswaForIzin(ss, data.nisn);
+      if (upacaraSiswa) {
+        notifyRelevantUsers({ jenis: 'pelanggaran_upacara', nisn: upacaraSiswa.nisn, kelas: upacaraSiswa.class, needsPiketAction: false });
+      }
       return jsonOut({ status: 'success' });
     }
 
@@ -808,6 +830,16 @@ function doPost(e) {
         buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS
           ? 'alasan pengecualian=' + izinAlasanKhusus
           : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)));
+      // Jalur normal berhenti di 'Menunggu Verifikasi' -> Guru Piket
+      // BENAR-BENAR punya tindakan menunggu, jadi ikut dinotifikasi. Jalur
+      // khusus sudah tercatat keluar sekaligus (piket yang membuatnya sendiri
+      // sudah tahu), jadi tidak perlu menotifikasi piket lagi untuk baris
+      // yang sama.
+      notifyRelevantUsers({
+        jenis: izinJalur === IZIN_JALUR_KHUSUS ? 'izin_diverifikasi' : 'izin_dibuat',
+        nisn: izinSiswa.nisn, kelas: izinSiswa.class, refId: izinId,
+        needsPiketAction: izinJalur !== IZIN_JALUR_KHUSUS,
+      });
       return jsonOut({ status: 'success', id: izinId, izinStatus: izinStatusAwal, konteks: izinKonteks });
     }
 
@@ -841,6 +873,7 @@ function doPost(e) {
       verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
       clearIzinCache();
       logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas)));
+      notifyRelevantUsers({ jenis: 'izin_diverifikasi', nisn: verFound.data.nisn, kelas: verFound.data.class, refId: verFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: verValues[7] });
     }
 
@@ -882,6 +915,7 @@ function doPost(e) {
       kbSheet.getRange(kbFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([kbValues]);
       clearIzinCache();
       logAudit(sessionUser, 'Tandai Kembali Izin Keluar', buildIzinAuditDetail(kbFound.data, 'status=' + IZIN_STATUS_SELESAI + ' | kapasitas=' + izinKapasitasLabel(kbKapasitas)));
+      notifyRelevantUsers({ jenis: 'izin_kembali', nisn: kbFound.data.nisn, kelas: kbFound.data.class, refId: kbFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_SELESAI });
     }
 
@@ -913,6 +947,7 @@ function doPost(e) {
       plgSheet.getRange(plgFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([plgValues]);
       clearIzinCache();
       logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
+      notifyRelevantUsers({ jenis: 'izin_pulang', nisn: plgFound.data.nisn, kelas: plgFound.data.class, refId: plgFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
     }
 
@@ -1032,6 +1067,21 @@ function doPost(e) {
         buildKelompokAuditDetail(izinKelompokRowToObject(kelRow),
           'siswa=' + kelResolved.siswa.map(function (s) { return s.name; }).join(', ') +
           (kelJalur === IZIN_JALUR_KHUSUS ? ' | alasan pengecualian=' + kelAlasan : '')));
+      // Satu notifikasi per KELAS yang terlibat (bukan per siswa) — rombongan
+      // 8 siswa dari kelas yang sama tidak boleh membanjiri wali kelasnya
+      // dengan 8 notifikasi identik untuk satu kegiatan yang sama. Guru Piket
+      // (jalur normal saja) dinotifikasi TERPISAH, sekali per kegiatan.
+      var kelJenisNotif = kelJalur === IZIN_JALUR_KHUSUS ? 'izin_diverifikasi' : 'izin_dibuat';
+      var kelKelasNotified = {};
+      kelResolved.siswa.forEach(function (siswa) {
+        var kelasKey = String(siswa.class || '').trim().toLowerCase();
+        if (!kelasKey || kelKelasNotified[kelasKey]) return;
+        kelKelasNotified[kelasKey] = true;
+        notifyRelevantUsers({ jenis: kelJenisNotif, nisn: siswa.nisn, kelas: siswa.class, refId: kelId, needsPiketAction: false });
+      });
+      if (kelJalur !== IZIN_JALUR_KHUSUS) {
+        notifyRelevantUsers({ jenis: kelJenisNotif, nisn: '', kelas: '', refId: kelId, needsPiketAction: true });
+      }
       return jsonOut({ status: 'success', id: kelId, izinStatus: kelStatusAwal, jumlahPeserta: kelResolved.siswa.length });
     }
 
@@ -1098,6 +1148,13 @@ function doPost(e) {
       var vkSisa = vkPeserta.length - vkTarget.length;
       logAudit(sessionUser, 'Verifikasi Izin Kelompok',
         buildKelompokAuditDetail(vkKel.data, 'diverifikasi=' + vkTarget.length + ' | tidak diverifikasi=' + vkSisa + ' | status=' + vkStatusBaru + ' | kapasitas=' + izinKapasitasLabel(vkKapasitas)));
+      var vkKelasNotified = {};
+      vkTarget.forEach(function (p) {
+        var kelasKey = String(p.data.class || '').trim().toLowerCase();
+        if (!kelasKey || vkKelasNotified[kelasKey]) return;
+        vkKelasNotified[kelasKey] = true;
+        notifyRelevantUsers({ jenis: 'izin_diverifikasi', nisn: p.data.nisn, kelas: p.data.class, refId: vkKel.data.id, needsPiketAction: false });
+      });
       return jsonOut({ status: 'success', izinStatus: vkStatusBaru, jumlahDiverifikasi: vkTarget.length });
     }
 
@@ -1158,6 +1215,13 @@ function doPost(e) {
           ' | belum kembali=' + tkBelum.length +
           (tkBelum.length ? ' (' + tkBelum.map(function (p) { return p.data.name; }).join(', ') + ')' : '') +
           ' | kapasitas=' + izinKapasitasLabel(tkKapasitas)));
+      var tkKelasNotified = {};
+      tkDipilih.forEach(function (p) {
+        var kelasKey = String(p.data.class || '').trim().toLowerCase();
+        if (!kelasKey || tkKelasNotified[kelasKey]) return;
+        tkKelasNotified[kelasKey] = true;
+        notifyRelevantUsers({ jenis: 'izin_kembali', nisn: p.data.nisn, kelas: p.data.class, refId: tkKel.data.id, needsPiketAction: false });
+      });
       return jsonOut({ status: 'success', jumlahKembali: tkDipilih.length, jumlahBelumKembali: tkBelum.length });
     }
 
@@ -1237,6 +1301,33 @@ function doPost(e) {
       sheet.deleteRow(found.rowIndex);
       clearCacheForCategory(data.category);
       logAudit(sessionUser, 'Hapus Data ' + data.category, data.name + ' (' + data.nisn + ')');
+      return jsonOut({ status: 'success' });
+    }
+
+    // ================= PUSH NOTIFICATION: subscription per perangkat =================
+    // Lihat Notifikasi.gs untuk arsitektur lengkap. Simpan/hapus SELALU
+    // terikat ke sessionUser.id dari sesi — TIDAK PERNAH ke id yang (kalaupun)
+    // dikirim klien — sehingga satu perangkat hanya bisa mengelola
+    // subscription-nya sendiri, dan tidak pernah subscription pengguna lain.
+    if (action === 'savePushSubscription') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var sub = data.subscription || {};
+      var subKeys = sub.keys || {};
+      var endpoint = String(sub.endpoint || '').trim();
+      var p256dh = String(subKeys.p256dh || '').trim();
+      var authKey = String(subKeys.auth || '').trim();
+      if (!endpoint || !p256dh || !authKey) {
+        return jsonOut({ status: 'error', message: 'Data subscription tidak lengkap.' });
+      }
+      savePushSubscriptionForUser(ss, sessionUser.id, endpoint, p256dh, authKey, String(data.userAgent || '').slice(0, 200));
+      return jsonOut({ status: 'success' });
+    }
+
+    if (action === 'deletePushSubscription') {
+      var delEndpoint = String(data.endpoint || '').trim();
+      if (delEndpoint) deletePushSubscriptionForUser(ss, sessionUser.id, delEndpoint);
       return jsonOut({ status: 'success' });
     }
 

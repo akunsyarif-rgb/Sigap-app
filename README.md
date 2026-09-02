@@ -25,25 +25,38 @@ otomatis** — ini poin paling penting untuk dipahami sebelum menyentuh kode:
 flowchart LR
     subgraph FE["Frontend — statis, TANPA build step"]
         A["index.html + *.js<br/>(React 18 + Babel Standalone lewat CDN)"]
+        SW["sw.js (service worker)<br/>+ manifest.json (PWA)"]
+        R["api/push-send.js<br/>(fungsi Vercel — sign & kirim Web Push)"]
     end
     subgraph BE["Backend — Google Apps Script Web App"]
         B["Code.gs<br/>(router doGet / doPost)"]
         C["Auth.gs<br/>(sesi & password)"]
         D["Utils.gs<br/>(helper, RBAC, rate limit)"]
+        N["Notifikasi.gs<br/>(siapa dinotifikasi & antrean)"]
     end
-    E[("Google Sheet<br/>13 sheet — lihat SCHEMA.md")]
+    E[("Google Sheet<br/>15 sheet — lihat SCHEMA.md")]
 
     A -- "fetch() JSON<br/>+ API_TOKEN + sessionToken" --> B
     B --> C
     B --> D
+    B --> N
     B <--> E
+    N -- "UrlFetchApp + secret" --> R
+    R -- "Web Push (VAPID)" --> SW
 ```
 
-| | Frontend (`index.html`, `*.js`) | Backend (`Code.gs`, `Auth.gs`, `Utils.gs`) |
+| | Frontend (`index.html`, `*.js`) | Backend (`Code.gs`, `Auth.gs`, `Utils.gs`, `Notifikasi.gs`) |
 |---|---|---|
-| Hosting | Situs statis (Vercel) | Google Apps Script Web App, terikat ke satu Google Sheet |
+| Hosting | Situs statis (Vercel) — `api/push-send.js` juga jalan di sini, sebagai fungsi serverless | Google Apps Script Web App, terikat ke satu Google Sheet |
 | Deploy saat push ke `main` | **Otomatis** | **Tidak pernah otomatis** — wajib `clasp` manual atau salin-tempel ke editor Apps Script, lihat [CLAUDE.md](CLAUDE.md#clasp-apps-script-cli) |
 | Database | — (tidak menyimpan state) | Google Sheet itu sendiri (`SpreadsheetApp`) |
+
+Push Notification (lihat [CLAUDE.md](CLAUDE.md#push-notification-web-push-vapid))
+menambah satu jalur: `Notifikasi.gs` menghitung siapa yang berhak dinotifikasi
+lalu mengantre di Sheet, sebuah trigger waktu memanggil `api/push-send.js`
+(fungsi Vercel di project yang sama dengan frontend) untuk benar-benar
+menandatangani & mengirim Web Push-nya — Apps Script sendiri tidak punya
+primitif kripto yang dibutuhkan untuk itu.
 
 Alur singkat: browser memuat `index.html`, yang men-`fetch()` seluruh file
 `.js` lain secara berurutan, menggabungkannya, lalu mentranspile JSX-nya
@@ -68,6 +81,11 @@ digembok token API + sesi guru yang login.
 - **Audit Log**: jejak siapa melakukan apa, khusus Admin.
 - **Ganti Password sendiri**: semua peran bisa mengganti password akunnya
   sendiri tanpa perlu minta admin reset.
+- **Notifikasi Push**: wali kelas & guru piket aktif hari itu bisa
+  diberitahu (bahkan saat SIGAP sedang tidak dibuka) untuk kejadian yang
+  relevan — Android, iPhone/iPad (PWA ter-install), dan browser desktop
+  modern. Lihat [CLAUDE.md](CLAUDE.md#push-notification-web-push-vapid)
+  untuk arsitektur & langkah aktivasinya.
 
 Rincian tiap fitur (siapa boleh apa, alur kerja lengkap) ada di
 [docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md](docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md).
@@ -112,12 +130,15 @@ backend yang benar-benar hidup:
 ## Struktur Repo Singkat
 
 ```
-Code.gs, Auth.gs, Utils.gs   backend (Google Apps Script)
-index.html, *.js             frontend (React tanpa bundler)
-tests/                       test backend (vm.runInContext) & smoke-test render frontend
-docs/                        panduan fitur untuk pengguna non-teknis
-.github/workflows/           CI (test.yml), deploy backend manual (deploy-gas.yml),
-                              & deteksi drift versi backend (check-backend-drift.yml)
-SCHEMA.md                    struktur lengkap 13 sheet Google Sheet
-API.md                       referensi lengkap seluruh action doGet/doPost
+Code.gs, Auth.gs, Utils.gs,   backend (Google Apps Script)
+  Notifikasi.gs
+index.html, *.js              frontend (React tanpa bundler)
+manifest.json, sw.js, icons/  PWA (dipakai fitur Notifikasi Push)
+api/push-send.js              fungsi serverless Vercel — kirim Web Push sungguhan
+tests/                        test backend (vm.runInContext) & smoke-test render frontend
+docs/                         panduan fitur untuk pengguna non-teknis
+.github/workflows/            CI (test.yml), deploy backend manual (deploy-gas.yml),
+                               & deteksi drift versi backend (check-backend-drift.yml)
+SCHEMA.md                     struktur lengkap 15 sheet Google Sheet
+API.md                        referensi lengkap seluruh action doGet/doPost
 ```

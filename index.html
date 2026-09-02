@@ -4,6 +4,17 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
    <title>SIGAP - SMAN 2 Tarakan</title>
+   <!-- PWA: manifest + ikon. Registrasi service worker (sw.js) TIDAK di sini —
+        dilakukan dari notifikasi.js (pushRegisterServiceWorker), hanya untuk
+        pengguna yang benar-benar termasuk kelompok penerima push, supaya
+        pengguna yang tidak pernah memakai fitur ini tidak ikut memasang
+        service worker tanpa alasan. Lihat CLAUDE.md bagian Push Notification. -->
+   <link rel="manifest" href="manifest.json">
+   <link rel="apple-touch-icon" href="icons/icon-192.png">
+   <meta name="theme-color" content="#1B2A41">
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   <meta name="apple-mobile-web-app-title" content="SIGAP">
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
    <!-- Fraunces (judul/angka besar) + Work Sans (UI/isi). Work Sans memuat
@@ -98,7 +109,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 54;
+           var BUILD_VERSION = 55;
            var files = [
                'config.js',
                'helpers.js',
@@ -111,6 +122,7 @@
                'pelanggaran-bimbingan-upacara.js',
                'rekap-kelas.js',
                'export-data.js',
+               'notifikasi.js',
                'app.js'
            ];
            try {

@@ -39,6 +39,7 @@ const FILES = [
   'pelanggaran-bimbingan-upacara.js',
   'rekap-kelas.js',
   'export-data.js',
+  'notifikasi.js',
   'app.js',
 ];
 
@@ -96,6 +97,11 @@ test.before(() => {
     URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} },
     Blob: function () {},
     window: {},
+    // Cukup untuk menjalankan badan fungsi notifikasi.js sampai JSX (lihat
+    // pushIsSupported/pushIsIOS/pushIsStandalone) — TIDAK dimaksudkan sebagai
+    // tiruan lengkap Push API/Service Worker; skenario subscribe/unsubscribe
+    // sungguhan ada di tests/push-frontend.test.js.
+    navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 10)', maxTouchPoints: 0 },
   };
   sandbox.global = sandbox;
   vm.createContext(sandbox);
@@ -248,6 +254,10 @@ const cases = [
   ['BottomNav (guru, 4 menu primer)', { menus: ['scan', 'dashboard', 'log', 'pelanggaran'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'scan', setActiveTab: () => {} }, 'BottomNav'],
   ['BottomNav (admin, 4 menu primer + Lainnya berisi Kelola)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav'],
   ['BottomNav (panel Lainnya terbuka)', { menus: ['scan', 'dashboard', 'log', 'stats', 'rekap', 'pelanggaran', 'bimbingan', 'upacara', 'auditlog', 'kelola'], primaryMenus: ['scan', 'dashboard', 'log', 'pelanggaran'], activeTab: 'kelola', setActiveTab: () => {} }, 'BottomNav', [true]],
+  ['NotifikasiOnboardingBanner (eligible)', { user, eligible: true, onOpenSettings: () => {} }, 'NotifikasiOnboardingBanner'],
+  ['NotifikasiOnboardingBanner (tidak eligible)', { user, eligible: false, onOpenSettings: () => {} }, 'NotifikasiOnboardingBanner'],
+  ['NotifikasiOnboardingBanner (sudah ditutup manual)', { user, eligible: true, onOpenSettings: () => {} }, 'NotifikasiOnboardingBanner', [true]],
+  ['NotifikasiTab', { user, sessionToken: 'tok-1' }],
 ];
 
 for (const [label, props, fnNameOverride, overrides] of cases) {
