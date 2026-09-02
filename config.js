@@ -11,13 +11,14 @@
 
        // Kunci PUBLIK VAPID untuk Web Push (lihat notifikasi.js, CLAUDE.md bagian
        // Push Notification). Kunci publik VAPID memang dirancang untuk diketahui
-       // klien — bukan rahasia seperti API_TOKEN — tapi tetap HARUS diganti sesuai
-       // pasangan privatnya di Vercel (env var VAPID_PRIVATE_KEY, project yang
-       // sama dengan hosting frontend ini). Generate SATU pasang lewat
-       // `npx web-push generate-vapid-keys` dan ganti KEDUA nilai ini & di sana —
-       // subscription yang dibuat dengan kunci publik lama tidak akan pernah bisa
-       // dikirimi notifikasi oleh kunci privat yang baru.
-       const VAPID_PUBLIC_KEY = "GANTI_DENGAN_VAPID_PUBLIC_KEY_ANDA";
+       // klien — bukan rahasia seperti API_TOKEN — tapi tetap HARUS pasangan
+       // persis dari kunci PRIVAT di env var Vercel VAPID_PRIVATE_KEY (project
+       // yang sama dengan hosting frontend ini). Kalau pasangan ini pernah
+       // diganti lagi, generate ulang KEDUANYA bersamaan lewat
+       // `npx web-push generate-vapid-keys` — subscription yang dibuat dengan
+       // kunci publik lama tidak akan pernah bisa dikirimi notifikasi oleh
+       // kunci privat yang baru.
+       const VAPID_PUBLIC_KEY = "BBGeLh0xTBdRYq3HIESmYtY6Lps8hix9eG0FurryAQL1TZySOMPxTGI443PQIoDNFOdf-xvZQiiBqWivX7wppb8";
 
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
