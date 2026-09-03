@@ -1,0 +1,6 @@
+{
+  "name": "SIGAP (Node 20 + clasp)",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "npm install",
+  "remoteUser": "node"
+}

@@ -127,6 +127,13 @@ backend yang benar-benar hidup:
    (mis. `npx serve .`) — **jangan** buka lewat `file://` langsung, sebagian
    browser memblokir `fetch()` dari origin `file://`.
 
+Tidak punya Node/clasp terpasang secara lokal (atau butuh `clasp login`
+interaktif dari lingkungan yang tidak punya browser)? Buka repo ini lewat
+**Code → Create codespace on main** di GitHub — `.devcontainer/devcontainer.json`
+sudah menyiapkan Node 20 + `npm install` otomatis. Lihat
+[CLAUDE.md](CLAUDE.md#using-github-codespaces-for-manual-clasp-access) untuk
+langkah `clasp login --no-localhost` dan push/deploy dari dalam Codespace.
+
 ## Struktur Repo Singkat
 
 ```
