@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-02-push-notifications';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications'];
+var BACKEND_VERSION = '2026-09-03-cetak-surat-izin';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin'];
 
 // ===== doPost =====
 
@@ -825,11 +825,17 @@ function doPost(e) {
       // NORMAL. Jalur khusus sudah punya penandanya sendiri (jalur=khusus) —
       // menambahkan "konteks=Guru Mapel" di sana cuma membingungkan, karena
       // Izin Khusus justru berarti wali kelas/guru mapel TIDAK tersedia.
+      // 'id=<ID_Izin>' ditambahkan di Detail (audit September 2026) supaya
+      // getKonteksApprovalFromAuditLog (Utils.gs, dipakai fitur Cetak Surat
+      // Izin) bisa mencocokkan baris ini PERSIS lewat ID, bukan hanya
+      // menerka lewat nama+NISN+kedekatan waktu. Tidak mengubah format lama
+      // apa pun yang sudah dibaca di tempat lain — cuma menambah satu bidang
+      // baru di ekor Detail.
       logAudit(sessionUser,
         izinJalur === IZIN_JALUR_KHUSUS ? 'Izin Keluar Khusus' : 'Persetujuan Izin Keluar',
-        buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS
+        buildIzinAuditDetail(izinRowToObject(izinRow), (izinJalur === IZIN_JALUR_KHUSUS
           ? 'alasan pengecualian=' + izinAlasanKhusus
-          : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)));
+          : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)) + ' | id=' + izinId));
       // Jalur normal berhenti di 'Menunggu Verifikasi' -> Guru Piket
       // BENAR-BENAR punya tindakan menunggu, jadi ikut dinotifikasi. Jalur
       // khusus sudah tercatat keluar sekaligus (piket yang membuatnya sendiri
@@ -949,6 +955,52 @@ function doPost(e) {
       logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
       notifyRelevantUsers({ jenis: 'izin_pulang', nisn: plgFound.data.nisn, kelas: plgFound.data.class, refId: plgFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
+    }
+
+    // ---- Cetak Surat Izin Keluar (audit September 2026) — MURNI OUTPUT
+    // dari transaksi yang sudah diverifikasi, tidak mengubah status/transisi
+    // apa pun di atas. Boleh dipanggil berkali-kali (cetak/unduh ulang kapan
+    // saja, tidak ada batas waktu): Nomor_Surat sekali ditetapkan lalu
+    // dipakai ulang terus (tidak pernah berubah untuk transaksi yang sama),
+    // Waktu_Print/Status_Print diperbarui SETIAP kali dipanggil (mencerminkan
+    // cetak/unduh TERAKHIR, bukan cuma yang pertama). ----
+    if (action === 'generateIzinKeluarSurat') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var suratIzinId = String(data.izinId || '').trim();
+      if (!suratIzinId) {
+        return jsonOut({ status: 'error', message: 'ID izin wajib diisi.' });
+      }
+      try {
+        var suratData = generateIzinKeluarSuratData(ss, suratIzinId);
+        var suratHtml = renderIzinKeluarSuratHTML(suratData);
+
+        var suratSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+        var suratFound = findIzinRowById(suratSheet, suratIzinId);
+        if (!suratFound) {
+          return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah dihapus).' });
+        }
+        var suratNow = new Date();
+        var suratValues = suratFound.values.slice();
+        suratValues[IZIN_COL_NOMOR_SURAT - 1] = suratData.nomor_surat;
+        suratValues[IZIN_COL_WAKTU_PRINT - 1] = suratNow;
+        suratValues[IZIN_COL_STATUS_PRINT - 1] = IZIN_PRINT_SUDAH;
+        suratSheet.getRange(suratFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([suratValues]);
+        clearIzinCache();
+
+        logAudit(sessionUser, 'generateIzinKeluarSurat',
+          buildIzinAuditDetail(suratFound.data, 'nomor=' + suratData.nomor_surat + ' | status_saat_cetak=' + suratData.status_izin));
+
+        return jsonOut({
+          status: 'success',
+          data: { htmlContent: suratHtml, suratData: suratData, nomorSurat: suratData.nomor_surat },
+        });
+      } catch (suratError) {
+        logAudit(sessionUser, 'generateIzinKeluarSurat Gagal',
+          'izinId=' + suratIzinId + ' | error=' + String((suratError && suratError.message) || suratError));
+        return jsonOut({ status: 'error', message: String((suratError && suratError.message) || suratError) });
+      }
     }
 
     // ---- 'selesaikanIzinKeluar' (penutupan administratif terpisah dari
@@ -1341,6 +1393,204 @@ function doPost(e) {
   }
 }
 
+// ===== CETAK SURAT IZIN KELUAR: orkestrasi & template (audit September 2026) =====
+// Helper level-rendah (nomor surat, escapeHtml, konteks historis) ada di
+// Utils.gs bersama blok IZIN lain — di sini murni MERANGKAI data & HTML.
+// Prinsip yang sama dengan seluruh fitur Izin Keluar: ini OUTPUT dari
+// transaksi yang sudah tersimpan, tidak pernah mengubah status/transisi.
+
+// Kumpulkan (tanpa MENULIS apa pun) semua data untuk satu surat. Nomor
+// surat yang dikembalikan di sini BELUM tentu sudah tersimpan di sheet —
+// action 'generateIzinKeluarSurat' di atas yang menuliskannya, SETELAH
+// render HTML-nya berhasil, supaya render yang gagal tidak "memakai" nomor.
+function generateIzinKeluarSuratData(ss, izinId) {
+  var sheet = ss.getSheetByName(IZIN_SHEET_NAME);
+  var found = sheet ? findIzinRowById(sheet, izinId) : null;
+  if (!found) throw new Error('Data izin tidak ditemukan.');
+  var izin = found.data;
+
+  // Cetak kelompok BELUM didukung — lihat catatan di IZIN_HEADERS (Utils.gs).
+  // Bukan lupa, sengaja: nomor per-aktivitas vs per-siswa, dan tanda tangan
+  // kegiatan adalah keputusan produk sendiri yang belum dibahas.
+  if (izin.kelompok_id) {
+    throw new Error('Surat untuk peserta kegiatan kelompok belum didukung.');
+  }
+  var statusBolehCetak = [IZIN_STATUS_DI_LUAR, IZIN_STATUS_PULANG, IZIN_STATUS_SELESAI, IZIN_STATUS_KEMBALI];
+  if (statusBolehCetak.indexOf(izin.status) === -1) {
+    throw new Error('Surat hanya bisa dicetak setelah izin diverifikasi Guru Piket (status saat ini: ' + izin.status + ').');
+  }
+
+  var tanggalKode = izinTanggalUntukNomor(izin.waktu_verifikasi);
+  // Nomor SUDAH ada (cetak ulang) -> dipakai lagi apa adanya, tidak pernah
+  // minta nomor baru. Ini yang membuat aksi ini idempotent.
+  var nomorSurat = izin.nomor_surat || generateNomorSurat(sheet, tanggalKode);
+
+  // Konteks Wali Kelas/Guru Mapel HANYA untuk jalur normal — jalur khusus
+  // memang sengaja tidak pernah diberi label itu di mana pun (lihat kartu
+  // transaksi, gerbang.js) karena itu keputusan piket, bukan guru/wali kelas.
+  var konteksLabel = '';
+  if (izin.jalur !== IZIN_JALUR_KHUSUS) {
+    konteksLabel = getKonteksApprovalFromAuditLog(ss, izin.id, izin.nisn, izin.name, izin.waktu_persetujuan) ||
+      izinKonteksLabelTerkini(ss, izin);
+  }
+
+  var cetakNow = new Date();
+  return {
+    izinId: izin.id,
+    nomor_surat: nomorSurat,
+    tgl_cetak: formatTanggalPanjangID(cetakNow),
+    jam_cetak: formatJamWITA(cetakNow),
+    // NISN SENGAJA tidak ikut ke sini — konsisten dengan seluruh dokumen
+    // lain yang dihasilkan SIGAP (lihat EXPORT_JENIS, Utils.gs: "identitas
+    // siswa di dalam berkas cukup Nama + Kelas"), bukan pengecualian untuk
+    // surat izin.
+    nama_siswa: izin.name,
+    kelas: izin.class,
+    tujuan: izinTujuanLabel(izin.tujuan),
+    keperluan: izin.keperluan,
+    jalur: izin.jalur,
+    alasan_khusus: izin.alasan_khusus,
+    waktu_persetujuan: izin.waktu_persetujuan,
+    waktu_verifikasi: izin.waktu_verifikasi,
+    waktu_keluar: izin.waktu_keluar,
+    waktu_kembali: izin.waktu_kembali,
+    disetujui_oleh: izin.disetujui_oleh,
+    konteks_persetujuan: konteksLabel,
+    diverifikasi_oleh: izin.diverifikasi_oleh,
+    status_izin: izin.status,
+    status_izin_label: izinStatusSuratLabel(izin.status),
+  };
+}
+
+// URL verifikasi yang dipakai adalah endpoint doGet 'verifyIzinSurat' MILIK
+// deployment yang sedang aktif — diambil lewat ScriptApp.getService().getUrl(),
+// BUKAN dikonstruksi dari ScriptId. Pola "/macros/d/{scriptId}/usercopy"
+// bukan endpoint Web App yang sungguhan dan tidak akan pernah bisa dipanggil
+// balik — getService().getUrl() adalah cara resmi Apps Script memberi tahu
+// URL /exec dari deployment yang sedang menjalankan request ini.
+//
+// API_TOKEN diikutkan di URL karena endpoint ini digembok token yang sama
+// seperti SEMUA endpoint SIGAP lain (checkToken, lihat Utils.gs) — token itu
+// sudah "publik" dalam pengertian yang sama seperti config.js (dikirim dari
+// SETIAP klien, lihat catatan di config.js), jadi menaruhnya di sini tidak
+// menambah kelas risiko baru.
+function generateVerificationURL(izinId, nomorSurat) {
+  var baseUrl = ScriptApp.getService().getUrl();
+  var apiToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+  return baseUrl + '?token=' + encodeURIComponent(apiToken || '') +
+    '&action=verifyIzinSurat&id=' + encodeURIComponent(izinId) +
+    '&nomor=' + encodeURIComponent(nomorSurat);
+}
+
+// Catatan penting: Google Charts Image API (chart.googleapis.com/chart) —
+// yang biasanya disebut sebagai cara "tanpa library" untuk bikin QR — SUDAH
+// DIMATIKAN Google sejak 2019. Memakainya di sini akan menghasilkan gambar
+// rusak di SETIAP surat, diam-diam (tidak error, cuma <img> kosong).
+//
+// Dipakai goqr.me (api.qrserver.com, publik, tanpa API key) sebagai
+// pengganti — tapi TIDAK sebagai <img src> yang menunjuk LANGSUNG ke layanan
+// luar itu. Gambarnya di-fetch SEKALI di server (di sini, saat surat dibuat)
+// lalu disematkan sebagai data URI base64 langsung di HTML-nya. Alasannya
+// dua: (1) surat yang sudah diunduh harus tetap bisa dibuka & dicetak
+// bertahun-tahun kemudian walau layanan QR luar berhenti/berubah — dokumen
+// resmi tidak boleh bergantung pada pihak ketiga tetap hidup selamanya
+// (persis semangat "Fleksibel: bisa download/print kapan saja" di baliknya);
+// (2) <img src> langsung akan membuat SETIAP kali surat dibuka (preview,
+// print, atau file HTML yang sudah diunduh dibuka lagi nanti) mengirim
+// izinId+token ke server pihak ketiga itu — dengan fetch sekali di sini,
+// yang menghubungi layanan luar hanya server SIGAP sendiri, sekali, saat
+// surat dibuat.
+//
+// Gagal fetch TIDAK BOLEH menggagalkan pembuatan surat (prinsip yang sama
+// dengan notifyRelevantUsers/logAudit di berkas lain) — surat tetap sah
+// tanpa QR; nomor surat & data di atasnya tetap bukti utamanya.
+function generateQRCodeImage(url) {
+  try {
+    var qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=' + encodeURIComponent(url);
+    var response = UrlFetchApp.fetch(qrApiUrl, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return '';
+    var base64 = Utilities.base64Encode(response.getBlob().getBytes());
+    return '<img src="data:image/png;base64,' + base64 + '" alt="QR Verifikasi Surat" width="140" height="140" style="display:block;margin:0 auto;" />';
+  } catch (qrError) {
+    return '';
+  }
+}
+
+// Satu-satunya tempat yang merangkai HTML surat. SEMUA nilai bebas-teks
+// (keperluan, alasan_khusus, dan nama sekalipun) WAJIB lewat escapeHtml()
+// (Utils.gs) sebelum disisipkan — lihat catatan panjang di fungsi itu.
+// Print-friendly (@media print, lebar disesuaikan ~80mm untuk printer
+// thermal — lihat catatan lama soal BETA pencetakan yang sekarang berakhir
+// di sini) dan tidak mengasumsikan perangkat cetak tertentu: HTML biasa yang
+// dibuka & di-print lewat dialog print browser, bukan protokol khusus.
+function renderIzinKeluarSuratHTML(suratData) {
+  var d = suratData || {};
+  var verifUrl = '';
+  var qrImg = '';
+  try {
+    verifUrl = generateVerificationURL(d.izinId, d.nomor_surat);
+    qrImg = generateQRCodeImage(verifUrl);
+  } catch (urlError) {
+    // QR/URL gagal TIDAK BOLEH menggagalkan surat — lihat catatan di
+    // generateQRCodeImage di atas.
+  }
+  var logoUrl = 'https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg';
+  var jalurKhusus = d.jalur === IZIN_JALUR_KHUSUS;
+
+  var persetujuanHtml = jalurKhusus
+    ? '<div class="row"><span class="label">Izin Khusus oleh</span><span class="value">' + escapeHtml(d.disetujui_oleh) + '</span></div>' +
+      (d.alasan_khusus ? '<div class="row"><span class="label">Alasan Pengecualian</span><span class="value">' + escapeHtml(d.alasan_khusus) + '</span></div>' : '')
+    : '<div class="row"><span class="label">Disetujui Oleh</span><span class="value">' + escapeHtml(d.disetujui_oleh) +
+      (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + '</span></div>';
+
+  return '<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '<title>Surat Izin Keluar - ' + escapeHtml(d.nomor_surat) + '</title>' +
+    '<style>' +
+    'body{font-family:Arial,Helvetica,sans-serif;color:#1B2A41;max-width:480px;margin:0 auto;padding:16px;font-size:13px;line-height:1.5;background:#fff;}' +
+    '.header{display:flex;align-items:center;gap:12px;border-bottom:3px solid #1B2A41;padding-bottom:10px;margin-bottom:14px;}' +
+    '.header img{width:52px;height:52px;object-fit:contain;flex-shrink:0;}' +
+    '.header .sekolah{font-size:11px;font-weight:bold;text-transform:uppercase;color:#2C6E9B;}' +
+    '.header .alamat{font-size:9px;color:#5C5548;}' +
+    'h1{font-size:16px;text-align:center;text-transform:uppercase;letter-spacing:1px;margin:14px 0;}' +
+    '.section{margin-bottom:12px;border:1px solid #DCD2C0;border-radius:8px;padding:10px 12px;}' +
+    '.section-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;color:#5C5548;margin-bottom:6px;}' +
+    '.row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12px;}' +
+    '.row .label{color:#5C5548;flex-shrink:0;}' +
+    '.row .value{font-weight:600;text-align:right;}' +
+    '.status-badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:bold;text-transform:uppercase;background:#1F5278;color:#fff;}' +
+    '.qr-section{text-align:center;padding:14px 0;}' +
+    '.qr-section p{font-size:10px;color:#5C5548;margin-top:6px;}' +
+    '.footer{text-align:center;font-size:9px;color:#948870;margin-top:16px;border-top:1px solid #DCD2C0;padding-top:8px;}' +
+    '@media print{body{max-width:80mm;font-size:11px;padding:6px;}h1{font-size:13px;}.section{padding:6px 8px;}}' +
+    '</style></head><body>' +
+    '<div class="header"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
+    '<div><div class="sekolah">SMAN 2 Tarakan</div><div class="alamat">Sistem Informasi &amp; Pengelolaan Aktivitas Pelajar (SIGAP)</div></div></div>' +
+    '<h1>Surat Izin Keluar</h1>' +
+    '<div class="section"><div class="section-title">Nomor Surat</div>' +
+    '<div class="row"><span class="label">Nomor</span><span class="value">' + escapeHtml(d.nomor_surat) + '</span></div>' +
+    '<div class="row"><span class="label">Dicetak</span><span class="value">' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</span></div></div>' +
+    '<div class="section"><div class="section-title">Data Siswa</div>' +
+    '<div class="row"><span class="label">Nama</span><span class="value">' + escapeHtml(d.nama_siswa) + '</span></div>' +
+    '<div class="row"><span class="label">Kelas</span><span class="value">' + escapeHtml(d.kelas) + '</span></div></div>' +
+    '<div class="section"><div class="section-title">Rincian Izin</div>' +
+    '<div class="row"><span class="label">Tujuan</span><span class="value">' + escapeHtml(d.tujuan) + '</span></div>' +
+    '<div class="row"><span class="label">Keperluan</span><span class="value">' + escapeHtml(d.keperluan) + '</span></div></div>' +
+    '<div class="section"><div class="section-title">Persetujuan</div>' + persetujuanHtml +
+    (d.waktu_persetujuan ? '<div class="row"><span class="label">Jam</span><span class="value">' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) + '</span></div>' : '') +
+    '</div>' +
+    (d.diverifikasi_oleh ? '<div class="section"><div class="section-title">Verifikasi Guru Piket</div>' +
+      '<div class="row"><span class="label">Diverifikasi Oleh</span><span class="value">' + escapeHtml(d.diverifikasi_oleh) + '</span></div>' +
+      (d.waktu_verifikasi ? '<div class="row"><span class="label">Jam</span><span class="value">' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) + '</span></div>' : '') +
+      '</div>' : '') +
+    '<div class="section"><div class="section-title">Status</div>' +
+    '<div style="text-align:center;padding:4px 0;"><span class="status-badge">' + escapeHtml(d.status_izin_label) + '</span></div>' +
+    '<p style="font-size:9px;color:#948870;text-align:center;margin-top:6px;">Surat ini berlaku sampai jam pulang sekolah (16:00 WITA) pada tanggal dicetak.</p></div>' +
+    (qrImg ? '<div class="qr-section">' + qrImg + '<p>Pindai untuk verifikasi online</p></div>' : '') +
+    '<div class="footer">Referensi: ' + escapeHtml(d.nomor_surat) + ' &middot; Dokumen ini dihasilkan otomatis oleh SIGAP</div>' +
+    '</body></html>';
+}
+
 // ===== doGet =====
 
 function doGet(e) {
@@ -1389,6 +1639,34 @@ function doGet(e) {
     var loginUsersResult = JSON.stringify({ status: 'success', users: loginUsers });
     cache.put('login_users', loginUsersResult, 300);
     return ContentService.createTextOutput(loginUsersResult).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---- Verifikasi Surat Izin Keluar via QR (audit September 2026). SENGAJA
+  // tidak butuh sesi — dipindai oleh siapa saja yang memegang surat fisiknya
+  // (satpam, orang tua), sama alasannya dengan getLoginUsers di atas. Tetap
+  // digembok API_TOKEN seperti semua endpoint lain. Mengembalikan HANYA info
+  // yang SUDAH tercetak di kertas fisiknya sendiri (nama, kelas, tujuan,
+  // status) — QR ini membuktikan suratnya ASLI/cocok dengan basis data,
+  // bukan membuka info baru dibanding yang sudah dipegang penerima surat.
+  // `nomor` WAJIB cocok persis dengan yang tersimpan (bukan cuma `id`, yang
+  // sudah UUID acak dan sulit ditebak sendiri) — supaya menebak satu UUID
+  // valid saja tidak cukup untuk "memverifikasi" surat yang sebenarnya
+  // tidak dipegang. ----
+  if (action === 'verifyIzinSurat') {
+    var vIzinId = String(e.parameter.id || '').trim();
+    var vNomor = String(e.parameter.nomor || '').trim();
+    var vSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+    var vFound = (vIzinId && vSheet) ? findIzinRowById(vSheet, vIzinId) : null;
+    if (!vFound || !vNomor || String(vFound.values[IZIN_COL_NOMOR_SURAT - 1] || '').trim() !== vNomor) {
+      return jsonOut({ status: 'error', valid: false, message: 'Surat tidak ditemukan atau nomor tidak cocok.' });
+    }
+    var vIzin = vFound.data;
+    return jsonOut({
+      status: 'success', valid: true, nomor_surat: vNomor,
+      nama: vIzin.name, kelas: vIzin.class, tujuan: izinTujuanLabel(vIzin.tujuan),
+      status_izin: izinStatusSuratLabel(vIzin.status),
+      waktu_keluar: vIzin.waktu_keluar, waktu_verifikasi: vIzin.waktu_verifikasi,
+    });
   }
 
   // Semua aksi GET lainnya WAJIB sesi valid

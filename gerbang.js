@@ -69,7 +69,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
@@ -177,9 +177,8 @@
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
                        <button onClick={() => setMode('terlambat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
                        <button onClick={() => setMode('surat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
-                       <button onClick={() => setMode('izin')} className={`relative py-2.5 px-2 rounded-xl text-xs font-bold transition leading-tight ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
+                       <button onClick={() => setMode('izin')} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
                            Izin Keluar
-                           <span className={`block text-[8px] font-bold uppercase tracking-widest mt-0.5 ${mode === 'izin' ? 'text-white/80' : 'text-amber-600'}`}>Beta</span>
                            {/* Badge = pekerjaan yang menunggu SAYA (Menunggu
                                Verifikasi yang memang boleh saya proses), BUKAN
                                total transaksi izin keluar — "Sedang di Luar"
@@ -203,6 +202,7 @@
                            onCreateKelompok={onCreateKelompok} onVerifikasiKelompok={onVerifikasiKelompok}
                            onTandaiKembaliKelompok={onTandaiKembaliKelompok}
                            myWaliKelas={myWaliKelas}
+                           onGenerateSurat={onGenerateSurat}
                        />
                    ) : (
                    /* Isi lama (Catat Terlambat / Catat Surat) sengaja TIDAK
@@ -480,7 +480,7 @@
            );
        }
 
-       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, waliKelasMap, myWaliKelas }) {
+       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, waliKelasMap, myWaliKelas, onGenerateSurat }) {
            const [searchQuery, setSearchQuery] = useState('');
            // Siswa yang baru dipilih dari pencarian, SEBELUM konteks persetujuan
            // dikonfirmasi — kartu kecil "Anda wali kelas siswa ini" / "Siswa ini
@@ -503,6 +503,12 @@
            // status dicek dari status sekarang) — ini cuma supaya guru tidak
            // menunggu tanpa tahu tapnya sudah masuk.
            const [busyId, setBusyId] = useState('');
+           // Cetak Surat Izin (audit September 2026) — state TERPISAH dari busyId
+           // (yang mengunci tombol verifikasi/tandai kembali): mencetak tidak
+           // pernah mengubah status transaksi, jadi tidak boleh ikut mengunci
+           // tombol-tombol itu, dan sebaliknya.
+           const [suratLoadingId, setSuratLoadingId] = useState('');
+           const [suratPreview, setSuratPreview] = useState(null); // { html, nomorSurat } | null
 
            // Baris peserta kegiatan (punya kelompok_id) SENGAJA tidak ikut di
            // sini: transaksinya diurus di mode Kelompok, lengkap dengan konteks
@@ -572,6 +578,60 @@
                });
            };
 
+           // ===== Cetak Surat Izin Keluar (audit September 2026) =====
+           // Konfirmasi ringan dulu (mencegah generate tak sengaja, bukan
+           // pengaman data — server tetap idempotent kalau dipanggil berkali-kali
+           // untuk baris yang sama, lihat catatan di action generateIzinKeluarSurat,
+           // Code.gs), baru panggil server. onGenerateSurat (app.js) mengembalikan
+           // { htmlContent, suratData, nomorSurat } lewat callback saat sukses.
+           const handleCetakSuratIzin = (izin) => {
+               if (suratLoadingId) return;
+               if (!window.confirm('Generate surat izin keluar? Anda dapat mengunduh atau mencetak surat setelah ini.')) return;
+               generateAndDownloadSurat(izin.id);
+           };
+
+           const generateAndDownloadSurat = (izinId) => {
+               setSuratLoadingId(izinId);
+               onGenerateSurat({ izinId: izinId }, (ok, result) => {
+                   setSuratLoadingId('');
+                   if (ok) {
+                       setSuratPreview({ html: result.htmlContent, nomorSurat: result.nomorSurat });
+                   } else {
+                       showMsg(false, result || 'Gagal membuat surat izin.');
+                   }
+               });
+           };
+
+           // Blob + link sementara — pola unduh standar browser, tidak perlu
+           // dependensi apa pun. File yang dihasilkan langsung bisa dibuka di
+           // browser mana pun (HTML biasa, bukan format khusus).
+           const downloadSuratAsHTML = (html, nomorSurat) => {
+               const blob = new Blob([html], { type: 'text/html' });
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement('a');
+               a.href = url;
+               a.download = `Surat_Izin_${nomorSurat}.html`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+           };
+
+           // Jendela baru + document.write, lalu trigger dialog print browser —
+           // pengguna sendiri yang memilih print ke printer fisik atau "Simpan
+           // sebagai PDF" dari dialog itu. Tidak ada asumsi perangkat cetak apa
+           // pun di sini (lihat catatan lama soal BETA pencetakan yang sekarang
+           // berakhir: printer/media/ukuran kertas tetap urusan dialog print
+           // bawaan browser, bukan sesuatu yang SIGAP putuskan sendiri).
+           const printSuratFromContent = (html) => {
+               const win = window.open('', '_blank');
+               if (!win) return;
+               win.document.write(html);
+               win.document.close();
+               win.focus();
+               win.print();
+           };
+
            return (
                <div className="space-y-5">
                    {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
@@ -639,6 +699,9 @@
                                ) : (
                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5 text-center">Petugas piket yang bertugas yang menandai siswa kembali.</div>
                                )}
+                               <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
+                                   {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
+                               </Button>
                            </KartuIzinKeluar>
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} text="Tidak ada siswa yang sedang di luar." />}
                    </div>
@@ -657,6 +720,9 @@
                            {selesaiHariIni.map((izin) => (
                                <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{izin.status === 'Kembali' ? 'Selesai' : izin.status}</div>
+                                   <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
+                                       {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
+                                   </Button>
                                </KartuIzinKeluar>
                            ))}
                        </div>
@@ -765,6 +831,35 @@
                                    {saving ? 'Menyimpan...' : (jalurKhusus ? 'Catat Izin Khusus' : 'Setujui Izin')}
                                </Button>
                                <Button onClick={resetForm} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {/* Preview Surat Izin Keluar — iframe pakai srcDoc (properti DOM,
+                       bukan string atribut HTML yang disisipkan tangan), jadi React
+                       sudah menanganinya dengan aman tanpa perlu escaping tambahan di
+                       sisi klien. HTML surat itu sendiri sudah di-escape utuh di
+                       server (escapeHtml, Utils.gs) sebelum dikirim ke sini. */}
+                   {suratPreview && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-md rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-3 animate-pop my-4 max-h-[92vh] flex flex-col">
+                               <div className="text-center flex-shrink-0">
+                                   <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Preview Surat Izin Keluar</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{suratPreview.nomorSurat}</div>
+                               </div>
+                               <iframe
+                                   srcDoc={suratPreview.html}
+                                   title="Preview Surat Izin Keluar"
+                                   className="w-full flex-1 min-h-[50vh] border border-slate-200 rounded-xl bg-white"
+                               />
+                               <div className="flex-shrink-0 space-y-2">
+                                   <div className="grid grid-cols-2 gap-2">
+                                       <Button onClick={() => downloadSuratAsHTML(suratPreview.html, suratPreview.nomorSurat)} variant="secondary" size="compact">📥 Download HTML</Button>
+                                       <Button onClick={() => printSuratFromContent(suratPreview.html)} size="compact">🖨️ Print</Button>
+                                   </div>
+                                   <Button onClick={() => setSuratPreview(null)} variant="secondary" className="w-full">Tutup</Button>
+                               </div>
                            </div>
                        </div>
                    )}
@@ -1207,16 +1302,15 @@
            const [subMode, setSubMode] = useState('individual');
            return (
                <div className="space-y-5">
-                   {/* Satu-satunya kalimat soal cetak yang boleh ada di layar ini.
-                       Jenis printer, media, ukuran kertas & cara koneksinya belum
-                       ditentukan sekolah — jadi tidak ada apa pun di fitur ini yang
-                       berhubungan dengan perangkat cetak. */}
-                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
-                       <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Izin Keluar · BETA</div>
-                       <p className="text-[11px] text-amber-800 leading-relaxed">
+                   {/* Label "BETA" & kalimat "pencetakan masih BETA" dihapus (audit
+                       September 2026): alurnya sudah stabil sejak lama, dan fitur
+                       Cetak Surat Izin (tombol "Cetak Surat Izin" di kartu transaksi
+                       di bawah) sudah menggantikan status BETA pencetakan. */}
+                   <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl p-3 space-y-1">
+                       <div className="text-[10px] font-bold uppercase tracking-wider text-sky-dim">Izin Keluar</div>
+                       <p className="text-[11px] text-sky-dim leading-relaxed">
                            Alur tetap seperti prosedur sekolah: <strong>persetujuan guru</strong> dulu, lalu <strong>verifikasi Guru Piket</strong>, baru siswa keluar.
                        </p>
-                       <p className="text-[11px] text-amber-800">Fitur pencetakan masih dalam tahap BETA.</p>
                    </div>
 
                    <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
@@ -1238,6 +1332,7 @@
                            onCreateIzin={props.onCreateIzin} onVerifikasi={props.onVerifikasi}
                            onTandaiKembali={props.onTandaiKembali}
                            myWaliKelas={props.myWaliKelas}
+                           onGenerateSurat={props.onGenerateSurat}
                        />
                    )}
                </div>

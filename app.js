@@ -1023,6 +1023,24 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           // Cetak Surat Izin Keluar (audit September 2026) — beda pola dari
+           // handleIzinAction lain: sukses TIDAK mengembalikan pesan singkat,
+           // tapi { htmlContent, suratData, nomorSurat } yang dipakai layar
+           // untuk preview/unduh/print. Daftar izin tetap ditarik ulang supaya
+           // Nomor_Surat/Status_Print yang baru saja tersimpan ikut sinkron
+           // (mis. kalau guru membuka lagi transaksi yang sama).
+           const handleGenerateIzinSurat = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'generateIzinKeluarSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchIzinKeluar();
+                           callback(true, data.data);
+                       } else callback(false, data.message || 'Gagal membuat surat izin.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleVerifikasiIzin = (payload, callback) => handleIzinAction('verifikasiIzinKeluar', payload, callback, '✓ Terverifikasi — siswa tercatat keluar.');
            // Satu langkah, langsung final — tidak ada "Tutup transaksi" lagi
            // menunggu sesudah ini (lihat Code.gs: tandaiKembaliIzinKeluar
@@ -1132,6 +1150,7 @@
                                        onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
                                        initialMode={gerbangMode}
+                                       onGenerateSurat={handleGenerateIzinSurat}
                                    />
                                )}
                                {activeTab === 'dashboard' && (
