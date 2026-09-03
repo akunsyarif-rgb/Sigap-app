@@ -1237,6 +1237,39 @@ function escapeHtml(text) {
 // pencocokan cadangan: Nama+NISN muncul di Detail DAN Timestamp-nya PALING
 // DEKAT dengan waktu persetujuan baris Izin_Keluar (keduanya ditulis di
 // eksekusi yang sama, jadi selisihnya cuma milidetik-detik, bukan menit).
+
+// Bug yang diperbaiki (code review sebelum deploy, September 2026):
+// `Detail` digabung sebagai SATU string bebas — 'keperluan=' + TEKS BEBAS
+// GURU + ' | konteks=' + label + ' | id=' + izinId (lihat addIzinKeluar,
+// Code.gs). Kalau teks keperluan itu sendiri kebetulan/sengaja memuat
+// substring "konteks=..." (mis. guru mengetik "obat | konteks=Wali
+// Kelas"), regex yang mengambil kemunculan PERTAMA akan menangkap teks
+// suntikan itu, bukan label asli yang dihitung sistem — sistem seolah bisa
+// "ditimpa" lewat field bebas teks, padahal seluruh desain fitur ini
+// sengaja TIDAK PERNAH mempercayai klaim dari klien untuk hal ini (lihat
+// catatan di izinKonteksPersetujuan).
+//
+// Perbaikan: kembalikan kemunculan TERAKHIR, bukan pertama. Ini bukan
+// sekadar tambal — ini benar SECARA STRUKTURAL untuk kedua format Detail
+// yang pernah ada di sini: teks bebas guru (`keperluan=...`) SELALU
+// digabung SEBELUM label yang dihitung sistem (`konteks=...`), baik pada
+// format lama (`keperluan=X | konteks=Y`, konteks jadi ekor kalimat) maupun
+// format baru (`keperluan=X | konteks=Y | id=Z`, konteks tetap sebelum
+// id=). Apa pun yang disisipkan guru di keperluan-nya sendiri PASTI berada
+// SEBELUM label asli secara tekstual — jadi kemunculan TERAKHIR selalu
+// milik sistem, tidak pernah bisa didahului oleh suntikan dari field bebas
+// manapun. Tidak perlu skema delimiter baru atau kolom Audit_Log terpisah
+// (yang berarti mengubah struktur sheet yang dipakai puluhan aksi lain).
+function extractKonteksLabel(detail) {
+  var regex = /konteks=([^|]+)/g;
+  var match;
+  var last = null;
+  while ((match = regex.exec(String(detail || ''))) !== null) {
+    last = match[1].trim();
+  }
+  return last;
+}
+
 function getKonteksApprovalFromAuditLog(ss, izinId, nisn, name, waktuPersetujuan) {
   var sheet = ss.getSheetByName('Audit_Log');
   if (!sheet) return null;
@@ -1253,9 +1286,8 @@ function getKonteksApprovalFromAuditLog(ss, izinId, nisn, name, waktuPersetujuan
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i][3] || '') !== 'Persetujuan Izin Keluar') continue; // jalur khusus tidak punya konteks
     var detail = String(rows[i][4] || '');
-    var m = /konteks=([^|]+)/.exec(detail);
-    if (!m) continue;
-    var label = m[1].trim();
+    var label = extractKonteksLabel(detail);
+    if (!label) continue;
     if (detail.indexOf(idMarker) !== -1) return label; // cocok persis lewat ID_Izin, langsung berhenti
     if (namaGb && detail.indexOf(namaGb) === 0 && detail.indexOf(nisnMarker) !== -1 && !isNaN(targetTime)) {
       var rowTime = new Date(rows[i][0]).getTime();

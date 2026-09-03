@@ -973,9 +973,18 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'ID izin wajib diisi.' });
       }
       try {
-        var suratData = generateIzinKeluarSuratData(ss, suratIzinId);
-        var suratHtml = renderIzinKeluarSuratHTML(suratData);
+        // sessionUser diteruskan ke generateIzinKeluarSuratData supaya ia
+        // bisa menegakkan cakupan baca per-transaksi (scopeIzinForUser) —
+        // lihat catatan di fungsi itu (Code.gs) untuk bug yang diperbaiki.
+        var suratData = generateIzinKeluarSuratData(ss, suratIzinId, sessionUser);
 
+        // ---- Bagian yang WAJIB terjadi SAMBIL memegang sigapLock: baca
+        // baris + "reservasi" nomor surat dengan LANGSUNG MENULISKANNYA ke
+        // sheet (bukan menulis belakangan, setelah fetch QR) — ini yang
+        // menjaga dua permintaan cetak PERTAMA yang hampir bersamaan di hari
+        // yang sama tidak pernah mendapat nomor kembar (lihat
+        // generateNomorSurat, Utils.gs). Sampai baris ini, TIDAK ada
+        // panggilan jaringan sama sekali — murni baca/tulis Sheet. ----
         var suratSheet = ss.getSheetByName(IZIN_SHEET_NAME);
         var suratFound = findIzinRowById(suratSheet, suratIzinId);
         if (!suratFound) {
@@ -988,6 +997,31 @@ function doPost(e) {
         suratValues[IZIN_COL_STATUS_PRINT - 1] = IZIN_PRINT_SUDAH;
         suratSheet.getRange(suratFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([suratValues]);
         clearIzinCache();
+
+        // ---- Lock DILEPAS DI SINI (code review sebelum deploy, September
+        // 2026) — bug yang diperbaiki: sebelumnya renderIzinKeluarSuratHTML
+        // (yang memanggil layanan QR di luar lewat UrlFetchApp, lihat
+        // catatan di sana) dipanggil SAMBIL sigapLock masih dipegang, sama
+        // seperti operasi tulis Sheet lain. Itu berarti QR yang
+        // lambat/tidak responsif ikut menahan SEMUA aksi tulis lain di
+        // seluruh sekolah (catat terlambat, verifikasi izin lain, dst.)
+        // yang sedang antre menunggu giliran lock ini — persis masalah yang
+        // sudah sengaja DIHINDARI di Notifikasi.gs (lihat processPushQueue:
+        // panggilan jaringan ke relay push TIDAK PERNAH terjadi sambil
+        // memegang sigapLock, justru dipisah ke antrean/trigger sendiri
+        // supaya tidak menahan aksi tulis lain).
+        //
+        // Perbaikannya di sini tidak perlu antrean terpisah seperti push —
+        // baris Sheet yang perlu ditulis SUDAH selesai ditulis tepat di
+        // atas, jadi tidak ada lagi operasi baca-cek-tulis yang butuh lock
+        // setelah titik ini. Lock aman dilepas SEKARANG, sebelum
+        // renderIzinKeluarSuratHTML (yang melakukan fetch QR) dipanggil.
+        // `finally` di akhir doPost tetap memanggil releaseLock() sekali
+        // lagi setelah ini — itu aman: LockService.releaseLock() adalah
+        // no-op kalau lock-nya memang sudah tidak dipegang.
+        sigapLock.releaseLock();
+
+        var suratHtml = renderIzinKeluarSuratHTML(suratData);
 
         logAudit(sessionUser, 'generateIzinKeluarSurat',
           buildIzinAuditDetail(suratFound.data, 'nomor=' + suratData.nomor_surat + ' | status_saat_cetak=' + suratData.status_izin));
@@ -1403,11 +1437,29 @@ function doPost(e) {
 // surat yang dikembalikan di sini BELUM tentu sudah tersimpan di sheet —
 // action 'generateIzinKeluarSurat' di atas yang menuliskannya, SETELAH
 // render HTML-nya berhasil, supaya render yang gagal tidak "memakai" nomor.
-function generateIzinKeluarSuratData(ss, izinId) {
+function generateIzinKeluarSuratData(ss, izinId, sessionUser) {
   var sheet = ss.getSheetByName(IZIN_SHEET_NAME);
   var found = sheet ? findIzinRowById(sheet, izinId) : null;
   if (!found) throw new Error('Data izin tidak ditemukan.');
   var izin = found.data;
+
+  // Bug yang diperbaiki (code review sebelum deploy, September 2026): aksi
+  // ini dulu hanya menolak OSIS (dicek di pemanggilnya, action
+  // 'generateIzinKeluarSurat') dan TIDAK mengecek ulang cakupan baca
+  // per-transaksi — beda dari getIzinKeluar (daftar) yang menyaring lewat
+  // scopeIzinForUser. Akibatnya siapa pun yang login (non-OSIS) dan tahu
+  // satu ID transaksi (mis. dari URL) bisa mencetak surat transaksi siapa
+  // saja, walau di luar kelas/harinya sendiri. Diperbaiki dengan memakai
+  // scopeIzinForUser yang SAMA (satu sumber kebenaran, bukan aturan baru
+  // yang bisa berselisih) — dibungkus jadi daftar berisi SATU transaksi ini
+  // saja, lalu dicek apakah masih lolos saringannya. Aturannya PERSIS sama
+  // dengan yang menentukan kartu ini tampil atau tidak di layar Gerbang:
+  // transaksi yang masih berjalan tetap terlihat seluruh sekolah, yang
+  // sudah selesai ikut aturan hari-ini-sekolah-luas / kelas-wali-kapan-saja.
+  var izinTerlihat = scopeIzinForUser([izin], sessionUser, new Date());
+  if (!izinTerlihat.length) {
+    throw new Error('Tidak punya akses untuk mencetak surat izin ini.');
+  }
 
   // Cetak kelompok BELUM didukung — lihat catatan di IZIN_HEADERS (Utils.gs).
   // Bukan lupa, sengaja: nomor per-aktivitas vs per-siswa, dan tanda tangan

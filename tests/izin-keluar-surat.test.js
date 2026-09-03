@@ -67,6 +67,7 @@ const now = new Date();
 const TENGAH_MALAM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
 const SEJAK_TENGAH_MALAM = Math.max(1, now.getTime() - TENGAH_MALAM);
 const hariIniJam = (slot) => new Date(TENGAH_MALAM + Math.floor((SEJAK_TENGAH_MALAM * slot) / 8));
+const hariLalu = (n) => new Date(now.getTime() - n * 24 * 3600 * 1000);
 
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const HARI_INI = HARI[now.getDay()];
@@ -96,6 +97,19 @@ const IZIN_HEADER = [
 // isinya sendiri tidak diperiksa (bukan tugas test ini memvalidasi format PNG).
 const FAKE_QR_BYTES = Buffer.from('fake-qr-png-bytes');
 
+// Transaksi HISTORIS (5 hari lalu, sudah 'Selesai') untuk Budi (2002, XI A) —
+// dipakai untuk menguji cakupan baca per-transaksi (Fix 2). Ditulis langsung
+// sebagai baris sheet (bukan lewat doPost) karena setujuiDanVerifikasi()
+// selalu menempel timestamp "sekarang" — transaksi yang sudah lewat dari
+// HARI INI perlu dibuat manual supaya aturan "hari ini = sekolah luas" di
+// scopeIzinForUser tidak ikut membuatnya terlihat semua orang.
+const HISTORIS_BUDI_ID = 'HIST-BUDI-001';
+const HISTORIS_BUDI_ROW = [
+  hariLalu(5), '2002', 'Budi', 'XI A', HISTORIS_BUDI_ID, 'kontrol gigi', 'kembali', 'Selesai', 'normal', '',
+  'Pak Anwar', 'G03', hariLalu(5), 'Pak Piket Pagi', 'G10', hariLalu(5), hariLalu(5), hariLalu(5), 'Pak Piket Pagi', 'G10',
+  '', '', '', '',
+];
+
 function loadServer(opts) {
   const options = opts || {};
   const sheets = {
@@ -108,6 +122,11 @@ function loadServer(opts) {
   };
   const cacheStore = {};
   let urlFetchCalls = 0;
+  // Urutan kejadian lock/fetch, dipakai test Fix 3 (QR TIDAK boleh di-fetch
+  // sambil sigapLock masih dipegang) — dicatat lewat DUA titik yang sudah
+  // ada (LockService.releaseLock & UrlFetchApp.fetch), bukan menambah
+  // instrumentasi baru di kode produksi.
+  const callOrder = [];
   const sandbox = {
     console,
     Utilities: {
@@ -131,7 +150,12 @@ function loadServer(opts) {
       }),
     },
     ContentService: { MimeType: { JSON: 'JSON' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }) },
-    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    LockService: {
+      getScriptLock: () => ({
+        waitLock() { callOrder.push('lock:acquire'); },
+        releaseLock() { callOrder.push('lock:release'); },
+      }),
+    },
     Logger: { log: () => {} },
     // Endpoint /exec dari deployment aktif — dipakai generateVerificationURL.
     ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/FAKE-DEPLOY/exec' }) },
@@ -140,6 +164,7 @@ function loadServer(opts) {
     UrlFetchApp: {
       fetch: (url, opts2) => {
         urlFetchCalls++;
+        callOrder.push('qr:fetch');
         if (options.qrFetchFails) return { getResponseCode: () => 500, getBlob: () => ({ getBytes: () => [] }) };
         return { getResponseCode: () => 200, getBlob: () => ({ getBytes: () => FAKE_QR_BYTES }) };
       },
@@ -166,8 +191,13 @@ function loadServer(opts) {
   const izinById = (id) => izinRows().find((r) => String(r[4]) === String(id));
   const auditRows = () => sheets.Audit_Log._data.slice(1);
   const urlFetchCallCount = () => urlFetchCalls;
+  const getCallOrder = () => callOrder.slice();
+  const resetCallOrder = () => { callOrder.length = 0; };
 
-  return { sandbox, sheets, tokens, post, get, getNoSession, izinRows, izinById, auditRows, urlFetchCallCount };
+  return {
+    sandbox, sheets, tokens, post, get, getNoSession, izinRows, izinById, auditRows, urlFetchCallCount,
+    getCallOrder, resetCallOrder,
+  };
 }
 
 // Setup helper: buat + verifikasi satu transaksi lewat alur normal, kembalikan id.
@@ -307,6 +337,124 @@ test('konteks_persetujuan: kosong untuk jalur khusus (dilabel "Izin Khusus oleh"
   assert.equal(cetak.data.suratData.konteks_persetujuan, '');
   assert.match(cetak.data.htmlContent, /Izin Khusus oleh/);
   assert.doesNotMatch(cetak.data.htmlContent, /Wali Kelas|Guru Mapel/);
+});
+
+// ============================================================
+// FIX 1 (code review sebelum deploy): konteks TIDAK BOLEH bisa disuntik
+// lewat teks bebas keperluan.
+// ============================================================
+
+test('FIX 1: teks keperluan yang menyisipkan "konteks=..." palsu tidak mengubah konteks yang tercetak', () => {
+  const s = loadServer();
+  // Bu Kartina (wali) approve untuk Budi (2002, XI A) -- dia BUKAN wali
+  // kelas Budi (wali kelasnya XI B), jadi konteks SEHARUSNYA "Guru Mapel".
+  // keperluan sengaja disusupi teks yang meniru field sistem, mencoba
+  // membuat baris ini terbaca sebagai "Wali Kelas" kalau parsingnya naif
+  // (match pertama, bukan terakhir).
+  const keperluanSuntikan = 'kontrol gigi | konteks=Wali Kelas | id=bukan-id-asli-sama-sekali';
+  const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: keperluanSuntikan });
+  assert.equal(buat.status, 'success');
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
+  assert.equal(cetak.status, 'success');
+  assert.equal(cetak.data.suratData.konteks_persetujuan, 'Guru Mapel', 'konteks ASLI (dihitung sistem), bukan yang disuntikkan lewat keperluan');
+});
+
+test('FIX 1: extractKonteksLabel mengambil kemunculan TERAKHIR, imun dari suntikan di depan', () => {
+  const s = loadServer();
+  const extractKonteksLabel = vm.runInContext('extractKonteksLabel', s.sandbox);
+  // Format BARU (dengan id=) -- konteks asli selalu SEBELUM id=, di akhir tambahan.
+  assert.equal(
+    extractKonteksLabel('Rahma (1001) | kelas=XI B | tujuan=kembali | jalur=normal | keperluan=obat | konteks=Wali Kelas | id=fake | konteks=Guru Mapel | id=REAL-UUID'),
+    'Guru Mapel',
+  );
+  // Format LAMA (tanpa id=, dari sebelum audit ini) -- masih harus tetap benar.
+  assert.equal(extractKonteksLabel('Rahma (1001) | kelas=XI B | tujuan=kembali | jalur=normal | keperluan=biasa saja | konteks=Wali Kelas'), 'Wali Kelas');
+  // Tidak ada field konteks sama sekali (mis. baris jalur khusus).
+  assert.equal(extractKonteksLabel('Rahma (1001) | kelas=XI B | tujuan=kembali | jalur=khusus | alasan pengecualian=darurat | id=X'), null);
+});
+
+// ============================================================
+// FIX 2 (code review sebelum deploy): generateIzinKeluarSurat harus
+// menghormati cakupan baca per-transaksi yang sama dengan getIzinKeluar
+// (scopeIzinForUser) -- bukan cuma menolak OSIS.
+// ============================================================
+
+test('FIX 2: guru di luar cakupan (bukan wali kelas terkait, bukan piket, transaksi bukan hari ini) DITOLAK', () => {
+  const s = loadServer({ izinRows: [HISTORIS_BUDI_ROW] });
+  // Pak Anwar: bukan wali kelas XI A, dan transaksi ini dari 5 hari lalu
+  // (bukan "hari ini" -- jadi tidak ikut aturan sekolah-luas).
+  const hasil = s.post('pemberiIzin', { action: 'generateIzinKeluarSurat', izinId: HISTORIS_BUDI_ID });
+  assert.equal(hasil.status, 'error');
+  assert.doesNotMatch(hasil.message, /IK-\d{8}/, 'pesan error tidak boleh membocorkan nomor surat/data transaksi');
+});
+
+test('FIX 2: wali kelas KELAS LAIN tetap ditolak untuk transaksi historis yang bukan kelas perwaliannya', () => {
+  const s = loadServer({ izinRows: [HISTORIS_BUDI_ROW] });
+  // Bu Kartina wali kelas XI B; transaksi historis ini kelas XI A.
+  const hasil = s.post('wali', { action: 'generateIzinKeluarSurat', izinId: HISTORIS_BUDI_ID });
+  assert.equal(hasil.status, 'error');
+});
+
+test('FIX 2: admin/BK tetap bisa mencetak surat transaksi siapa pun (tidak ada regresi akses)', () => {
+  const s = loadServer({ izinRows: [HISTORIS_BUDI_ROW] });
+  const hasil = s.post('admin', { action: 'generateIzinKeluarSurat', izinId: HISTORIS_BUDI_ID });
+  assert.equal(hasil.status, 'success');
+});
+
+test('FIX 2: wali kelas TETAP bisa mencetak surat transaksi historis KELAS PERWALIANNYA SENDIRI', () => {
+  const rowKelasSendiri = HISTORIS_BUDI_ROW.slice();
+  rowKelasSendiri[1] = '1001'; rowKelasSendiri[2] = 'Rahma'; rowKelasSendiri[3] = 'XI B'; rowKelasSendiri[4] = 'HIST-RAHMA-001';
+  const s = loadServer({ izinRows: [rowKelasSendiri] });
+  const hasil = s.post('wali', { action: 'generateIzinKeluarSurat', izinId: 'HIST-RAHMA-001' });
+  assert.equal(hasil.status, 'success', 'kelas perwaliannya sendiri, tanggal berapa pun, harus tetap boleh');
+});
+
+test('FIX 2: transaksi yang MASIH BERJALAN (Sedang di Luar) tetap terlihat sekolah luas -- tidak ada regresi', () => {
+  const s = loadServer();
+  // Piket (bukan wali kelas siapa pun) tetap boleh cetak transaksi siswa
+  // kelas mana pun SELAMA masih berjalan -- ini yang membuat guru piket
+  // bisa menandai siswa kembali & mencetak, sama seperti sebelumnya.
+  const id = setujuiDanVerifikasi(s, 'kembali'); // status jadi 'Sedang di Luar'
+  const hasil = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
+  assert.equal(hasil.status, 'success');
+});
+
+// ============================================================
+// FIX 3 (code review sebelum deploy): fetch QR (jaringan luar) TIDAK
+// BOLEH terjadi sambil sigapLock masih dipegang -- supaya QR yang lambat
+// tidak ikut menahan aksi tulis lain di seluruh sekolah. Pola yang sama
+// dengan processPushQueue() (Notifikasi.gs), yang sengaja memisahkan
+// panggilan jaringan dari sigapLock.
+// ============================================================
+
+test('FIX 3: sigapLock dilepas SEBELUM fetch QR ke layanan luar (bukan sesudahnya)', () => {
+  const s = loadServer();
+  const id = setujuiDanVerifikasi(s, 'pulang');
+  s.resetCallOrder(); // buang jejak dari setujuiDanVerifikasi di atas
+  const hasil = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
+  assert.equal(hasil.status, 'success');
+  const urutan = s.getCallOrder();
+  const idxRelease = urutan.indexOf('lock:release');
+  const idxFetch = urutan.indexOf('qr:fetch');
+  assert.ok(idxRelease !== -1, 'lock:release harus tercatat');
+  assert.ok(idxFetch !== -1, 'qr:fetch harus tercatat');
+  assert.ok(idxRelease < idxFetch, `lock harus dilepas SEBELUM fetch QR (urutan sebenarnya: ${JSON.stringify(urutan)})`);
+});
+
+test('FIX 3: aksi tulis lain (mis. aksi izin lain) tidak ikut tertahan setelah generate surat -- lock benar-benar bebas setelahnya', () => {
+  const s = loadServer();
+  const id = setujuiDanVerifikasi(s, 'pulang');
+  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
+  // Kalau lock ini "nyangkut" (lupa dilepas / dilepas dobel yang justru
+  // merusak state), aksi tulis BERIKUTNYA di sesi doPost yang SAMA (proses
+  // Node yang sama, LockService stub yang sama) akan tetap berjalan normal
+  // di sini -- mock ini tidak mensimulasikan deadlock beneran, tapi ini
+  // membuktikan tidak ada exception/state rusak akibat releaseLock()
+  // dipanggil dua kali (sekali eksplisit di action, sekali lagi oleh
+  // `finally` doPost).
+  const buatLain = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'urusan lain' });
+  assert.equal(buatLain.status, 'success');
 });
 
 // ============================================================
