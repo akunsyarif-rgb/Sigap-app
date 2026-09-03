@@ -101,6 +101,51 @@ ever auto-deploys one of them:
   `clasp status`) runs before the first write (`clasp push`). Keep new steps on
   the correct side of that line.
 
+### Using GitHub Codespaces for manual clasp access
+
+`clasp login` needs an interactive OAuth consent in a real browser tied to
+the *same origin* the local callback server is listening on — that's why it
+can't be driven from an ephemeral, non-interactive session like this one
+(no browser, no way to complete the redirect) and why CI (`deploy-gas.yml`)
+authenticates from a pre-generated `CLASP_CREDENTIALS` secret instead of
+logging in itself. A GitHub Codespace is the practical way to get a real,
+persistent, browser-attached shell for the one-time interactive steps
+(`clasp login`, `clasp deployments` to find an id, an ad-hoc `clasp push`
+while iterating) without installing anything locally.
+
+`.devcontainer/devcontainer.json` (Node 20, matching the `node-version: 20`
+used by every workflow in `.github/workflows/`) is what makes "Code →
+Create codespace on `main`" on GitHub actually usable for this: it runs
+`npm install` on first boot, which pulls in `@google/clasp` (already a
+devDependency) along with everything `npm test` needs.
+
+Steps, once the Codespace is up:
+
+1. `npm run clasp:login -- --no-localhost` — `clasp login`'s default flow
+   opens a local port and expects the *same-machine* browser to hit it
+   directly; a Codespace is accessed through a forwarded-port proxy on a
+   different origin, so that flow can't complete. `--no-localhost` switches
+   to the copy-paste flow instead: it prints a Google OAuth URL, you open it
+   in your own browser, approve, and paste the resulting code back into the
+   terminal. This writes `~/.clasprc.json` inside the Codespace container —
+   it never touches the repo and is not something `git status` will ever
+   see (`.clasprc.json` is also `.gitignore`d as a backstop, see above).
+2. `cp .clasp.json.example .clasp.json` and fill in the real `scriptId`
+   (Apps Script → Project Settings → Script ID). `.clasp.json` is
+   `.gitignore`d too — this file is per-checkout, not committed.
+3. From here the existing `npm run clasp:push` / `CLASP_DEPLOYMENT_ID=<id>
+   npm run clasp:deploy` commands documented above work exactly as they
+   would locally — a Codespace is just a normal Linux shell with Node 20 and
+   this repo checked out, nothing clasp-specific about it beyond steps 1–2.
+
+The Codespace's login is independent of the `CLASP_CREDENTIALS` GitHub
+Actions secret used by `deploy-gas.yml` — logging in here doesn't create or
+rotate that secret, it only gets a human a working `clasp` session for
+manual/ad-hoc use. If `deploy-gas.yml` itself needs new credentials, generate
+the `~/.clasprc.json` the same way (Codespace or local `clasp login`) and
+copy its contents into the `CLASP_CREDENTIALS` secret by hand — see
+`.github/scripts/check-clasp-credentials.js` for the exact shape it expects.
+
 ### Backend drift detection (`check-backend-drift.yml`)
 
 Deploy staying manual (above) means drift between `main` and the live Web App
