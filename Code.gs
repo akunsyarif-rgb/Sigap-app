@@ -15,7 +15,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-03-cetak-surat-izin';
+var BACKEND_VERSION = '2026-09-04-surat-tanpa-qr';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin'];
 
 // ===== doPost =====
@@ -978,13 +978,15 @@ function doPost(e) {
         // lihat catatan di fungsi itu (Code.gs) untuk bug yang diperbaiki.
         var suratData = generateIzinKeluarSuratData(ss, suratIzinId, sessionUser);
 
-        // ---- Bagian yang WAJIB terjadi SAMBIL memegang sigapLock: baca
-        // baris + "reservasi" nomor surat dengan LANGSUNG MENULISKANNYA ke
-        // sheet (bukan menulis belakangan, setelah fetch QR) — ini yang
-        // menjaga dua permintaan cetak PERTAMA yang hampir bersamaan di hari
-        // yang sama tidak pernah mendapat nomor kembar (lihat
-        // generateNomorSurat, Utils.gs). Sampai baris ini, TIDAK ada
-        // panggilan jaringan sama sekali — murni baca/tulis Sheet. ----
+        // "Reservasi" nomor surat dengan LANGSUNG MENULISKANNYA ke sheet —
+        // ini yang menjaga dua permintaan cetak PERTAMA yang hampir
+        // bersamaan di hari yang sama tidak pernah mendapat nomor kembar
+        // (lihat generateNomorSurat, Utils.gs). Seluruh aksi ini (termasuk
+        // renderIzinKeluarSuratHTML di bawah) murni baca/tulis Sheet + susun
+        // teks — sejak QR (satu-satunya bagian yang pernah memanggil
+        // jaringan luar) dihapus, tidak ada lagi alasan untuk melepas
+        // sigapLock lebih awal seperti sebelumnya; aksi ini sekarang
+        // konsisten dengan aksi izin lain, tetap di dalam lock sampai akhir.
         var suratSheet = ss.getSheetByName(IZIN_SHEET_NAME);
         var suratFound = findIzinRowById(suratSheet, suratIzinId);
         if (!suratFound) {
@@ -997,29 +999,6 @@ function doPost(e) {
         suratValues[IZIN_COL_STATUS_PRINT - 1] = IZIN_PRINT_SUDAH;
         suratSheet.getRange(suratFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([suratValues]);
         clearIzinCache();
-
-        // ---- Lock DILEPAS DI SINI (code review sebelum deploy, September
-        // 2026) — bug yang diperbaiki: sebelumnya renderIzinKeluarSuratHTML
-        // (yang memanggil layanan QR di luar lewat UrlFetchApp, lihat
-        // catatan di sana) dipanggil SAMBIL sigapLock masih dipegang, sama
-        // seperti operasi tulis Sheet lain. Itu berarti QR yang
-        // lambat/tidak responsif ikut menahan SEMUA aksi tulis lain di
-        // seluruh sekolah (catat terlambat, verifikasi izin lain, dst.)
-        // yang sedang antre menunggu giliran lock ini — persis masalah yang
-        // sudah sengaja DIHINDARI di Notifikasi.gs (lihat processPushQueue:
-        // panggilan jaringan ke relay push TIDAK PERNAH terjadi sambil
-        // memegang sigapLock, justru dipisah ke antrean/trigger sendiri
-        // supaya tidak menahan aksi tulis lain).
-        //
-        // Perbaikannya di sini tidak perlu antrean terpisah seperti push —
-        // baris Sheet yang perlu ditulis SUDAH selesai ditulis tepat di
-        // atas, jadi tidak ada lagi operasi baca-cek-tulis yang butuh lock
-        // setelah titik ini. Lock aman dilepas SEKARANG, sebelum
-        // renderIzinKeluarSuratHTML (yang melakukan fetch QR) dipanggil.
-        // `finally` di akhir doPost tetap memanggil releaseLock() sekali
-        // lagi setelah ini — itu aman: LockService.releaseLock() adalah
-        // no-op kalau lock-nya memang sudah tidak dipegang.
-        sigapLock.releaseLock();
 
         var suratHtml = renderIzinKeluarSuratHTML(suratData);
 
@@ -1514,75 +1493,6 @@ function generateIzinKeluarSuratData(ss, izinId, sessionUser) {
   };
 }
 
-// URL verifikasi yang dipakai adalah endpoint doGet 'verifyIzinSurat' MILIK
-// deployment yang sedang aktif — diambil lewat ScriptApp.getService().getUrl(),
-// BUKAN dikonstruksi dari ScriptId. Pola "/macros/d/{scriptId}/usercopy"
-// bukan endpoint Web App yang sungguhan dan tidak akan pernah bisa dipanggil
-// balik — getService().getUrl() adalah cara resmi Apps Script memberi tahu
-// URL /exec dari deployment yang sedang menjalankan request ini.
-//
-// API_TOKEN diikutkan di URL karena endpoint ini digembok token yang sama
-// seperti SEMUA endpoint SIGAP lain (checkToken, lihat Utils.gs) — token itu
-// sudah "publik" dalam pengertian yang sama seperti config.js (dikirim dari
-// SETIAP klien, lihat catatan di config.js), jadi menaruhnya di sini tidak
-// menambah kelas risiko baru.
-function generateVerificationURL(izinId, nomorSurat) {
-  var baseUrl = ScriptApp.getService().getUrl();
-  var apiToken = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
-  return baseUrl + '?token=' + encodeURIComponent(apiToken || '') +
-    '&action=verifyIzinSurat&id=' + encodeURIComponent(izinId) +
-    '&nomor=' + encodeURIComponent(nomorSurat);
-}
-
-// Catatan penting: Google Charts Image API (chart.googleapis.com/chart) —
-// yang biasanya disebut sebagai cara "tanpa library" untuk bikin QR — SUDAH
-// DIMATIKAN Google sejak 2019. Memakainya di sini akan menghasilkan gambar
-// rusak di SETIAP surat, diam-diam (tidak error, cuma <img> kosong).
-//
-// Dipakai goqr.me (api.qrserver.com, publik, tanpa API key) sebagai
-// pengganti — tapi TIDAK sebagai <img src> yang menunjuk LANGSUNG ke layanan
-// luar itu. Gambarnya di-fetch SEKALI di server (di sini, saat surat dibuat)
-// lalu disematkan sebagai data URI base64 langsung di HTML-nya. Alasannya
-// dua: (1) surat yang sudah diunduh harus tetap bisa dibuka & dicetak
-// bertahun-tahun kemudian walau layanan QR luar berhenti/berubah — dokumen
-// resmi tidak boleh bergantung pada pihak ketiga tetap hidup selamanya
-// (persis semangat "Fleksibel: bisa download/print kapan saja" di baliknya);
-// (2) <img src> langsung akan membuat SETIAP kali surat dibuka (preview,
-// print, atau file HTML yang sudah diunduh dibuka lagi nanti) mengirim
-// izinId+token ke server pihak ketiga itu — dengan fetch sekali di sini,
-// yang menghubungi layanan luar hanya server SIGAP sendiri, sekali, saat
-// surat dibuat.
-//
-// Gagal fetch TIDAK BOLEH menggagalkan pembuatan surat (prinsip yang sama
-// dengan notifyRelevantUsers/logAudit di berkas lain) — surat tetap sah
-// tanpa QR; nomor surat & data di atasnya tetap bukti utamanya.
-// Gagal fetch dulu SELALU senyap total (return '' saja) — tidak ada jejak
-// sama sekali untuk tahu KENAPA. Itu bikin QR yang tidak muncul di
-// lapangan tidak bisa didiagnosis dari jauh (lihat percakapan lapangan,
-// September 2026) selain menyuruh coba trial-and-error di Apps Script
-// editor. Sekarang alasan gagalnya ditulis ke Audit_Log (aktor 'System',
-// pola yang sama dengan pemicu Login Rate Limit di Code.gs) — surat TETAP
-// selalu berhasil dibuat tanpa QR persis seperti sebelumnya (prinsip
-// "gagal fetch tidak boleh menggagalkan surat" TIDAK berubah), cuma
-// sekarang ada baris di Audit_Log yang bisa dicek admin: 'Response code:
-// 401'/'403' berarti izin UrlFetchApp belum disetujui penuh, response
-// lain berarti soal di sisi layanan QR luar itu sendiri.
-function generateQRCodeImage(url) {
-  try {
-    var qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=' + encodeURIComponent(url);
-    var response = UrlFetchApp.fetch(qrApiUrl, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) {
-      logAudit({ name: 'System', id: '-' }, 'QR Surat Gagal', 'HTTP ' + response.getResponseCode() + ' dari layanan QR (api.qrserver.com)');
-      return '';
-    }
-    var base64 = Utilities.base64Encode(response.getBlob().getBytes());
-    return '<img src="data:image/png;base64,' + base64 + '" alt="QR Verifikasi Surat" width="140" height="140" style="display:block;margin:0 auto;" />';
-  } catch (qrError) {
-    logAudit({ name: 'System', id: '-' }, 'QR Surat Gagal', String((qrError && qrError.message) || qrError));
-    return '';
-  }
-}
-
 // Satu-satunya tempat yang merangkai HTML surat. SEMUA nilai bebas-teks
 // (keperluan, alasan_khusus, dan nama sekalipun) WAJIB lewat escapeHtml()
 // (Utils.gs) sebelum disisipkan — lihat catatan panjang di fungsi itu.
@@ -1615,17 +1525,22 @@ function generateQRCodeImage(url) {
 //    (tidak kembali ke sekolah)"), dipetakan LOKAL di sini — bukan
 //    memakai/mengubah izinTujuanLabel, supaya kolom Export yang sudah
 //    benar sempit tidak ikut melebar.
+// 4. QR verifikasi DIHAPUS (September 2026) — bukan cuma disembunyikan,
+//    seluruh mekanismenya (generateVerificationURL, generateQRCodeImage,
+//    action doGet 'verifyIzinSurat') sudah dicabut, bukan sekadar tidak
+//    dipanggil. Alasan: satu-satunya bagian dari fitur cetak surat yang
+//    butuh UrlFetchApp (memanggil layanan QR luar) berulang kali gagal di
+//    lapangan tanpa bisa didiagnosis cepat dari jarak jauh, dan alternatif
+//    "link teks biasa" (tanpa gambar QR, tapi tetap butuh endpoint publik)
+//    dianggap tidak cukup praktis dibanding manfaatnya (satpam/orang tua
+//    harus mengetik URL manual). Keputusan produk, bukan keterbatasan
+//    teknis yang belum terpecahkan — surat tetap sah lewat nomor otomatis
+//    + nama & jam persetujuan/verifikasi, sama seperti sebelum QR ada.
+//    Konsekuensinya: renderIzinKeluarSuratHTML sekarang TIDAK PERNAH
+//    memanggil layanan luar apa pun — murni menyusun teks dari data yang
+//    sudah ada.
 function renderIzinKeluarSuratHTML(suratData) {
   var d = suratData || {};
-  var verifUrl = '';
-  var qrImg = '';
-  try {
-    verifUrl = generateVerificationURL(d.izinId, d.nomor_surat);
-    qrImg = generateQRCodeImage(verifUrl);
-  } catch (urlError) {
-    // QR/URL gagal TIDAK BOLEH menggagalkan surat — lihat catatan di
-    // generateQRCodeImage di atas.
-  }
   var logoUrl = 'https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg';
   var jalurKhusus = d.jalur === IZIN_JALUR_KHUSUS;
   var rencanaKepulangan = d.tujuan === 'Pulang' ? 'Pulang (tidak kembali ke sekolah)' : 'Kembali ke sekolah';
@@ -1682,10 +1597,7 @@ function renderIzinKeluarSuratHTML(suratData) {
     '.info-box .judul{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#5C5548;font-family:Arial,Helvetica,sans-serif;margin-bottom:2px;}' +
     '.info-box .isi{font-weight:bold;font-size:13px;}' +
     '.tempat-tanggal{text-align:right;margin-bottom:24px;}' +
-    '.ttd-block{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-top:8px;}' +
-    '.qr-block{text-align:center;flex-shrink:0;}' +
-    '.qr-block p{font-size:9px;color:#5C5548;margin-top:4px;font-family:Arial,Helvetica,sans-serif;max-width:140px;}' +
-    '.elektronik{font-size:10px;color:#5C5548;line-height:1.6;font-family:Arial,Helvetica,sans-serif;text-align:right;}' +
+    '.elektronik{font-size:10px;color:#5C5548;line-height:1.6;font-family:Arial,Helvetica,sans-serif;text-align:right;margin-top:8px;}' +
     '@media print{body{padding:15mm 20mm;max-width:none;}}' +
     '</style></head><body>' +
     '<div class="kop"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
@@ -1705,15 +1617,12 @@ function renderIzinKeluarSuratHTML(suratData) {
     // dengan mengubah formatTanggalPanjangID itu sendiri (dipakai juga di
     // baris "Dicetak:" yang MEMANG perlu nama harinya).
     '<div class="tempat-tanggal">Tarakan, ' + escapeHtml(String(d.tgl_cetak || '').replace(/^[^,]+,\s*/, '')) + '</div>' +
-    '<div class="ttd-block">' +
-    (qrImg ? '<div class="qr-block">' + qrImg + '<p>Pindai untuk verifikasi online</p></div>' : '<div></div>') +
     // Dipangkas dari 4 baris jadi 2 (masukan lapangan: surat ini kecil,
     // ruang vertikalnya berharga). "Nomor referensi" DIHAPUS di sini —
     // nomor suratnya sudah tertulis besar di judul atas ("Nomor: IK-..."),
     // menuliskannya lagi di sini cuma duplikat. Kalimat sah-tanpa-tanda-
     // tangan dipersingkat tapi maknanya dipertahankan utuh.
     '<div class="elektronik">Dihasilkan otomatis oleh SIGAP, sah tanpa tanda tangan basah.<br>Dicetak: ' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</div>' +
-    '</div>' +
     '</body></html>';
 }
 
@@ -1767,33 +1676,11 @@ function doGet(e) {
     return ContentService.createTextOutput(loginUsersResult).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // ---- Verifikasi Surat Izin Keluar via QR (audit September 2026). SENGAJA
-  // tidak butuh sesi — dipindai oleh siapa saja yang memegang surat fisiknya
-  // (satpam, orang tua), sama alasannya dengan getLoginUsers di atas. Tetap
-  // digembok API_TOKEN seperti semua endpoint lain. Mengembalikan HANYA info
-  // yang SUDAH tercetak di kertas fisiknya sendiri (nama, kelas, tujuan,
-  // status) — QR ini membuktikan suratnya ASLI/cocok dengan basis data,
-  // bukan membuka info baru dibanding yang sudah dipegang penerima surat.
-  // `nomor` WAJIB cocok persis dengan yang tersimpan (bukan cuma `id`, yang
-  // sudah UUID acak dan sulit ditebak sendiri) — supaya menebak satu UUID
-  // valid saja tidak cukup untuk "memverifikasi" surat yang sebenarnya
-  // tidak dipegang. ----
-  if (action === 'verifyIzinSurat') {
-    var vIzinId = String(e.parameter.id || '').trim();
-    var vNomor = String(e.parameter.nomor || '').trim();
-    var vSheet = ss.getSheetByName(IZIN_SHEET_NAME);
-    var vFound = (vIzinId && vSheet) ? findIzinRowById(vSheet, vIzinId) : null;
-    if (!vFound || !vNomor || String(vFound.values[IZIN_COL_NOMOR_SURAT - 1] || '').trim() !== vNomor) {
-      return jsonOut({ status: 'error', valid: false, message: 'Surat tidak ditemukan atau nomor tidak cocok.' });
-    }
-    var vIzin = vFound.data;
-    return jsonOut({
-      status: 'success', valid: true, nomor_surat: vNomor,
-      nama: vIzin.name, kelas: vIzin.class, tujuan: izinTujuanLabel(vIzin.tujuan),
-      status_izin: izinStatusSuratLabel(vIzin.status),
-      waktu_keluar: vIzin.waktu_keluar, waktu_verifikasi: vIzin.waktu_verifikasi,
-    });
-  }
+  // 'verifyIzinSurat' (verifikasi surat via QR) DIHAPUS (September 2026)
+  // bersamaan dengan seluruh fitur QR — lihat catatan di
+  // renderIzinKeluarSuratHTML (Code.gs) untuk alasannya. Endpoint publik
+  // ini tidak punya lagi apa pun yang mengarah ke sana (tidak ada QR yang
+  // memuatnya), jadi dicabut, bukan dibiarkan menganggur.
 
   // Semua aksi GET lainnya WAJIB sesi valid
   var sessionUser = getSessionUser(e.parameter.sessionToken);

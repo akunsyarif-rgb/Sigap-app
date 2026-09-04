@@ -1,18 +1,25 @@
 // ===== tests/izin-keluar-surat.test.js =====
 // CETAK SURAT IZIN KELUAR (audit September 2026) — nomor otomatis, tracking
-// cetak (Nomor_Surat/Waktu_Print/Status_Print), konteks approval historis
-// (dibaca dari Audit_Log, bukan dihitung ulang), dan verifikasi QR publik
-// (action doGet 'verifyIzinSurat'), diuji lewat doPost()/doGet() SUNGGUHAN
-// (Utils.gs+Auth.gs+Notifikasi.gs+Code.gs dijalankan di vm dengan layanan
-// Apps Script di-stub — sandbox TERPISAH dari tests/izin-keluar.test.js
-// supaya stub UrlFetchApp/ScriptApp/Utilities.base64Encode di sini tidak
-// perlu ditambahkan ke setiap test file lain yang tidak pernah menyentuh
-// jalur ini).
+// cetak (Nomor_Surat/Waktu_Print/Status_Print), dan konteks approval
+// historis (dibaca dari Audit_Log, bukan dihitung ulang), diuji lewat
+// doPost() SUNGGUHAN (Utils.gs+Auth.gs+Notifikasi.gs+Code.gs dijalankan di
+// vm dengan layanan Apps Script di-stub — sandbox TERPISAH dari
+// tests/izin-keluar.test.js karena file ini menguji jalur cetak surat yang
+// tidak disentuh test lain).
 //
 // Alur persetujuan/verifikasi/tandai-kembali ITU SENDIRI tidak diuji ulang
 // di sini — itu sudah dipegang penuh oleh tests/izin-keluar.test.js. Yang
 // diuji di sini murni fitur cetak: ia OUTPUT dari transaksi yang sudah
 // tersimpan, tidak pernah mengubah status/transisi apa pun.
+//
+// QR/verifikasi publik (action doGet 'verifyIzinSurat', generateVerificationURL,
+// generateQRCodeImage) DIHAPUS SELURUHNYA dari fitur ini (September 2026,
+// keputusan produk setelah gagal berulang di lapangan tanpa bisa
+// didiagnosis cepat dari jarak jauh — lihat catatan di
+// renderIzinKeluarSuratHTML, Code.gs) — jadi tidak ada lagi test untuk itu
+// di sini, dan sandbox di bawah TIDAK PERLU LAGI menyediakan stub
+// UrlFetchApp/ScriptApp: renderIzinKeluarSuratHTML sekarang murni menyusun
+// teks dari data yang sudah ada, tidak pernah memanggil jaringan luar.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -93,10 +100,6 @@ const IZIN_HEADER = [
   'ID_Kelompok', 'Nomor_Surat', 'Waktu_Print', 'Status_Print',
 ];
 
-// Fake blob PNG kecil — cukup untuk membuktikan base64 encode/embed jalan,
-// isinya sendiri tidak diperiksa (bukan tugas test ini memvalidasi format PNG).
-const FAKE_QR_BYTES = Buffer.from('fake-qr-png-bytes');
-
 // Transaksi HISTORIS (5 hari lalu, sudah 'Selesai') untuk Budi (2002, XI A) —
 // dipakai untuk menguji cakupan baca per-transaksi (Fix 2). Ditulis langsung
 // sebagai baris sheet (bukan lewat doPost) karena setujuiDanVerifikasi()
@@ -121,19 +124,12 @@ function loadServer(opts) {
     Audit_Log: makeSheet(['Timestamp', 'Nama', 'ID', 'Aksi', 'Detail'], []),
   };
   const cacheStore = {};
-  let urlFetchCalls = 0;
-  // Urutan kejadian lock/fetch, dipakai test Fix 3 (QR TIDAK boleh di-fetch
-  // sambil sigapLock masih dipegang) — dicatat lewat DUA titik yang sudah
-  // ada (LockService.releaseLock & UrlFetchApp.fetch), bukan menambah
-  // instrumentasi baru di kode produksi.
-  const callOrder = [];
   const sandbox = {
     console,
     Utilities: {
       computeDigest: (_a, str) => Array.from(crypto.createHash('sha256').update(String(str)).digest()).map((b) => (b > 127 ? b - 256 : b)),
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       getUuid: () => crypto.randomUUID(),
-      base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === 'API_TOKEN' ? 'TOKEN-OK' : null) }) },
     CacheService: {
@@ -150,25 +146,8 @@ function loadServer(opts) {
       }),
     },
     ContentService: { MimeType: { JSON: 'JSON' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }) },
-    LockService: {
-      getScriptLock: () => ({
-        waitLock() { callOrder.push('lock:acquire'); },
-        releaseLock() { callOrder.push('lock:release'); },
-      }),
-    },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Logger: { log: () => {} },
-    // Endpoint /exec dari deployment aktif — dipakai generateVerificationURL.
-    ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/FAKE-DEPLOY/exec' }) },
-    // Fetch QR (goqr.me) — TIDAK benar-benar memanggil jaringan, cukup
-    // membuktikan generateQRCodeImage memproses respons sukses dengan benar.
-    UrlFetchApp: {
-      fetch: (url, opts2) => {
-        urlFetchCalls++;
-        callOrder.push('qr:fetch');
-        if (options.qrFetchFails) return { getResponseCode: () => 500, getBlob: () => ({ getBytes: () => [] }) };
-        return { getResponseCode: () => 200, getBlob: () => ({ getBytes: () => FAKE_QR_BYTES }) };
-      },
-    },
   };
   vm.createContext(sandbox);
   ['Utils.gs', 'Auth.gs', 'Notifikasi.gs', 'Code.gs'].forEach((f) => {
@@ -185,19 +164,12 @@ function loadServer(opts) {
   const get = (who, params) => JSON.parse(doGet({
     parameter: Object.assign({ token: 'TOKEN-OK', sessionToken: who ? tokens[who] : undefined }, params),
   }).text);
-  const getNoSession = (params) => JSON.parse(doGet({ parameter: Object.assign({ token: 'TOKEN-OK' }, params) }).text);
 
   const izinRows = () => sheets.Izin_Keluar._data.slice(1).filter((r) => r[4]);
   const izinById = (id) => izinRows().find((r) => String(r[4]) === String(id));
   const auditRows = () => sheets.Audit_Log._data.slice(1);
-  const urlFetchCallCount = () => urlFetchCalls;
-  const getCallOrder = () => callOrder.slice();
-  const resetCallOrder = () => { callOrder.length = 0; };
 
-  return {
-    sandbox, sheets, tokens, post, get, getNoSession, izinRows, izinById, auditRows, urlFetchCallCount,
-    getCallOrder, resetCallOrder,
-  };
+  return { sandbox, sheets, tokens, post, get, izinRows, izinById, auditRows };
 }
 
 // Setup helper: buat + verifikasi satu transaksi lewat alur normal, kembalikan id.
@@ -307,6 +279,14 @@ test('Audit Log mencatat setiap generateIzinKeluarSurat dengan nomor surat di De
   const baris = s.auditRows().find((r) => r[3] === 'generateIzinKeluarSurat');
   assert.ok(baris, 'ada baris audit untuk generateIzinKeluarSurat');
   assert.match(baris[4], new RegExp('nomor=' + hasil.data.nomorSurat));
+});
+
+test('generate surat tidak meninggalkan lock nyangkut -- aksi tulis lain langsung normal sesudahnya', () => {
+  const s = loadServer();
+  const id = setujuiDanVerifikasi(s, 'pulang');
+  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
+  const buatLain = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'urusan lain' });
+  assert.equal(buatLain.status, 'success');
 });
 
 // ============================================================
@@ -421,43 +401,6 @@ test('FIX 2: transaksi yang MASIH BERJALAN (Sedang di Luar) tetap terlihat sekol
 });
 
 // ============================================================
-// FIX 3 (code review sebelum deploy): fetch QR (jaringan luar) TIDAK
-// BOLEH terjadi sambil sigapLock masih dipegang -- supaya QR yang lambat
-// tidak ikut menahan aksi tulis lain di seluruh sekolah. Pola yang sama
-// dengan processPushQueue() (Notifikasi.gs), yang sengaja memisahkan
-// panggilan jaringan dari sigapLock.
-// ============================================================
-
-test('FIX 3: sigapLock dilepas SEBELUM fetch QR ke layanan luar (bukan sesudahnya)', () => {
-  const s = loadServer();
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  s.resetCallOrder(); // buang jejak dari setujuiDanVerifikasi di atas
-  const hasil = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  assert.equal(hasil.status, 'success');
-  const urutan = s.getCallOrder();
-  const idxRelease = urutan.indexOf('lock:release');
-  const idxFetch = urutan.indexOf('qr:fetch');
-  assert.ok(idxRelease !== -1, 'lock:release harus tercatat');
-  assert.ok(idxFetch !== -1, 'qr:fetch harus tercatat');
-  assert.ok(idxRelease < idxFetch, `lock harus dilepas SEBELUM fetch QR (urutan sebenarnya: ${JSON.stringify(urutan)})`);
-});
-
-test('FIX 3: aksi tulis lain (mis. aksi izin lain) tidak ikut tertahan setelah generate surat -- lock benar-benar bebas setelahnya', () => {
-  const s = loadServer();
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  // Kalau lock ini "nyangkut" (lupa dilepas / dilepas dobel yang justru
-  // merusak state), aksi tulis BERIKUTNYA di sesi doPost yang SAMA (proses
-  // Node yang sama, LockService stub yang sama) akan tetap berjalan normal
-  // di sini -- mock ini tidak mensimulasikan deadlock beneran, tapi ini
-  // membuktikan tidak ada exception/state rusak akibat releaseLock()
-  // dipanggil dua kali (sekali eksplisit di action, sekali lagi oleh
-  // `finally` doPost).
-  const buatLain = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'urusan lain' });
-  assert.equal(buatLain.status, 'success');
-});
-
-// ============================================================
 // Keamanan HTML: keperluan/alasan bebas-teks harus di-escape
 // ============================================================
 
@@ -472,70 +415,18 @@ test('renderIzinKeluarSuratHTML meng-escape keperluan yang mengandung tag HTML',
 });
 
 // ============================================================
-// QR & verifikasi publik (doGet verifyIzinSurat)
+// QR/verifikasi publik DIHAPUS -- tidak boleh ada jejaknya lagi di kode
 // ============================================================
 
-test('surat memuat QR (data URI base64, bukan <img src> ke layanan luar) saat fetch QR sukses', () => {
-  const s = loadServer();
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  assert.match(cetak.data.htmlContent, /data:image\/png;base64,/);
-  assert.ok(!/<img[^>]+src="https:\/\/api\.qrserver\.com/.test(cetak.data.htmlContent), 'tidak boleh ada <img> yang menunjuk langsung ke layanan QR luar');
-  assert.equal(s.urlFetchCallCount(), 1, 'layanan QR luar hanya dihubungi SEKALI oleh server, bukan oleh setiap viewer');
-});
-
-test('surat tetap valid (tanpa QR) kalau fetch QR gagal -- pencetakan tidak boleh gagal karenanya', () => {
-  const s = loadServer({ qrFetchFails: true });
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  assert.equal(cetak.status, 'success', 'pembuatan surat tetap sukses walau QR gagal');
-  assert.ok(!cetak.data.htmlContent.includes('data:image/png;base64,'));
-});
-
-test('FIX lapangan: QR gagal tetap menulis alasannya ke Audit_Log -- tidak lagi gagal senyap tanpa jejak', () => {
-  const s = loadServer({ qrFetchFails: true });
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  const barisGagal = s.auditRows().find((r) => r[3] === 'QR Surat Gagal');
-  assert.ok(barisGagal, 'harus ada baris Audit_Log yang menjelaskan kenapa QR gagal');
-  assert.match(barisGagal[4], /HTTP 500/);
-  assert.equal(barisGagal[1], 'System', 'aktornya System, bukan guru yang sedang mencetak surat');
-});
-
-test('verifyIzinSurat: valid untuk nomor yang cocok, TIDAK butuh sesi (dipindai siapa saja)', () => {
-  const s = loadServer();
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  const hasil = s.getNoSession({ action: 'verifyIzinSurat', id: id, nomor: cetak.data.nomorSurat });
-  assert.equal(hasil.status, 'success');
-  assert.equal(hasil.valid, true);
-  assert.equal(hasil.nama, 'Rahma');
-});
-
-test('verifyIzinSurat: tidak valid kalau nomor tidak cocok (mencegah tebak-ID)', () => {
-  const s = loadServer();
-  const id = setujuiDanVerifikasi(s, 'pulang');
-  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
-  const hasil = s.getNoSession({ action: 'verifyIzinSurat', id: id, nomor: 'IK-00000000-999' });
-  assert.equal(hasil.valid, false);
-});
-
-test('verifyIzinSurat: tidak valid untuk id yang tidak ada', () => {
-  const s = loadServer();
-  const hasil = s.getNoSession({ action: 'verifyIzinSurat', id: 'ngawur', nomor: 'IK-00000000-001' });
-  assert.equal(hasil.valid, false);
-});
-
-// ============================================================
-// generateVerificationURL: endpoint /exec deployment aktif, bukan pola yang tidak valid
-// ============================================================
-
-test('QR menunjuk ke endpoint doGet verifyIzinSurat pada deployment aktif (ScriptApp.getService().getUrl())', () => {
-  const s = loadServer();
-  const generateVerificationURL = vm.runInContext('generateVerificationURL', s.sandbox);
-  const url = generateVerificationURL('abc-123', 'IK-20260101-001');
-  assert.match(url, /^https:\/\/script\.google\.com\/macros\/s\/FAKE-DEPLOY\/exec\?/);
-  assert.match(url, /action=verifyIzinSurat/);
-  assert.match(url, /id=abc-123/);
-  assert.match(url, /nomor=IK-20260101-001/);
+test('QR/verifikasi publik sudah dihapus total -- tidak ada JEJAK HIDUP generateQRCodeImage/generateVerificationURL/verifyIzinSurat', () => {
+  // Menyebut nama-nama ini di KOMENTAR sejarah (kenapa fitur ini dihapus)
+  // itu SENGAJA dipertahankan, sama seperti catatan uploadFotoSurat di
+  // Utils.gs -- yang tidak boleh ada adalah kode yang benar-benar
+  // MENJALANKANNYA: definisi fungsi, cabang router, atau panggilan ke
+  // layanan QR luar.
+  const kode = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  assert.doesNotMatch(kode, /function generateQRCodeImage/);
+  assert.doesNotMatch(kode, /function generateVerificationURL/);
+  assert.doesNotMatch(kode, /action === 'verifyIzinSurat'/);
+  assert.doesNotMatch(kode, /api\.qrserver\.com/);
 });

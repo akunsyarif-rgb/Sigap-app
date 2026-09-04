@@ -45,20 +45,12 @@ auto-deploy di repo ini.
 npm run clasp:push
 ```
 
-- [ ] Perintah selesai tanpa error. Kalau muncul prompt **otorisasi scope
-      baru** di terminal/browser — **ini KEMUNGKINAN BESAR TERJADI di
-      deploy ini**, bukan tanda push gagal: `Code.gs` sekarang memanggil
-      `UrlFetchApp.fetch()` (untuk QR) dan `ScriptApp.getService().getUrl()`
-      (untuk URL verifikasi) untuk PERTAMA KALINYA lewat jalur ini secara
-      langsung dari `Code.gs`. Kalau proyek Apps Script ini belum pernah
-      meng-otorisasi scope `script.external_request` sebelumnya (mis. kalau
-      fitur Push Notification — yang juga pakai `UrlFetchApp` lewat
-      `Notifikasi.gs` — belum pernah benar-benar live), **setujui prompt
-      otorisasi itu**. Kalau ditolak/di-skip, `generateQRCodeImage` akan
-      selalu gagal senyap (fallback aman: surat tetap tercetak tanpa QR,
-      lihat catatan di `Code.gs`) — bukan error yang terlihat, jadi
-      langkah 5 (cek QR muncul) di `TESTING_CHECKLIST_AFTER_DEPLOY.md`
-      adalah cara nyata mengetahui apakah otorisasi ini beres atau belum.
+- [ ] Perintah selesai tanpa error. (Catatan lama tentang izin `UrlFetchApp`
+      untuk QR sudah tidak berlaku — fitur QR/verifikasi surat DIHAPUS
+      total, lihat `CLAUDE.md` bagian "Cetak Surat Izin Keluar". Backend
+      fitur cetak surat sekarang tidak pernah menghubungi jaringan luar
+      sama sekali, jadi tidak ada lagi prompt otorisasi khusus yang perlu
+      diantisipasi untuk fitur ini.)
 - [ ] Buka [Apps Script editor](https://script.google.com) untuk proyek
       ini, buka `Code.gs`, pastikan isinya sudah cocok dengan versi lokal
       (scroll ke `generateNomorSurat`, `renderIzinKeluarSuratHTML`, dst. —
