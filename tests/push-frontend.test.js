@@ -162,6 +162,29 @@ test('index.html: files array memuat notifikasi.js, BUILD_VERSION dinaikkan, man
   assert.ok(Number(versionMatch[1]) >= 55, 'BUILD_VERSION harus dinaikkan saat notifikasi.js ditambahkan ke files[]');
 });
 
+test('index.html punya meta Cache-Control no-cache -- index.html sendiri tidak ikut skema ?v=BUILD_VERSION', () => {
+  // index.html adalah satu-satunya file di rantai load yang TIDAK punya cache
+  // busting sendiri (?v= cuma menandai file .js yang di-fetch darinya). Kalau
+  // index.html tersimpan lama di cache (umum di Android lewat proxy operator
+  // seluler), app membeku di versi lama tanpa batas waktu -- termasuk bug yang
+  // sudah lama diperbaiki di JS terbaru. Header sungguhan ada di vercel.json;
+  // meta tag ini cadangan best-effort. Lihat CLAUDE.md.
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">/);
+});
+
+test('vercel.json memaksa index.html/"/" untuk selalu revalidate (no-cache)', () => {
+  const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  const sources = (vercelConfig.headers || []).map((h) => h.source);
+  assert.ok(sources.includes('/'), 'vercel.json harus punya header untuk source "/"');
+  assert.ok(sources.includes('/index.html'), 'vercel.json harus punya header untuk source "/index.html"');
+  vercelConfig.headers.forEach((entry) => {
+    const cacheControl = (entry.headers || []).find((h) => h.key === 'Cache-Control');
+    assert.ok(cacheControl, 'entry vercel.json untuk ' + entry.source + ' harus set Cache-Control');
+    assert.match(cacheControl.value, /no-cache/);
+  });
+});
+
 test('index.html TIDAK mendaftarkan service worker langsung -- registrasi ada di notifikasi.js, hanya untuk pengguna eligible', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /serviceWorker\.register/);
