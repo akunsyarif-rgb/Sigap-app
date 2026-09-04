@@ -1571,10 +1571,35 @@ function generateQRCodeImage(url) {
 // Satu-satunya tempat yang merangkai HTML surat. SEMUA nilai bebas-teks
 // (keperluan, alasan_khusus, dan nama sekalipun) WAJIB lewat escapeHtml()
 // (Utils.gs) sebelum disisipkan — lihat catatan panjang di fungsi itu.
-// Print-friendly (@media print, lebar disesuaikan ~80mm untuk printer
-// thermal — lihat catatan lama soal BETA pencetakan yang sekarang berakhir
-// di sini) dan tidak mengasumsikan perangkat cetak tertentu: HTML biasa yang
-// dibuka & di-print lewat dialog print browser, bukan protokol khusus.
+// Print-friendly (@media print, target kertas A4 standar — lihat catatan
+// lama soal BETA pencetakan yang sekarang berakhir di sini) dan tidak
+// mengasumsikan perangkat cetak tertentu: HTML biasa yang dibuka & di-print
+// lewat dialog print browser, bukan protokol khusus.
+//
+// Layout surat resmi (revisi setelah uji coba lapangan pertama, September
+// 2026) — perbaikan dari 3 masalah yang ditemukan guru piket saat mencoba
+// versi pertama (bentuk kartu aplikasi, bukan surat):
+// 1. Bentuknya diubah dari kartu/kotak-kotak ala UI aplikasi menjadi
+//    paragraf surat dinas formal (kop, kalimat pembuka "Yang bertanda
+//    tangan di bawah ini...", daftar field bertitik dua, kalimat penutup)
+//    — konvensi surat resmi sekolah Indonesia pada umumnya. Tidak ada
+//    contoh surat asli sekolah yang dijadikan acuan persis; ini mengikuti
+//    format surat dinas standar.
+// 2. Kalimat "Surat ini berlaku sampai jam pulang sekolah (16:00 WITA)"
+//    DIHAPUS — itu klaim yang TIDAK didukung aturan apa pun yang benar-benar
+//    ditegakkan sistem (SIGAP tidak punya logika batas waktu 16:00 di mana
+//    pun), jadi berisiko dibaca sebagai "siswa ini diizinkan di luar sampai
+//    sore" padahal bukan itu maksudnya. Lebih aman tidak mengklaim sesuatu
+//    yang tidak benar-benar berlaku.
+// 3. Label "Tujuan" (nilai 'Kembali'/'Pulang', dari izinTujuanLabel — SATU
+//    KATA karena fungsi itu memang untuk kolom tabel Export yang sempit,
+//    lihat catatan di sana) gampang salah baca di surat ini sebagai
+//    "tujuan/ke mana perginya siswa", padahal field itu sebenarnya
+//    menjawab "akan kembali ke sekolah atau tidak". Direlabel jadi "Rencana
+//    Kepulangan" dengan nilai frasa penuh ("Kembali ke sekolah" / "Pulang
+//    (tidak kembali ke sekolah)"), dipetakan LOKAL di sini — bukan
+//    memakai/mengubah izinTujuanLabel, supaya kolom Export yang sudah
+//    benar sempit tidak ikut melebar.
 function renderIzinKeluarSuratHTML(suratData) {
   var d = suratData || {};
   var verifUrl = '';
@@ -1588,58 +1613,68 @@ function renderIzinKeluarSuratHTML(suratData) {
   }
   var logoUrl = 'https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg';
   var jalurKhusus = d.jalur === IZIN_JALUR_KHUSUS;
+  var rencanaKepulangan = d.tujuan === 'Pulang' ? 'Pulang (tidak kembali ke sekolah)' : 'Kembali ke sekolah';
 
-  var persetujuanHtml = jalurKhusus
-    ? '<div class="row"><span class="label">Izin Khusus oleh</span><span class="value">' + escapeHtml(d.disetujui_oleh) + '</span></div>' +
-      (d.alasan_khusus ? '<div class="row"><span class="label">Alasan Pengecualian</span><span class="value">' + escapeHtml(d.alasan_khusus) + '</span></div>' : '')
-    : '<div class="row"><span class="label">Disetujui Oleh</span><span class="value">' + escapeHtml(d.disetujui_oleh) +
-      (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + '</span></div>';
+  var baris = function (label, nilaiHtmlSudahAman) {
+    return '<div class="field-row"><span class="label">' + escapeHtml(label) + '</span><span class="titik-dua">:</span><span class="value">' + nilaiHtmlSudahAman + '</span></div>';
+  };
+
+  var fieldRows =
+    baris('Nama', escapeHtml(d.nama_siswa)) +
+    baris('Kelas', escapeHtml(d.kelas)) +
+    baris('Keperluan', escapeHtml(d.keperluan)) +
+    baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan)) +
+    (jalurKhusus
+      ? baris('Izin Khusus oleh', escapeHtml(d.disetujui_oleh) + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : '')) +
+        (d.alasan_khusus ? baris('Alasan Pengecualian', escapeHtml(d.alasan_khusus)) : '')
+      : baris('Disetujui oleh', escapeHtml(d.disetujui_oleh) + (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : ''))) +
+    (d.diverifikasi_oleh ? baris('Diverifikasi oleh', escapeHtml(d.diverifikasi_oleh) + (d.waktu_verifikasi ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) : '')) : '') +
+    baris('Status saat ini', escapeHtml(d.status_izin_label));
 
   return '<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
     '<title>Surat Izin Keluar - ' + escapeHtml(d.nomor_surat) + '</title>' +
     '<style>' +
-    'body{font-family:Arial,Helvetica,sans-serif;color:#1B2A41;max-width:480px;margin:0 auto;padding:16px;font-size:13px;line-height:1.5;background:#fff;}' +
-    '.header{display:flex;align-items:center;gap:12px;border-bottom:3px solid #1B2A41;padding-bottom:10px;margin-bottom:14px;}' +
-    '.header img{width:52px;height:52px;object-fit:contain;flex-shrink:0;}' +
-    '.header .sekolah{font-size:11px;font-weight:bold;text-transform:uppercase;color:#2C6E9B;}' +
-    '.header .alamat{font-size:9px;color:#5C5548;}' +
-    'h1{font-size:16px;text-align:center;text-transform:uppercase;letter-spacing:1px;margin:14px 0;}' +
-    '.section{margin-bottom:12px;border:1px solid #DCD2C0;border-radius:8px;padding:10px 12px;}' +
-    '.section-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;color:#5C5548;margin-bottom:6px;}' +
-    '.row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12px;}' +
-    '.row .label{color:#5C5548;flex-shrink:0;}' +
-    '.row .value{font-weight:600;text-align:right;}' +
-    '.status-badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:bold;text-transform:uppercase;background:#1F5278;color:#fff;}' +
-    '.qr-section{text-align:center;padding:14px 0;}' +
-    '.qr-section p{font-size:10px;color:#5C5548;margin-top:6px;}' +
-    '.footer{text-align:center;font-size:9px;color:#948870;margin-top:16px;border-top:1px solid #DCD2C0;padding-top:8px;}' +
-    '@media print{body{max-width:80mm;font-size:11px;padding:6px;}h1{font-size:13px;}.section{padding:6px 8px;}}' +
+    'body{font-family:"Times New Roman",Georgia,serif;color:#1B2A41;max-width:700px;margin:0 auto;padding:32px 40px;font-size:14px;line-height:1.65;background:#fff;}' +
+    '.kop{text-align:center;border-bottom:3px double #1B2A41;padding-bottom:12px;margin-bottom:22px;}' +
+    '.kop img{width:60px;height:60px;object-fit:contain;margin-bottom:6px;}' +
+    '.kop .nama-sekolah{font-size:16px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;}' +
+    '.kop .sub{font-size:11px;color:#3A3529;font-family:Arial,Helvetica,sans-serif;}' +
+    'h1{font-size:14px;text-align:center;text-transform:uppercase;text-decoration:underline;letter-spacing:1px;margin:0 0 2px;}' +
+    '.nomor{text-align:center;font-size:13px;margin-bottom:22px;}' +
+    'p.pembuka,p.penutup{text-align:justify;margin:0 0 14px;}' +
+    '.field-list{margin:0 0 18px 20px;}' +
+    '.field-row{display:flex;margin-bottom:5px;font-size:13px;}' +
+    '.field-row .label{width:160px;flex-shrink:0;}' +
+    '.field-row .titik-dua{width:14px;flex-shrink:0;}' +
+    '.field-row .value{font-weight:bold;}' +
+    '.tempat-tanggal{text-align:right;margin-bottom:24px;}' +
+    '.ttd-block{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-top:8px;}' +
+    '.qr-block{text-align:center;flex-shrink:0;}' +
+    '.qr-block p{font-size:9px;color:#5C5548;margin-top:4px;font-family:Arial,Helvetica,sans-serif;max-width:140px;}' +
+    '.elektronik{font-size:10px;color:#5C5548;line-height:1.6;font-family:Arial,Helvetica,sans-serif;text-align:right;}' +
+    '@media print{body{padding:15mm 20mm;max-width:none;}}' +
     '</style></head><body>' +
-    '<div class="header"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
-    '<div><div class="sekolah">SMAN 2 Tarakan</div><div class="alamat">Sistem Informasi &amp; Pengelolaan Aktivitas Pelajar (SIGAP)</div></div></div>' +
+    '<div class="kop"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
+    '<div class="nama-sekolah">SMAN 2 Tarakan</div>' +
+    '<div class="sub">Sistem Informasi Gerbang &amp; Absensi Pelanggaran (SIGAP)</div></div>' +
     '<h1>Surat Izin Keluar</h1>' +
-    '<div class="section"><div class="section-title">Nomor Surat</div>' +
-    '<div class="row"><span class="label">Nomor</span><span class="value">' + escapeHtml(d.nomor_surat) + '</span></div>' +
-    '<div class="row"><span class="label">Dicetak</span><span class="value">' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</span></div></div>' +
-    '<div class="section"><div class="section-title">Data Siswa</div>' +
-    '<div class="row"><span class="label">Nama</span><span class="value">' + escapeHtml(d.nama_siswa) + '</span></div>' +
-    '<div class="row"><span class="label">Kelas</span><span class="value">' + escapeHtml(d.kelas) + '</span></div></div>' +
-    '<div class="section"><div class="section-title">Rincian Izin</div>' +
-    '<div class="row"><span class="label">Tujuan</span><span class="value">' + escapeHtml(d.tujuan) + '</span></div>' +
-    '<div class="row"><span class="label">Keperluan</span><span class="value">' + escapeHtml(d.keperluan) + '</span></div></div>' +
-    '<div class="section"><div class="section-title">Persetujuan</div>' + persetujuanHtml +
-    (d.waktu_persetujuan ? '<div class="row"><span class="label">Jam</span><span class="value">' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) + '</span></div>' : '') +
+    '<div class="nomor">Nomor: ' + escapeHtml(d.nomor_surat) + '</div>' +
+    '<p class="pembuka">Yang bertanda tangan di bawah ini menerangkan bahwa siswa berikut telah diberikan izin untuk meninggalkan lingkungan sekolah pada jam pelajaran berlangsung:</p>' +
+    '<div class="field-list">' + fieldRows + '</div>' +
+    '<p class="penutup">Demikian surat izin ini dibuat untuk dapat dipergunakan sebagaimana mestinya.</p>' +
+    // "Tarakan, <tanggal>" TANPA nama hari — konvensi baris tempat/tanggal
+    // penutup surat resmi tidak menyertakan nama hari (beda dari baris
+    // "Dicetak:" di bawah, yang memang sengaja menyertakannya). d.tgl_cetak
+    // (formatTanggalPanjangID, Utils.gs) selalu berformat "Hari, D Bulan
+    // YYYY" — bagian sebelum koma pertama dibuang di sini saja, bukan
+    // dengan mengubah formatTanggalPanjangID itu sendiri (dipakai juga di
+    // baris "Dicetak:" yang MEMANG perlu nama harinya).
+    '<div class="tempat-tanggal">Tarakan, ' + escapeHtml(String(d.tgl_cetak || '').replace(/^[^,]+,\s*/, '')) + '</div>' +
+    '<div class="ttd-block">' +
+    (qrImg ? '<div class="qr-block">' + qrImg + '<p>Pindai untuk verifikasi online</p></div>' : '<div></div>') +
+    '<div class="elektronik">Dokumen ini dihasilkan secara elektronik oleh sistem SIGAP<br>dan sah tanpa tanda tangan basah.<br>Nomor referensi: ' + escapeHtml(d.nomor_surat) + '<br>Dicetak: ' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</div>' +
     '</div>' +
-    (d.diverifikasi_oleh ? '<div class="section"><div class="section-title">Verifikasi Guru Piket</div>' +
-      '<div class="row"><span class="label">Diverifikasi Oleh</span><span class="value">' + escapeHtml(d.diverifikasi_oleh) + '</span></div>' +
-      (d.waktu_verifikasi ? '<div class="row"><span class="label">Jam</span><span class="value">' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) + '</span></div>' : '') +
-      '</div>' : '') +
-    '<div class="section"><div class="section-title">Status</div>' +
-    '<div style="text-align:center;padding:4px 0;"><span class="status-badge">' + escapeHtml(d.status_izin_label) + '</span></div>' +
-    '<p style="font-size:9px;color:#948870;text-align:center;margin-top:6px;">Surat ini berlaku sampai jam pulang sekolah (16:00 WITA) pada tanggal dicetak.</p></div>' +
-    (qrImg ? '<div class="qr-section">' + qrImg + '<p>Pindai untuk verifikasi online</p></div>' : '') +
-    '<div class="footer">Referensi: ' + escapeHtml(d.nomor_surat) + ' &middot; Dokumen ini dihasilkan otomatis oleh SIGAP</div>' +
     '</body></html>';
 }
 
