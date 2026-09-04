@@ -124,7 +124,11 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 57;
+           var BUILD_VERSION = 58;
+           // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
+           // bisa membandingkan versinya sendiri terhadap index.html terbaru di
+           // server — lihat "Deteksi ada versi baru" di helpers.js.
+           window.SIGAP_BUILD_VERSION = BUILD_VERSION;
            var files = [
                'config.js',
                'helpers.js',

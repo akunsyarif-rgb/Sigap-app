@@ -84,6 +84,12 @@ test.before(() => {
     Blob: function () {},
     setTimeout,
     clearTimeout,
+    // Stub, bukan setInterval/clearInterval asli: App() sekarang mendaftarkan
+    // interval 5 menit (pengecekan update, lihat app.js) yang tidak pernah
+    // perlu benar-benar berbunyi di test ini -- pakai timer Node asli di sini
+    // akan menggantung proses test menunggu timer itu.
+    setInterval: () => 0,
+    clearInterval: () => {},
     window: {},
   };
   sandbox.global = sandbox;

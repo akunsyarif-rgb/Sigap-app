@@ -177,6 +177,20 @@
            return capped > current ? capped : current;
        }
 
+       // ===== Deteksi ada versi baru saat app SEDANG terbuka =====
+       // index.html sendiri sekarang selalu no-cache (lihat vercel.json), tapi
+       // itu cuma berlaku saat ada NAVIGASI baru (refresh / buka lagi dari
+       // ikon). Kalau seorang guru piket membiarkan tab/PWA-nya terbuka
+       // berjam-jam tanpa pernah menutupnya, tidak ada navigasi baru yang
+       // memicu pengecekan cache itu — app diam-diam tertinggal sampai dia
+       // sendiri yang menutupnya. App() di app.js polling index.html secara
+       // berkala dan memakai fungsi murni ini untuk membaca ulang angka
+       // BUILD_VERSION dari HTML yang baru diambil, tanpa perlu DOM.
+       function extractBuildVersionFromHtml(html) {
+           const match = String(html || '').match(/var BUILD_VERSION = (\d+);/);
+           return match ? Number(match[1]) : null;
+       }
+
        // ===== Layar Login: pencarian nama guru =====
        // Dipisah dari LoginScreen (murni, tanpa React) supaya logikanya bisa
        // diuji langsung di tests/login.test.js.

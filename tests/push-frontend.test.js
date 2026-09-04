@@ -173,6 +173,37 @@ test('index.html punya meta Cache-Control no-cache -- index.html sendiri tidak i
   assert.match(html, /<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">/);
 });
 
+test('extractBuildVersionFromHtml (helpers.js) membaca BUILD_VERSION dari HTML mentah -- dasar deteksi update saat app sedang terbuka', () => {
+  // helpers.js bukan JS murni 100% -- ada satu komponen ikon JSX di dalamnya
+  // (StarIcon dkk), jadi harus lewat Babel dulu sebelum vm.runInContext, sama
+  // seperti notifikasi.js di atas.
+  const babel = require('@babel/core');
+  const helpersSrc = babel.transformSync(fs.readFileSync(path.join(ROOT, 'helpers.js'), 'utf8'), {
+    presets: [['@babel/preset-react', { runtime: 'classic' }]],
+  }).code;
+  const sandbox = { console };
+  vm.createContext(sandbox);
+  vm.runInContext(helpersSrc, sandbox);
+  const fn = vm.runInContext('extractBuildVersionFromHtml', sandbox);
+  assert.equal(fn('... var BUILD_VERSION = 58; ...'), 58);
+  assert.equal(fn('tidak ada angka versi di sini'), null);
+  assert.equal(fn(''), null);
+  assert.equal(fn(null), null);
+  assert.equal(fn(undefined), null);
+});
+
+test('app.js: polling deteksi update -- dilewati saat tab tersembunyi, pakai cache no-store, dan ada tombol refresh', () => {
+  // App() sendiri tidak dirender penuh di test manapun (butuh seluruh state
+  // sesi/data) -- lihat render-smoke.test.js. Pemeriksaan statis ini yang
+  // mengunci wiring-nya supaya tidak diam-diam lepas/berubah semantik.
+  const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  assert.match(appJs, /document\.visibilityState === 'hidden'/, 'harus dilewati saat tab background, jangan boros request');
+  assert.match(appJs, /cache:\s*'no-store'/, 'fetch index.html untuk cek versi harus no-store');
+  assert.match(appJs, /extractBuildVersionFromHtml\(html\)/);
+  assert.match(appJs, /latest > current/, 'hanya tandai update kalau versi server LEBIH BARU, bukan sekadar beda');
+  assert.match(appJs, /window\.location\.reload\(\)/);
+});
+
 test('vercel.json memaksa index.html/"/" untuk selalu revalidate (no-cache)', () => {
   const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
   const sources = (vercelConfig.headers || []).map((h) => h.source);

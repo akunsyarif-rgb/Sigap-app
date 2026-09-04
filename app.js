@@ -532,6 +532,35 @@
            // di boot, sebelum tentu tahu penggunanya sudah login atau belum —
            // disimpan di ref, baru dieksekusi begitu `user` tersedia (efek di
            // bawah), supaya tidak hilang kalau boot masih di layar login.
+           // ===== Deteksi ada versi baru saat app SEDANG terbuka =====
+           // index.html sendiri sekarang selalu no-cache (vercel.json), tapi itu
+           // cuma berlaku saat ada navigasi baru — guru yang membiarkan tab/PWA
+           // terbuka berjam-jam tanpa menutupnya tidak pernah memicu pengecekan
+           // itu. Polling ringan ini yang menutup celahnya: ambil index.html
+           // (cache: 'no-store' + query pembeda, supaya proxy kompresi operator
+           // yang mengabaikan header sekalipun tetap dipaksa network baru — lihat
+           // catatan carrier-proxy di CLAUDE.md), baca ulang BUILD_VERSION-nya,
+           // bandingkan ke punya app yang sedang jalan. Dilewati saat tab tidak
+           // terlihat supaya tidak boros request percuma di background.
+           const [updateAvailable, setUpdateAvailable] = useState(false);
+           useEffect(() => {
+               const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 menit
+               const checkForAppUpdate = () => {
+                   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+                   fetch('index.html?_check=' + Date.now(), { cache: 'no-store' })
+                       .then((res) => (res.ok ? res.text() : null))
+                       .then((html) => {
+                           if (!html) return;
+                           const latest = extractBuildVersionFromHtml(html);
+                           const current = window.SIGAP_BUILD_VERSION;
+                           if (latest && current && latest > current) setUpdateAvailable(true);
+                       })
+                       .catch(() => {}); // Koneksi gagal — coba lagi di interval berikutnya, jangan ganggu pemakaian.
+               };
+               const id = setInterval(checkForAppUpdate, CHECK_INTERVAL_MS);
+               return () => clearInterval(id);
+           }, []);
+
            useEffect(() => { pendingPushGoto.current = consumePushGotoParam(); }, []);
            useEffect(() => {
                if (user && pendingPushGoto.current) {
@@ -1097,6 +1126,23 @@
 
            return (
                <div style={{ zoom: fontScale }}>
+                   {updateAvailable && (
+                       // top-16 -- SAMA seperti banner fromCache di bawah (bukan
+                       // top-0), supaya tidak menumpuk di atas Header yang juga
+                       // fixed top-0. z-50 (lebih tinggi dari fromCache z-40) jadi
+                       // menang kalau kebetulan keduanya aktif bersamaan.
+                       <div className="fixed top-16 inset-x-0 z-50 px-4 pointer-events-none">
+                           <div className="max-w-2xl mx-auto bg-navy text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center justify-between gap-3 pointer-events-auto animate-pop">
+                               <span>🔄 Ada pembaruan SIGAP. Refresh untuk memakai versi terbaru.</span>
+                               <button
+                                   onClick={() => window.location.reload()}
+                                   className="bg-white text-navy font-bold px-3 py-1 rounded-lg shrink-0"
+                               >
+                                   Refresh
+                               </button>
+                           </div>
+                       </div>
+                   )}
                    {!user ? (
                        <LoginScreen
                            onLogin={handleLogin} loading={loadingLogin} error={loginError}
