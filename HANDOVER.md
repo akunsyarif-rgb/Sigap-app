@@ -23,8 +23,18 @@ dan langkah konkret memindahkannya.**
 | Peran | Nama | Kontak | Sejak |
 |---|---|---|---|
 | Pengelola teknis saat ini | `[ISI: nama]` | `[ISI: email/telepon]` | `[ISI: tanggal]` |
-| Admin cadangan | `[ISI: nama — WAJIB diisi, lihat bagian 6]` | `[ISI]` | — |
+| Admin cadangan | *Belum ditunjuk — keputusan sadar, lihat catatan di bawah* | — | — |
 | Penanggung jawab di sekolah (mis. Wakasek Kurikulum/Kesiswaan) | `[ISI]` | `[ISI]` | — |
+
+> **Kenapa "Admin cadangan" kosong**: bukan belum sempat diisi — per September
+> 2026, pengelola teknis saat ini memutuskan untuk sementara tetap menjadi
+> satu-satunya penanggung jawab, karena belum ada kandidat yang pas untuk
+> peran ini (semua kandidat yang dipertimbangkan punya kemungkinan pindah
+> dari sekolah). Menunjuk seseorang hanya demi mengisi kolom ini berisiko
+> mendaftarkan orang yang keliru — dokumen jadi salah arah kalau orang itu
+> sendiri pindah duluan. Bagian 4 (langkah transfer kepemilikan) tetap
+> berlaku dan berguna kapan pun dibutuhkan, terlepas kolom ini terisi atau
+> tidak. Baris ini akan diisi begitu ada kandidat yang benar-benar cocok.
 
 ---
 
