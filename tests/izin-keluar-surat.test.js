@@ -492,6 +492,16 @@ test('surat tetap valid (tanpa QR) kalau fetch QR gagal -- pencetakan tidak bole
   assert.ok(!cetak.data.htmlContent.includes('data:image/png;base64,'));
 });
 
+test('FIX lapangan: QR gagal tetap menulis alasannya ke Audit_Log -- tidak lagi gagal senyap tanpa jejak', () => {
+  const s = loadServer({ qrFetchFails: true });
+  const id = setujuiDanVerifikasi(s, 'pulang');
+  s.post('piket', { action: 'generateIzinKeluarSurat', izinId: id });
+  const barisGagal = s.auditRows().find((r) => r[3] === 'QR Surat Gagal');
+  assert.ok(barisGagal, 'harus ada baris Audit_Log yang menjelaskan kenapa QR gagal');
+  assert.match(barisGagal[4], /HTTP 500/);
+  assert.equal(barisGagal[1], 'System', 'aktornya System, bukan guru yang sedang mencetak surat');
+});
+
 test('verifyIzinSurat: valid untuk nomor yang cocok, TIDAK butuh sesi (dipindai siapa saja)', () => {
   const s = loadServer();
   const id = setujuiDanVerifikasi(s, 'pulang');

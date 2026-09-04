@@ -1556,14 +1556,29 @@ function generateVerificationURL(izinId, nomorSurat) {
 // Gagal fetch TIDAK BOLEH menggagalkan pembuatan surat (prinsip yang sama
 // dengan notifyRelevantUsers/logAudit di berkas lain) — surat tetap sah
 // tanpa QR; nomor surat & data di atasnya tetap bukti utamanya.
+// Gagal fetch dulu SELALU senyap total (return '' saja) — tidak ada jejak
+// sama sekali untuk tahu KENAPA. Itu bikin QR yang tidak muncul di
+// lapangan tidak bisa didiagnosis dari jauh (lihat percakapan lapangan,
+// September 2026) selain menyuruh coba trial-and-error di Apps Script
+// editor. Sekarang alasan gagalnya ditulis ke Audit_Log (aktor 'System',
+// pola yang sama dengan pemicu Login Rate Limit di Code.gs) — surat TETAP
+// selalu berhasil dibuat tanpa QR persis seperti sebelumnya (prinsip
+// "gagal fetch tidak boleh menggagalkan surat" TIDAK berubah), cuma
+// sekarang ada baris di Audit_Log yang bisa dicek admin: 'Response code:
+// 401'/'403' berarti izin UrlFetchApp belum disetujui penuh, response
+// lain berarti soal di sisi layanan QR luar itu sendiri.
 function generateQRCodeImage(url) {
   try {
     var qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=' + encodeURIComponent(url);
     var response = UrlFetchApp.fetch(qrApiUrl, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) return '';
+    if (response.getResponseCode() !== 200) {
+      logAudit({ name: 'System', id: '-' }, 'QR Surat Gagal', 'HTTP ' + response.getResponseCode() + ' dari layanan QR (api.qrserver.com)');
+      return '';
+    }
     var base64 = Utilities.base64Encode(response.getBlob().getBytes());
     return '<img src="data:image/png;base64,' + base64 + '" alt="QR Verifikasi Surat" width="140" height="140" style="display:block;margin:0 auto;" />';
   } catch (qrError) {
+    logAudit({ name: 'System', id: '-' }, 'QR Surat Gagal', String((qrError && qrError.message) || qrError));
     return '';
   }
 }
@@ -1618,18 +1633,31 @@ function renderIzinKeluarSuratHTML(suratData) {
   var baris = function (label, nilaiHtmlSudahAman) {
     return '<div class="field-row"><span class="label">' + escapeHtml(label) + '</span><span class="titik-dua">:</span><span class="value">' + nilaiHtmlSudahAman + '</span></div>';
   };
+  // Label DI ATAS isi (bukan sejajar dengan titik dua seperti field-row) —
+  // field-row menyempitkan nilai jadi (lebar kotak - 160px label - 14px
+  // titik dua), dan nama guru + konteks + jam ("Syarif Hidayatullah, S.Pd.I
+  // — Wali Kelas, pukul 08:18 WITA") jauh lebih panjang dari itu, jadi
+  // membungkus 2-3 baris dan memakan banyak tempat kertas (masukan
+  // lapangan, September 2026). Dikelompokkan jadi kotak sendiri (mirip
+  // tampilan sebelum surat dijadikan format dinas) supaya isinya punya
+  // lebar PENUH kotak untuk membungkus, bukan terjepit di sebelah label.
+  var kotakBaris = function (label, nilaiHtmlSudahAman) {
+    return '<div class="baris"><div class="judul">' + escapeHtml(label) + '</div><div class="isi">' + nilaiHtmlSudahAman + '</div></div>';
+  };
 
   var fieldRows =
     baris('Nama', escapeHtml(d.nama_siswa)) +
     baris('Kelas', escapeHtml(d.kelas)) +
     baris('Keperluan', escapeHtml(d.keperluan)) +
-    baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan)) +
+    baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan));
+
+  var infoBoxRows =
     (jalurKhusus
-      ? baris('Izin Khusus oleh', escapeHtml(d.disetujui_oleh) + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : '')) +
-        (d.alasan_khusus ? baris('Alasan Pengecualian', escapeHtml(d.alasan_khusus)) : '')
-      : baris('Disetujui oleh', escapeHtml(d.disetujui_oleh) + (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : ''))) +
-    (d.diverifikasi_oleh ? baris('Diverifikasi oleh', escapeHtml(d.diverifikasi_oleh) + (d.waktu_verifikasi ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) : '')) : '') +
-    baris('Status saat ini', escapeHtml(d.status_izin_label));
+      ? kotakBaris('Izin Khusus oleh', escapeHtml(d.disetujui_oleh) + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : '')) +
+        (d.alasan_khusus ? kotakBaris('Alasan Pengecualian', escapeHtml(d.alasan_khusus)) : '')
+      : kotakBaris('Disetujui oleh', escapeHtml(d.disetujui_oleh) + (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : ''))) +
+    (d.diverifikasi_oleh ? kotakBaris('Diverifikasi oleh', escapeHtml(d.diverifikasi_oleh) + (d.waktu_verifikasi ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) : '')) : '') +
+    kotakBaris('Status Saat Ini', escapeHtml(d.status_izin_label));
 
   return '<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
@@ -1648,6 +1676,11 @@ function renderIzinKeluarSuratHTML(suratData) {
     '.field-row .label{width:160px;flex-shrink:0;}' +
     '.field-row .titik-dua{width:14px;flex-shrink:0;}' +
     '.field-row .value{font-weight:bold;}' +
+    '.info-box{border:1px solid #DCD2C0;border-radius:8px;padding:12px 16px;margin:0 0 18px;}' +
+    '.info-box .baris{margin-bottom:10px;}' +
+    '.info-box .baris:last-child{margin-bottom:0;}' +
+    '.info-box .judul{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#5C5548;font-family:Arial,Helvetica,sans-serif;margin-bottom:2px;}' +
+    '.info-box .isi{font-weight:bold;font-size:13px;}' +
     '.tempat-tanggal{text-align:right;margin-bottom:24px;}' +
     '.ttd-block{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-top:8px;}' +
     '.qr-block{text-align:center;flex-shrink:0;}' +
@@ -1662,6 +1695,7 @@ function renderIzinKeluarSuratHTML(suratData) {
     '<div class="nomor">Nomor: ' + escapeHtml(d.nomor_surat) + '</div>' +
     '<p class="pembuka">Yang bertanda tangan di bawah ini menerangkan bahwa siswa berikut telah diberikan izin untuk meninggalkan lingkungan sekolah pada jam pelajaran berlangsung:</p>' +
     '<div class="field-list">' + fieldRows + '</div>' +
+    '<div class="info-box">' + infoBoxRows + '</div>' +
     '<p class="penutup">Demikian surat izin ini dibuat untuk dapat dipergunakan sebagaimana mestinya.</p>' +
     // "Tarakan, <tanggal>" TANPA nama hari — konvensi baris tempat/tanggal
     // penutup surat resmi tidak menyertakan nama hari (beda dari baris
