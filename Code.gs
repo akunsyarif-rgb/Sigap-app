@@ -15,8 +15,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-02-push-notifications';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications'];
+var BACKEND_VERSION = '2026-09-04-surat-tanpa-qr';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin'];
 
 // ===== doPost =====
 
@@ -825,11 +825,17 @@ function doPost(e) {
       // NORMAL. Jalur khusus sudah punya penandanya sendiri (jalur=khusus) —
       // menambahkan "konteks=Guru Mapel" di sana cuma membingungkan, karena
       // Izin Khusus justru berarti wali kelas/guru mapel TIDAK tersedia.
+      // 'id=<ID_Izin>' ditambahkan di Detail (audit September 2026) supaya
+      // getKonteksApprovalFromAuditLog (Utils.gs, dipakai fitur Cetak Surat
+      // Izin) bisa mencocokkan baris ini PERSIS lewat ID, bukan hanya
+      // menerka lewat nama+NISN+kedekatan waktu. Tidak mengubah format lama
+      // apa pun yang sudah dibaca di tempat lain — cuma menambah satu bidang
+      // baru di ekor Detail.
       logAudit(sessionUser,
         izinJalur === IZIN_JALUR_KHUSUS ? 'Izin Keluar Khusus' : 'Persetujuan Izin Keluar',
-        buildIzinAuditDetail(izinRowToObject(izinRow), izinJalur === IZIN_JALUR_KHUSUS
+        buildIzinAuditDetail(izinRowToObject(izinRow), (izinJalur === IZIN_JALUR_KHUSUS
           ? 'alasan pengecualian=' + izinAlasanKhusus
-          : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)));
+          : 'keperluan=' + izinKeperluan + ' | konteks=' + izinKonteksLabel(izinKonteks)) + ' | id=' + izinId));
       // Jalur normal berhenti di 'Menunggu Verifikasi' -> Guru Piket
       // BENAR-BENAR punya tindakan menunggu, jadi ikut dinotifikasi. Jalur
       // khusus sudah tercatat keluar sekaligus (piket yang membuatnya sendiri
@@ -949,6 +955,65 @@ function doPost(e) {
       logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
       notifyRelevantUsers({ jenis: 'izin_pulang', nisn: plgFound.data.nisn, kelas: plgFound.data.class, refId: plgFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
+    }
+
+    // ---- Cetak Surat Izin Keluar (audit September 2026) — MURNI OUTPUT
+    // dari transaksi yang sudah diverifikasi, tidak mengubah status/transisi
+    // apa pun di atas. Boleh dipanggil berkali-kali (cetak/unduh ulang kapan
+    // saja, tidak ada batas waktu): Nomor_Surat sekali ditetapkan lalu
+    // dipakai ulang terus (tidak pernah berubah untuk transaksi yang sama),
+    // Waktu_Print/Status_Print diperbarui SETIAP kali dipanggil (mencerminkan
+    // cetak/unduh TERAKHIR, bukan cuma yang pertama). ----
+    if (action === 'generateIzinKeluarSurat') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var suratIzinId = String(data.izinId || '').trim();
+      if (!suratIzinId) {
+        return jsonOut({ status: 'error', message: 'ID izin wajib diisi.' });
+      }
+      try {
+        // sessionUser diteruskan ke generateIzinKeluarSuratData supaya ia
+        // bisa menegakkan cakupan baca per-transaksi (scopeIzinForUser) —
+        // lihat catatan di fungsi itu (Code.gs) untuk bug yang diperbaiki.
+        var suratData = generateIzinKeluarSuratData(ss, suratIzinId, sessionUser);
+
+        // "Reservasi" nomor surat dengan LANGSUNG MENULISKANNYA ke sheet —
+        // ini yang menjaga dua permintaan cetak PERTAMA yang hampir
+        // bersamaan di hari yang sama tidak pernah mendapat nomor kembar
+        // (lihat generateNomorSurat, Utils.gs). Seluruh aksi ini (termasuk
+        // renderIzinKeluarSuratHTML di bawah) murni baca/tulis Sheet + susun
+        // teks — sejak QR (satu-satunya bagian yang pernah memanggil
+        // jaringan luar) dihapus, tidak ada lagi alasan untuk melepas
+        // sigapLock lebih awal seperti sebelumnya; aksi ini sekarang
+        // konsisten dengan aksi izin lain, tetap di dalam lock sampai akhir.
+        var suratSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+        var suratFound = findIzinRowById(suratSheet, suratIzinId);
+        if (!suratFound) {
+          return jsonOut({ status: 'error', message: 'Data izin tidak ditemukan (mungkin sudah dihapus).' });
+        }
+        var suratNow = new Date();
+        var suratValues = suratFound.values.slice();
+        suratValues[IZIN_COL_NOMOR_SURAT - 1] = suratData.nomor_surat;
+        suratValues[IZIN_COL_WAKTU_PRINT - 1] = suratNow;
+        suratValues[IZIN_COL_STATUS_PRINT - 1] = IZIN_PRINT_SUDAH;
+        suratSheet.getRange(suratFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([suratValues]);
+        clearIzinCache();
+
+        var suratHtml = renderIzinKeluarSuratHTML(suratData);
+
+        logAudit(sessionUser, 'generateIzinKeluarSurat',
+          buildIzinAuditDetail(suratFound.data, 'nomor=' + suratData.nomor_surat + ' | status_saat_cetak=' + suratData.status_izin));
+
+        return jsonOut({
+          status: 'success',
+          data: { htmlContent: suratHtml, suratData: suratData, nomorSurat: suratData.nomor_surat },
+        });
+      } catch (suratError) {
+        logAudit(sessionUser, 'generateIzinKeluarSurat Gagal',
+          'izinId=' + suratIzinId + ' | error=' + String((suratError && suratError.message) || suratError));
+        return jsonOut({ status: 'error', message: String((suratError && suratError.message) || suratError) });
+      }
     }
 
     // ---- 'selesaikanIzinKeluar' (penutupan administratif terpisah dari
@@ -1341,6 +1406,226 @@ function doPost(e) {
   }
 }
 
+// ===== CETAK SURAT IZIN KELUAR: orkestrasi & template (audit September 2026) =====
+// Helper level-rendah (nomor surat, escapeHtml, konteks historis) ada di
+// Utils.gs bersama blok IZIN lain — di sini murni MERANGKAI data & HTML.
+// Prinsip yang sama dengan seluruh fitur Izin Keluar: ini OUTPUT dari
+// transaksi yang sudah tersimpan, tidak pernah mengubah status/transisi.
+
+// Kumpulkan (tanpa MENULIS apa pun) semua data untuk satu surat. Nomor
+// surat yang dikembalikan di sini BELUM tentu sudah tersimpan di sheet —
+// action 'generateIzinKeluarSurat' di atas yang menuliskannya, SETELAH
+// render HTML-nya berhasil, supaya render yang gagal tidak "memakai" nomor.
+function generateIzinKeluarSuratData(ss, izinId, sessionUser) {
+  var sheet = ss.getSheetByName(IZIN_SHEET_NAME);
+  var found = sheet ? findIzinRowById(sheet, izinId) : null;
+  if (!found) throw new Error('Data izin tidak ditemukan.');
+  var izin = found.data;
+
+  // Bug yang diperbaiki (code review sebelum deploy, September 2026): aksi
+  // ini dulu hanya menolak OSIS (dicek di pemanggilnya, action
+  // 'generateIzinKeluarSurat') dan TIDAK mengecek ulang cakupan baca
+  // per-transaksi — beda dari getIzinKeluar (daftar) yang menyaring lewat
+  // scopeIzinForUser. Akibatnya siapa pun yang login (non-OSIS) dan tahu
+  // satu ID transaksi (mis. dari URL) bisa mencetak surat transaksi siapa
+  // saja, walau di luar kelas/harinya sendiri. Diperbaiki dengan memakai
+  // scopeIzinForUser yang SAMA (satu sumber kebenaran, bukan aturan baru
+  // yang bisa berselisih) — dibungkus jadi daftar berisi SATU transaksi ini
+  // saja, lalu dicek apakah masih lolos saringannya. Aturannya PERSIS sama
+  // dengan yang menentukan kartu ini tampil atau tidak di layar Gerbang:
+  // transaksi yang masih berjalan tetap terlihat seluruh sekolah, yang
+  // sudah selesai ikut aturan hari-ini-sekolah-luas / kelas-wali-kapan-saja.
+  var izinTerlihat = scopeIzinForUser([izin], sessionUser, new Date());
+  if (!izinTerlihat.length) {
+    throw new Error('Tidak punya akses untuk mencetak surat izin ini.');
+  }
+
+  // Cetak kelompok BELUM didukung — lihat catatan di IZIN_HEADERS (Utils.gs).
+  // Bukan lupa, sengaja: nomor per-aktivitas vs per-siswa, dan tanda tangan
+  // kegiatan adalah keputusan produk sendiri yang belum dibahas.
+  if (izin.kelompok_id) {
+    throw new Error('Surat untuk peserta kegiatan kelompok belum didukung.');
+  }
+  var statusBolehCetak = [IZIN_STATUS_DI_LUAR, IZIN_STATUS_PULANG, IZIN_STATUS_SELESAI, IZIN_STATUS_KEMBALI];
+  if (statusBolehCetak.indexOf(izin.status) === -1) {
+    throw new Error('Surat hanya bisa dicetak setelah izin diverifikasi Guru Piket (status saat ini: ' + izin.status + ').');
+  }
+
+  var tanggalKode = izinTanggalUntukNomor(izin.waktu_verifikasi);
+  // Nomor SUDAH ada (cetak ulang) -> dipakai lagi apa adanya, tidak pernah
+  // minta nomor baru. Ini yang membuat aksi ini idempotent.
+  var nomorSurat = izin.nomor_surat || generateNomorSurat(sheet, tanggalKode);
+
+  // Konteks Wali Kelas/Guru Mapel HANYA untuk jalur normal — jalur khusus
+  // memang sengaja tidak pernah diberi label itu di mana pun (lihat kartu
+  // transaksi, gerbang.js) karena itu keputusan piket, bukan guru/wali kelas.
+  var konteksLabel = '';
+  if (izin.jalur !== IZIN_JALUR_KHUSUS) {
+    konteksLabel = getKonteksApprovalFromAuditLog(ss, izin.id, izin.nisn, izin.name, izin.waktu_persetujuan) ||
+      izinKonteksLabelTerkini(ss, izin);
+  }
+
+  var cetakNow = new Date();
+  return {
+    izinId: izin.id,
+    nomor_surat: nomorSurat,
+    tgl_cetak: formatTanggalPanjangID(cetakNow),
+    jam_cetak: formatJamWITA(cetakNow),
+    // NISN SENGAJA tidak ikut ke sini — konsisten dengan seluruh dokumen
+    // lain yang dihasilkan SIGAP (lihat EXPORT_JENIS, Utils.gs: "identitas
+    // siswa di dalam berkas cukup Nama + Kelas"), bukan pengecualian untuk
+    // surat izin.
+    nama_siswa: izin.name,
+    kelas: izin.class,
+    tujuan: izinTujuanLabel(izin.tujuan),
+    keperluan: izin.keperluan,
+    jalur: izin.jalur,
+    alasan_khusus: izin.alasan_khusus,
+    waktu_persetujuan: izin.waktu_persetujuan,
+    waktu_verifikasi: izin.waktu_verifikasi,
+    waktu_keluar: izin.waktu_keluar,
+    waktu_kembali: izin.waktu_kembali,
+    disetujui_oleh: izin.disetujui_oleh,
+    konteks_persetujuan: konteksLabel,
+    diverifikasi_oleh: izin.diverifikasi_oleh,
+    status_izin: izin.status,
+    status_izin_label: izinStatusSuratLabel(izin.status),
+  };
+}
+
+// Satu-satunya tempat yang merangkai HTML surat. SEMUA nilai bebas-teks
+// (keperluan, alasan_khusus, dan nama sekalipun) WAJIB lewat escapeHtml()
+// (Utils.gs) sebelum disisipkan — lihat catatan panjang di fungsi itu.
+// Print-friendly (@media print, target kertas A4 standar — lihat catatan
+// lama soal BETA pencetakan yang sekarang berakhir di sini) dan tidak
+// mengasumsikan perangkat cetak tertentu: HTML biasa yang dibuka & di-print
+// lewat dialog print browser, bukan protokol khusus.
+//
+// Layout surat resmi (revisi setelah uji coba lapangan pertama, September
+// 2026) — perbaikan dari 3 masalah yang ditemukan guru piket saat mencoba
+// versi pertama (bentuk kartu aplikasi, bukan surat):
+// 1. Bentuknya diubah dari kartu/kotak-kotak ala UI aplikasi menjadi
+//    paragraf surat dinas formal (kop, kalimat pembuka "Yang bertanda
+//    tangan di bawah ini...", daftar field bertitik dua, kalimat penutup)
+//    — konvensi surat resmi sekolah Indonesia pada umumnya. Tidak ada
+//    contoh surat asli sekolah yang dijadikan acuan persis; ini mengikuti
+//    format surat dinas standar.
+// 2. Kalimat "Surat ini berlaku sampai jam pulang sekolah (16:00 WITA)"
+//    DIHAPUS — itu klaim yang TIDAK didukung aturan apa pun yang benar-benar
+//    ditegakkan sistem (SIGAP tidak punya logika batas waktu 16:00 di mana
+//    pun), jadi berisiko dibaca sebagai "siswa ini diizinkan di luar sampai
+//    sore" padahal bukan itu maksudnya. Lebih aman tidak mengklaim sesuatu
+//    yang tidak benar-benar berlaku.
+// 3. Label "Tujuan" (nilai 'Kembali'/'Pulang', dari izinTujuanLabel — SATU
+//    KATA karena fungsi itu memang untuk kolom tabel Export yang sempit,
+//    lihat catatan di sana) gampang salah baca di surat ini sebagai
+//    "tujuan/ke mana perginya siswa", padahal field itu sebenarnya
+//    menjawab "akan kembali ke sekolah atau tidak". Direlabel jadi "Rencana
+//    Kepulangan" dengan nilai frasa penuh ("Kembali ke sekolah" / "Pulang
+//    (tidak kembali ke sekolah)"), dipetakan LOKAL di sini — bukan
+//    memakai/mengubah izinTujuanLabel, supaya kolom Export yang sudah
+//    benar sempit tidak ikut melebar.
+// 4. QR verifikasi DIHAPUS (September 2026) — bukan cuma disembunyikan,
+//    seluruh mekanismenya (generateVerificationURL, generateQRCodeImage,
+//    action doGet 'verifyIzinSurat') sudah dicabut, bukan sekadar tidak
+//    dipanggil. Alasan: satu-satunya bagian dari fitur cetak surat yang
+//    butuh UrlFetchApp (memanggil layanan QR luar) berulang kali gagal di
+//    lapangan tanpa bisa didiagnosis cepat dari jarak jauh, dan alternatif
+//    "link teks biasa" (tanpa gambar QR, tapi tetap butuh endpoint publik)
+//    dianggap tidak cukup praktis dibanding manfaatnya (satpam/orang tua
+//    harus mengetik URL manual). Keputusan produk, bukan keterbatasan
+//    teknis yang belum terpecahkan — surat tetap sah lewat nomor otomatis
+//    + nama & jam persetujuan/verifikasi, sama seperti sebelum QR ada.
+//    Konsekuensinya: renderIzinKeluarSuratHTML sekarang TIDAK PERNAH
+//    memanggil layanan luar apa pun — murni menyusun teks dari data yang
+//    sudah ada.
+function renderIzinKeluarSuratHTML(suratData) {
+  var d = suratData || {};
+  var logoUrl = 'https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg';
+  var jalurKhusus = d.jalur === IZIN_JALUR_KHUSUS;
+  var rencanaKepulangan = d.tujuan === 'Pulang' ? 'Pulang (tidak kembali ke sekolah)' : 'Kembali ke sekolah';
+
+  var baris = function (label, nilaiHtmlSudahAman) {
+    return '<div class="field-row"><span class="label">' + escapeHtml(label) + '</span><span class="titik-dua">:</span><span class="value">' + nilaiHtmlSudahAman + '</span></div>';
+  };
+  // Label DI ATAS isi (bukan sejajar dengan titik dua seperti field-row) —
+  // field-row menyempitkan nilai jadi (lebar kotak - 160px label - 14px
+  // titik dua), dan nama guru + konteks + jam ("Syarif Hidayatullah, S.Pd.I
+  // — Wali Kelas, pukul 08:18 WITA") jauh lebih panjang dari itu, jadi
+  // membungkus 2-3 baris dan memakan banyak tempat kertas (masukan
+  // lapangan, September 2026). Dikelompokkan jadi kotak sendiri (mirip
+  // tampilan sebelum surat dijadikan format dinas) supaya isinya punya
+  // lebar PENUH kotak untuk membungkus, bukan terjepit di sebelah label.
+  var kotakBaris = function (label, nilaiHtmlSudahAman) {
+    return '<div class="baris"><div class="judul">' + escapeHtml(label) + '</div><div class="isi">' + nilaiHtmlSudahAman + '</div></div>';
+  };
+
+  var fieldRows =
+    baris('Nama', escapeHtml(d.nama_siswa)) +
+    baris('Kelas', escapeHtml(d.kelas)) +
+    baris('Keperluan', escapeHtml(d.keperluan)) +
+    baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan));
+
+  var infoBoxRows =
+    (jalurKhusus
+      ? kotakBaris('Izin Khusus oleh', escapeHtml(d.disetujui_oleh) + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : '')) +
+        (d.alasan_khusus ? kotakBaris('Alasan Pengecualian', escapeHtml(d.alasan_khusus)) : '')
+      : kotakBaris('Disetujui oleh', escapeHtml(d.disetujui_oleh) + (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : ''))) +
+    (d.diverifikasi_oleh ? kotakBaris('Diverifikasi oleh', escapeHtml(d.diverifikasi_oleh) + (d.waktu_verifikasi ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) : '')) : '') +
+    kotakBaris('Status Saat Ini', escapeHtml(d.status_izin_label));
+
+  return '<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '<title>Surat Izin Keluar - ' + escapeHtml(d.nomor_surat) + '</title>' +
+    '<style>' +
+    'body{font-family:"Times New Roman",Georgia,serif;color:#1B2A41;max-width:700px;margin:0 auto;padding:32px 40px;font-size:14px;line-height:1.65;background:#fff;}' +
+    '.kop{text-align:center;border-bottom:3px double #1B2A41;padding-bottom:12px;margin-bottom:22px;}' +
+    '.kop img{width:60px;height:60px;object-fit:contain;margin-bottom:6px;}' +
+    '.kop .nama-sekolah{font-size:16px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;}' +
+    '.kop .sub{font-size:11px;color:#3A3529;font-family:Arial,Helvetica,sans-serif;}' +
+    'h1{font-size:14px;text-align:center;text-transform:uppercase;text-decoration:underline;letter-spacing:1px;margin:0 0 2px;}' +
+    '.nomor{text-align:center;font-size:13px;margin-bottom:22px;}' +
+    'p.pembuka,p.penutup{text-align:justify;margin:0 0 14px;}' +
+    '.field-list{margin:0 0 18px 20px;}' +
+    '.field-row{display:flex;margin-bottom:5px;font-size:13px;}' +
+    '.field-row .label{width:160px;flex-shrink:0;}' +
+    '.field-row .titik-dua{width:14px;flex-shrink:0;}' +
+    '.field-row .value{font-weight:bold;}' +
+    '.info-box{border:1px solid #DCD2C0;border-radius:8px;padding:12px 16px;margin:0 0 18px;}' +
+    '.info-box .baris{margin-bottom:10px;}' +
+    '.info-box .baris:last-child{margin-bottom:0;}' +
+    '.info-box .judul{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#5C5548;font-family:Arial,Helvetica,sans-serif;margin-bottom:2px;}' +
+    '.info-box .isi{font-weight:bold;font-size:13px;}' +
+    '.tempat-tanggal{text-align:right;margin-bottom:24px;}' +
+    '.elektronik{font-size:10px;color:#5C5548;line-height:1.6;font-family:Arial,Helvetica,sans-serif;text-align:right;margin-top:8px;}' +
+    '@media print{body{padding:15mm 20mm;max-width:none;}}' +
+    '</style></head><body>' +
+    '<div class="kop"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
+    '<div class="nama-sekolah">SMAN 2 Tarakan</div>' +
+    '<div class="sub">Sistem Informasi Gerbang &amp; Absensi Pelanggaran (SIGAP)</div></div>' +
+    '<h1>Surat Izin Keluar</h1>' +
+    '<div class="nomor">Nomor: ' + escapeHtml(d.nomor_surat) + '</div>' +
+    '<p class="pembuka">Yang bertanda tangan di bawah ini menerangkan bahwa siswa berikut telah diberikan izin untuk meninggalkan lingkungan sekolah pada jam pelajaran berlangsung:</p>' +
+    '<div class="field-list">' + fieldRows + '</div>' +
+    '<div class="info-box">' + infoBoxRows + '</div>' +
+    '<p class="penutup">Demikian surat izin ini dibuat untuk dapat dipergunakan sebagaimana mestinya.</p>' +
+    // "Tarakan, <tanggal>" TANPA nama hari — konvensi baris tempat/tanggal
+    // penutup surat resmi tidak menyertakan nama hari (beda dari baris
+    // "Dicetak:" di bawah, yang memang sengaja menyertakannya). d.tgl_cetak
+    // (formatTanggalPanjangID, Utils.gs) selalu berformat "Hari, D Bulan
+    // YYYY" — bagian sebelum koma pertama dibuang di sini saja, bukan
+    // dengan mengubah formatTanggalPanjangID itu sendiri (dipakai juga di
+    // baris "Dicetak:" yang MEMANG perlu nama harinya).
+    '<div class="tempat-tanggal">Tarakan, ' + escapeHtml(String(d.tgl_cetak || '').replace(/^[^,]+,\s*/, '')) + '</div>' +
+    // Dipangkas dari 4 baris jadi 2 (masukan lapangan: surat ini kecil,
+    // ruang vertikalnya berharga). "Nomor referensi" DIHAPUS di sini —
+    // nomor suratnya sudah tertulis besar di judul atas ("Nomor: IK-..."),
+    // menuliskannya lagi di sini cuma duplikat. Kalimat sah-tanpa-tanda-
+    // tangan dipersingkat tapi maknanya dipertahankan utuh.
+    '<div class="elektronik">Dihasilkan otomatis oleh SIGAP, sah tanpa tanda tangan basah.<br>Dicetak: ' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</div>' +
+    '</body></html>';
+}
+
 // ===== doGet =====
 
 function doGet(e) {
@@ -1390,6 +1675,12 @@ function doGet(e) {
     cache.put('login_users', loginUsersResult, 300);
     return ContentService.createTextOutput(loginUsersResult).setMimeType(ContentService.MimeType.JSON);
   }
+
+  // 'verifyIzinSurat' (verifikasi surat via QR) DIHAPUS (September 2026)
+  // bersamaan dengan seluruh fitur QR — lihat catatan di
+  // renderIzinKeluarSuratHTML (Code.gs) untuk alasannya. Endpoint publik
+  // ini tidak punya lagi apa pun yang mengarah ke sana (tidak ada QR yang
+  // memuatnya), jadi dicabut, bukan dibiarkan menganggur.
 
   // Semua aksi GET lainnya WAJIB sesi valid
   var sessionUser = getSessionUser(e.parameter.sessionToken);

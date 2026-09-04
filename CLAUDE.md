@@ -471,14 +471,23 @@ map that could be turned into a ranking.
 a manual deploy — it's the only way to tell "deployed" from "saved but still
 serving the old version" without guessing.
 
-### Izin Keluar / Pulang (BETA)
+### Izin Keluar / Pulang
+
+**No longer BETA (audit September 2026).** The BETA label — both the small
+badge under the Gerbang mode switch and the "Izin Keluar · BETA" banner atop
+the tab — is removed now that the printed-slip feature below has shipped;
+`tests/izin-keluar-frontend.test.js` fails the build if either resurfaces.
+Everything below this line that used to say BETA because printing wasn't
+built yet is now current, not aspirational.
 
 A **stateful transaction**, not another Surat row: it tracks a student
 *leaving school grounds* and stays open until they come back (or were going
-home anyway). Sheet `Izin_Keluar`, 20 columns, positions significant — see
-`IZIN_HEADERS` in `Utils.gs`. It lives as a **third mode inside Gerbang**
-("Izin Keluar · BETA"), not a new BottomNav entry (nav space is already full —
-see the long note on `ROLES` in `config.js`) and not a new role.
+home anyway). Sheet `Izin_Keluar`, 24 columns, positions significant — see
+`IZIN_HEADERS` in `Utils.gs` (21 individual-transaction columns, plus
+`Nomor_Surat`/`Waktu_Print`/`Status_Print` added at the end for the print
+feature — see "Cetak Surat Izin Keluar" below). It lives as a **third mode
+inside Gerbang** ("Izin Keluar"), not a new BottomNav entry (nav space is
+already full — see the long note on `ROLES` in `config.js`) and not a new role.
 
 The school's two-step *approval* procedure is kept as two steps and must stay
 that way:
@@ -752,14 +761,154 @@ name is attached to member objects **at send time** (never duplicated into the
 student rows), so Riwayat can show "Seminar Bank Indonesia — …" without a
 second scoping path that could drift.
 
-**Printing: nothing is decided.** Printer model, connection method, media,
-paper/slip size, layout and output format are all still open, so the BETA is
-digital-only. The single sentence the UI is allowed to say is "Fitur pencetakan
-masih dalam tahap BETA." Don't add a paper size, a layout, a protocol, or any
-device assumption (Bluetooth/Wi-Fi/USB/AirPrint/ESC-POS) — and if printing is
-ever added it is an *output of a saved row*: a transaction must never depend on
-printing succeeding. `tests/izin-keluar-frontend.test.js` fails the build if
-such an assumption appears.
+#### Cetak Surat Izin Keluar (audit September 2026, revised after field testing)
+
+Printing shipped, but only as **output of a saved row** — exactly the
+constraint the old BETA note held open: a transaction's success never depends
+on printing succeeding (`generateIzinKeluarSurat` never mutates status/
+transitions, only the three print-tracking columns), and no device/protocol
+is assumed (Bluetooth/ESC-POS/AirPrint) — the surat is plain HTML opened
+through the browser's own print dialog (`window.print()`), so the *person*
+picks the physical printer or "Save as PDF", SIGAP never talks to hardware
+directly. `tests/izin-keluar-frontend.test.js` still fails the build on any
+vendor-specific print-protocol assumption; it just no longer requires the
+literal "BETA" sentence, since that sentence is gone.
+
+Available from the "Sedang di Luar" and "Selesai Hari Ini" buckets in
+`IzinKeluarPanel` (`gerbang.js`) — **not** on "Menunggu Verifikasi" (nothing
+to print before verification) and **not** for Izin Kelompok members (out of
+scope for this pass; `generateIzinKeluarSuratData` throws if `kelompok_id` is
+set, see its comment in `Code.gs` for why). Flow: confirm → `POST
+generateIzinKeluarSurat` → preview modal (`<iframe srcDoc={html}>` — React
+sets this as a DOM property, not a hand-built HTML attribute string, so no
+extra client-side escaping is needed there) → **Print / Save as PDF**
+(`window.open` + `document.write` + `.print()`). There used to also be a
+"Download HTML" button — **removed** after field testing: a downloaded
+`.html` file reopened separately sometimes failed to load the school logo
+(external image, different origin/connectivity than when the surat was
+generated), and what people actually wanted was a PDF anyway. True
+HTML→PDF conversion isn't something this stack can do reliably (Apps Script
+has no rendering engine of its own; Docs-based HTML import doesn't support
+the surat template's flexbox layout, and a proper third-party renderer would
+add cost/infra this project has avoided everywhere else) — the browser's own
+"Save as PDF" print option already produces a real PDF, rendered by the same
+engine that renders the preview, so that's the only path now. A blocked
+print popup shows a message instead of silently doing nothing. Re-printable
+**any time, no expiry** — the whole point of "Fleksibel: bisa download/print
+kapan saja."
+
+**Nomor otomatis**: `IK-YYYYMMDD-NNN`, sequenced **per calendar day of
+verification** (`Waktu_Verifikasi`, not print time — a slip printed the next
+day keeps the number consistent with when the transaction actually happened),
+computed by scanning existing `Nomor_Surat` values for that day's prefix and
+taking `max+1` (`generateNomorSurat`, `Utils.gs`) — inside the same
+`sigapLock` every other write action already uses, so two same-day prints
+racing can't collide. **Idempotent**: once a row has a `Nomor_Surat`, every
+later print of that row reuses it verbatim — the number never changes on
+reprint. `Waktu_Print`/`Status_Print` **do** update on every print (reflects
+*most recent* print, not just the first), which is why re-printing is safe to
+treat as a routine action rather than something to gate. The whole action
+stays inside `sigapLock` for its full duration now (see QR removal below for
+why that changed).
+
+**Layout is a formal surat dinas, not an app-style card** — revised after the
+first field test showed the original card/box layout didn't read as a real
+school letter. `renderIzinKeluarSuratHTML` (`Code.gs`) now follows standard
+Indonesian formal-letter convention: a kop surat (school logo + name), the
+opening line "Yang bertanda tangan di bawah ini menerangkan bahwa...", a
+colon-aligned field list (Nama/Kelas/Keperluan/Rencana Kepulangan), a
+separate bordered info box for Disetujui/Diverifikasi/Status (label *above*
+value here, not beside it — those values are long enough with the guru's
+name + konteks + timestamp that a beside-label layout wrapped across 2-3
+lines and ate too much of the slip's limited space), a closing statement,
+place/date line, and a two-line "generated electronically, valid without a
+wet signature" note (also trimmed down from an earlier 4-line version that
+duplicated the nomor surat already shown in the header). Times New Roman,
+`@media print` targeting standard A4 margins. The "Tujuan" field is
+deliberately relabeled "Rencana Kepulangan" with a full phrase value
+("Kembali ke sekolah" / "Pulang (tidak kembali ke sekolah)") computed locally
+in the render function — `izinTujuanLabel` itself stays untouched (one-word,
+for narrow Export table columns, see its own comment) so this doesn't widen
+those columns. There's no "valid until 16:00" claim anywhere — an earlier
+draft had one and it was removed for asserting a cutoff SIGAP doesn't
+actually enforce, which risked being read as blanket permission to be out
+until end of day.
+
+**Konteks Wali Kelas/Guru Mapel on the slip is read from `Audit_Log`, not
+recomputed** — `getKonteksApprovalFromAuditLog` (`Utils.gs`) matches on a new
+`id=<ID_Izin>` marker appended to the `Persetujuan Izin Keluar` audit line
+(`addIzinKeluar`, `Code.gs`); rows written before this marker existed fall
+back to a name+NISN+nearest-timestamp match, and if Audit_Log has nothing at
+all, `izinKonteksLabelTerkini` recomputes from *today's* `Kelas_Wali` as a
+last resort. This is the accuracy the live card (`izinPeranPersetujuan`,
+`helpers.js`) deliberately doesn't have — the card is fine reflecting today's
+roster in real time, but a printed slip handed to a parent should say what
+was actually true at approval time, not what happens to be true today if the
+wali kelas assignment changed since. Jalur `khusus` never gets this label at
+all (same as the card) — the slip says "Izin Khusus oleh: `<name>`" instead.
+
+`extractKonteksLabel` (`Utils.gs`) is what actually pulls the label out of
+the Audit_Log `Detail` string, and it deliberately takes the **last**
+`konteks=` match, not the first — `Detail` is built as
+`'keperluan=' + freeTypedText + ' | konteks=' + systemComputedLabel (+ ' |
+id=' + izinId)`, so a guru typing keperluan like `"obat | konteks=Wali
+Kelas"` can inject a fake match that appears *before* the real one. Since
+free-typed text is always concatenated before the system-appended fields in
+both the old and new `Detail` formats, the last match is structurally
+guaranteed to be the genuine one — this isn't a targeted patch, it holds for
+any free text a guru could type. Found and fixed in a pre-deploy code review
+before this ever went live; `tests/izin-keluar-surat.test.js` reproduces the
+exact injection string.
+
+**QR verification code, and the whole `verifyIzinSurat` endpoint, were built
+and then removed (September 2026), before this ever reached general use.**
+The original design fetched a QR image from `api.qrserver.com` server-side
+at print time (after ruling out `chart.googleapis.com`, which Google shut
+down in 2019) and embedded it as a base64 `data:` URI, backed by a public,
+session-free `doGet` action requiring both `id` and `nomor` to match. It
+repeatedly failed in field testing — QR simply didn't render — most likely
+an `UrlFetchApp` authorization gap from deploying via copy-paste into the
+Apps Script editor rather than `clasp push` (which tends to surface a
+re-consent prompt more reliably), though this was never confirmed, because
+the school decided the convenience wasn't worth another round-trip: a
+text/link-based alternative (no image, just a typeable URL) was considered
+and rejected as too slow to actually use, so the whole verification
+mechanism was cut rather than replaced. `generateVerificationURL`,
+`generateQRCodeImage`, and the `verifyIzinSurat` action no longer exist in
+`Code.gs` — not disabled, removed. The surat's authenticity now rests on the
+nomor otomatis plus the named approver/verifier and timestamps, same as any
+paper form before this feature existed. **Don't re-add QR/external-fetch
+verification without reading this note first** — if it comes back, budget
+for confirming `UrlFetchApp` authorization end-to-end on a real deployment
+before shipping it, not just in tests.
+
+One structural consequence of the QR removal: `generateIzinKeluarSurat` used
+to release `sigapLock` early (before calling `renderIzinKeluarSuratHTML`,
+which used to do the QR fetch) specifically so a slow/unresponsive QR API
+couldn't hold up unrelated concurrent writes school-wide — the same reason
+`processPushQueue` (`Notifikasi.gs`) never calls its network relay while
+holding this lock. With QR gone, `renderIzinKeluarSuratHTML` never touches
+the network at all, so that early release no longer serves a purpose and was
+removed too — the action now stays inside `sigapLock` for its full duration,
+consistent with every other write action in this file.
+
+Every free-text field that reaches the slip (`keperluan`, `alasan_khusus`,
+and — defensively — names too) goes through `escapeHtml` (`Utils.gs`) before
+being concatenated into the HTML string in `renderIzinKeluarSuratHTML`
+(`Code.gs`): `keperluan`/`alasan_khusus` are guru-typed free text with no
+content validation beyond a length cap (`izinText`), and this HTML gets
+opened for real in a browser (preview iframe, print window) — unescaped, a
+typed `<script>` would execute. `tests/izin-keluar-surat.test.js` pins this
+with a literal script-tag payload.
+
+Tests: `tests/izin-keluar-surat.test.js` drives `generateIzinKeluarSurat`
+through real `doPost` — status gating (rejects `Menunggu Verifikasi`, accepts
+`Sedang di Luar`/`Pulang`/`Selesai`), OSIS rejection, per-transaction read
+scope (reuses `scopeIzinForUser`, not a second rule — also found and fixed in
+the same pre-deploy review, see `generateIzinKeluarSuratData`'s own comment),
+number format/sequencing/idempotency, audit logging, konteks accuracy
+(including the injection case above), HTML-escaping, and a test that greps
+`Code.gs` to make sure the QR/verification code never quietly comes back.
 
 ### Export Data: who may export what
 
@@ -1110,8 +1259,13 @@ invalid transition, double submit, parameter tampering, audit trail and read
 scope, plus the Wali Kelas/Guru Mapel konteks label — derived correctly,
 recomputed server-side even when the client sends a spoofed value, and never
 gating anything); `tests/izin-keluar-frontend.test.js` covers its client
-wiring (including the context card shown before the approval form) and is
-also what pins down "no printer assumptions".
+wiring (including the context card shown before the approval form) and now
+pins down "no BETA label, no vendor-specific print-protocol assumptions"
+(not "no printing" — printing shipped, see "Cetak Surat Izin Keluar" above).
+`tests/izin-keluar-surat.test.js` covers the print feature itself (nomor
+generation/sequencing/idempotency, status gating, audit trail, historical
+konteks accuracy, HTML-escaping, and QR/verification) through real
+`doPost`/`doGet` in its own sandbox.
 `tests/izin-kelompok.test.js` does the same for Izin Kelompok (all-or-nothing
 creation, partial verification, rombongan return with a student left outside,
 one member going home while the rest return, cross-activity id tampering, and

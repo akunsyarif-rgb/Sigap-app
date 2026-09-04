@@ -242,15 +242,30 @@ test('Gerbang: Izin Keluar jadi mode ketiga, bukan menu BottomNav baru', () => {
   assert.deepEqual(menus('osis'), ['upacara']);
 });
 
-test('layar hanya menyebut pencetakan sebagai status BETA — tidak ada integrasi printer', () => {
+// "BETA pencetakan" (audit September 2026): fitur Cetak Surat Izin
+// menggantikan status BETA lama — layar TIDAK LAGI menyebut pencetakan
+// sebagai BETA, dan dialog print BAWAAN BROWSER (window.print()) + CSS
+// @media print berorientasi thermal (~80mm) sekarang MEMANG dipakai dengan
+// sengaja (lihat printSuratFromContent di gerbang.js & renderIzinKeluarSuratHTML
+// di Code.gs). Yang TETAP tidak boleh ada — dan itu yang diuji di sini —
+// adalah asumsi PERANGKAT/PROTOKOL CETAK tertentu (Bluetooth, ESC/POS,
+// AirPrint): pengguna sendiri yang memilih printer/"Simpan sebagai PDF" dari
+// dialog print bawaan browser, SIGAP tidak pernah bicara langsung ke printer.
+test('layar TIDAK menyebut pencetakan sebagai BETA lagi, dan tidak ada integrasi PROTOKOL printer tertentu', () => {
   const semua = ['gerbang.js', 'app.js', 'beranda-riwayat.js', 'config.js', 'helpers.js', 'index.html']
     .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
-  assert.match(semua, /Fitur pencetakan masih dalam tahap BETA\./);
-  // Tidak ada asumsi perangkat/protokol/ukuran kertas apa pun.
-  // Batas kata dipakai supaya kode warna heksa (#1B2A41) & URL Apps Script
-  // tidak ikut tertangkap sebagai "ukuran kertas".
-  [/bluetooth/i, /esc\/?pos/i, /airprint/i, /window\.print/i, /\b(58|80)\s?mm\b/i, /\b(A4|A5|F4)\b/].forEach((pola) => {
-    assert.doesNotMatch(semua, pola, 'tidak boleh ada asumsi perangkat/media cetak: ' + pola);
+  assert.doesNotMatch(semua, /Fitur pencetakan masih dalam tahap BETA\./, 'kalimat BETA pencetakan yang lama sudah tidak relevan lagi');
+  assert.doesNotMatch(semua, /Izin Keluar\s*(&middot;|·)\s*BETA/, 'label "Izin Keluar · BETA" harus sudah dihapus');
+  [/bluetooth/i, /esc\/?pos/i, /airprint/i].forEach((pola) => {
+    assert.doesNotMatch(semua, pola, 'tidak boleh ada asumsi PROTOKOL cetak tertentu: ' + pola);
+  });
+});
+
+test('Code.gs: surat izin dirender sebagai HTML biasa (dialog print browser), bukan protokol printer khusus', () => {
+  const kode = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+  assert.match(kode, /function renderIzinKeluarSuratHTML/);
+  [/bluetooth/i, /esc\/?pos/i, /airprint/i].forEach((pola) => {
+    assert.doesNotMatch(kode, pola, 'tidak boleh ada asumsi PROTOKOL cetak tertentu: ' + pola);
   });
 });
 
@@ -963,11 +978,18 @@ test('audit UX Agustus 2026: "Tutup transaksi" DIHAPUS — Tandai Kembali langsu
   // dan pesan konfirmasinya sekarang bilang transaksinya sudah selesai,
   // bukan "silakan tutup transaksi berikutnya".
   assert.match(gerbangSrc, /runAction\(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai\.'\)/);
-  // Kartu "Selesai Hari Ini" tidak lagi punya tombol aksi apa pun — cuma
-  // menampilkan status akhirnya.
+  // Kartu "Selesai Hari Ini" tidak lagi punya tombol yang MENGUBAH STATUS
+  // transaksi apa pun — cuma menampilkan status akhirnya. Satu pengecualian
+  // yang disengaja (audit September 2026): tombol "Cetak Surat Izin" — itu
+  // bukan aksi status, murni OUTPUT dari transaksi yang sudah final, dan
+  // sengaja tetap tersedia di sini supaya surat tetap bisa dicetak/diunduh
+  // kapan saja setelah transaksinya selesai.
   const blokSelesai = gerbangSrc.split('Selesai Hari Ini ({selesaiHariIni.length})')[1].split('Kartu konteks')[0];
-  assert.ok(!/<button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol aksi');
-  assert.ok(!/<Button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol aksi');
+  assert.ok(!/<button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol HTML mentah');
+  const tombolDiBlokSelesai = blokSelesai.match(/<Button/g) || [];
+  assert.equal(tombolDiBlokSelesai.length, 1, 'kartu Selesai Hari Ini hanya boleh punya SATU <Button> — Cetak Surat Izin');
+  assert.match(blokSelesai, /handleCetakSuratIzin\(izin\)/, 'satu-satunya tombol yang boleh ada adalah Cetak Surat Izin');
+  assert.doesNotMatch(blokSelesai, /onTandaiKembali|onVerifikasi|runAction\(/, 'tidak boleh ada tombol yang mengubah status transaksi');
 });
 
 test('status "Kembali" legacy tidak pernah ditampilkan mentah — dibaca sebagai Selesai', () => {

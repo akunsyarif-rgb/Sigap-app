@@ -756,12 +756,27 @@ var IZIN_HEADERS = [
   // Master_Siswa (lihat resolveSiswaListForIzin), dan nama kegiatan tetap
   // tinggal di baris induknya — tidak diduplikasi ke tiap peserta.
   'ID_Kelompok',
+  // Kolom 22-24, DITAMBAHKAN DI UJUNG saat fitur Cetak Surat Izin masuk
+  // (audit September 2026) — sama prinsipnya dengan ID_Kelompok di atas:
+  // ditambahkan di UJUNG, tidak ada kolom lama yang bergeser. Nomor_Surat
+  // sekali ditetapkan lalu dipakai ulang (cetak ulang tidak pernah mengubah
+  // nomornya); Waktu_Print mencerminkan cetak/unduh TERAKHIR (bukan hanya
+  // yang pertama); Status_Print 'Belum'/'Sudah'. Lihat generateIzinKeluarSuratData
+  // & action generateIzinKeluarSurat (Code.gs). Sengaja tidak pernah
+  // ditulis untuk baris kelompok (kelompok_id terisi) — cetak kelompok
+  // belum didukung, lihat catatan di sana.
+  'Nomor_Surat', 'Waktu_Print', 'Status_Print',
 ];
-var IZIN_NUM_COLS = IZIN_HEADERS.length; // 21
+var IZIN_NUM_COLS = IZIN_HEADERS.length; // 24
 var IZIN_COL_NISN = 2;   // kolom B (1-based) — dipakai cek "masih ada izin terbuka?"
 var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah status
 var IZIN_COL_STATUS = 8; // kolom H (1-based)
 var IZIN_COL_KELOMPOK = 21; // kolom U (1-based)
+var IZIN_COL_NOMOR_SURAT = 22;  // kolom V (1-based)
+var IZIN_COL_WAKTU_PRINT = 23;  // kolom W (1-based)
+var IZIN_COL_STATUS_PRINT = 24; // kolom X (1-based)
+var IZIN_PRINT_BELUM = 'Belum';
+var IZIN_PRINT_SUDAH = 'Sudah';
 
 // Lima nilai status, tidak tumpang tindih — tapi ALUR NORMALNYA cuma
 // melewati EMPAT: Menunggu Verifikasi -> Sedang di Luar -> Selesai (siswa
@@ -1023,6 +1038,13 @@ function izinRowToObject(row) {
     // Baris lama (sebelum kolom ke-21 ada) mengembalikan undefined di sini —
     // dijaga supaya tidak berubah jadi string 'undefined'.
     kelompok_id: row[20] ? String(row[20]) : '',
+    // Kolom 22-24 (Cetak Surat Izin, audit September 2026) — baris lama
+    // (sebelum kolom ini ada) mengembalikan '' / IZIN_PRINT_BELUM di sini,
+    // sama seperti kelompok_id di atas menjaga baris lama tidak berubah
+    // jadi string 'undefined'.
+    nomor_surat: row[21] ? String(row[21]) : '',
+    waktu_print: row[22] || '',
+    status_print: row[23] ? String(row[23]) : IZIN_PRINT_BELUM,
     // Kolom "siapa yang mencatat" untuk keperluan pembatasan cakupan baca
     // memakai PEMBERI PERSETUJUAN — mekanisme kepemilikan yang sama (nama
     // pencatat) seperti Dicatat_Oleh di sheet lain.
@@ -1140,6 +1162,192 @@ function resolveSiswaForIzin(ss, nisn) {
     }
   }
   return null;
+}
+
+// ===== CETAK SURAT IZIN KELUAR (audit September 2026) =====
+// Helper LEVEL RENDAH untuk fitur cetak (orkestrasi & template HTML ada di
+// Code.gs — generateIzinKeluarSuratData/renderIzinKeluarSuratHTML/action
+// generateIzinKeluarSurat). Ini murni OUTPUT dari transaksi yang sudah
+// tersimpan & diverifikasi — TIDAK mengubah satu pun aturan alur/status di
+// atas, dan sesuai prinsip lama berkas ini: keberhasilan transaksi tidak
+// boleh pernah bergantung pada berhasil/tidaknya mencetak.
+
+// Format nomor: IK-YYYYMMDD-NNN, urut per HARI VERIFIKASI (bukan hari
+// cetak) — supaya nomor tetap konsisten walau suratnya baru dicetak
+// belakangan, dan cetak ulang tidak pernah menggeser nomor yang sudah beredar.
+function izinTanggalUntukNomor(waktuVerifikasi) {
+  var d = waktuVerifikasi instanceof Date ? waktuVerifikasi : new Date(waktuVerifikasi);
+  if (!d || isNaN(d.getTime())) d = new Date();
+  return String(d.getFullYear()) + pad2Export(d.getMonth() + 1) + pad2Export(d.getDate());
+}
+
+// Nomor urut berikutnya untuk tanggalKode tertentu, dibaca dari nomor yang
+// SUDAH TERSIMPAN di kolom Nomor_Surat (bukan dari jumlah baris) — supaya
+// baris yang dihapus/gagal tidak pernah membuat nomor berikutnya
+// bertabrakan atau meloncat. Dipanggil DI DALAM sigapLock milik doPost
+// (lihat action generateIzinKeluarSurat, Code.gs), jadi dua cetak pertama
+// bersamaan di hari yang sama tidak bisa mendapat nomor yang sama.
+function generateNomorSurat(sheet, tanggalKode) {
+  var lastRow = sheet.getLastRow();
+  var maxUrut = 0;
+  if (lastRow > 1) {
+    var nomorValues = sheet.getRange(2, IZIN_COL_NOMOR_SURAT, lastRow - 1, 1).getValues();
+    var prefix = 'IK-' + tanggalKode + '-';
+    for (var i = 0; i < nomorValues.length; i++) {
+      var v = String(nomorValues[i][0] || '').trim();
+      if (v.indexOf(prefix) !== 0) continue;
+      var urut = parseInt(v.slice(prefix.length), 10);
+      if (!isNaN(urut) && urut > maxUrut) maxUrut = urut;
+    }
+  }
+  var next = maxUrut + 1;
+  var nextStr = next < 10 ? '00' + next : next < 100 ? '0' + next : String(next);
+  return 'IK-' + tanggalKode + '-' + nextStr;
+}
+
+// Escape HTML minimal — WAJIB dipakai di renderIzinKeluarSuratHTML (Code.gs)
+// untuk SETIAP nilai yang disisipkan ke dalam surat. Keperluan & Alasan_Khusus
+// adalah isian bebas guru (lihat izinText/IZIN_MAX_KEPERLUAN/IZIN_MAX_ALASAN
+// di atas) — tanpa ini, teks seperti "<script>..." yang kebetulan diketik
+// akan tereksekusi begitu surat dibuka (preview iframe, hasil unduhan, atau
+// jendela print). Nama siswa/guru & kelas jauh lebih terpercaya (dari
+// Master_Siswa/Master_Guru/sesi) tapi tetap di-escape di sini juga — satu
+// jalur render, satu aturan, tanpa perlu mengingat kolom mana yang "aman".
+function escapeHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ===== Konteks approval HISTORIS (untuk surat cetak, BUKAN kartu) =====
+// izinKonteksPersetujuan() (di atas) menghitung konteks SAAT INI dari
+// wali-kelas HARI INI — pas untuk kartu transaksi yang memang dimaksudkan
+// real-time, tapi TIDAK cukup akurat untuk surat resmi: kalau wali kelas
+// sudah berganti sejak persetujuan dibuat, hitung-ulang bisa memberi label
+// berbeda dari yang sebenarnya berlaku saat itu. Audit Log SUDAH menyimpan
+// konteks yang dihitung PERSIS saat persetujuan dibuat (lihat addIzinKeluar,
+// Code.gs, yang sejak perubahan ini juga menyimpan 'id=<ID_Izin>' di
+// Detail) — itu yang dibaca di sini, bukan dihitung ulang.
+//
+// Pencocokan UTAMA memakai penanda 'id=<ID_Izin>'. Baris LAMA (ditulis
+// sebelum penanda ini ada) tidak punya itu — untuk baris itu dipakai
+// pencocokan cadangan: Nama+NISN muncul di Detail DAN Timestamp-nya PALING
+// DEKAT dengan waktu persetujuan baris Izin_Keluar (keduanya ditulis di
+// eksekusi yang sama, jadi selisihnya cuma milidetik-detik, bukan menit).
+
+// Bug yang diperbaiki (code review sebelum deploy, September 2026):
+// `Detail` digabung sebagai SATU string bebas — 'keperluan=' + TEKS BEBAS
+// GURU + ' | konteks=' + label + ' | id=' + izinId (lihat addIzinKeluar,
+// Code.gs). Kalau teks keperluan itu sendiri kebetulan/sengaja memuat
+// substring "konteks=..." (mis. guru mengetik "obat | konteks=Wali
+// Kelas"), regex yang mengambil kemunculan PERTAMA akan menangkap teks
+// suntikan itu, bukan label asli yang dihitung sistem — sistem seolah bisa
+// "ditimpa" lewat field bebas teks, padahal seluruh desain fitur ini
+// sengaja TIDAK PERNAH mempercayai klaim dari klien untuk hal ini (lihat
+// catatan di izinKonteksPersetujuan).
+//
+// Perbaikan: kembalikan kemunculan TERAKHIR, bukan pertama. Ini bukan
+// sekadar tambal — ini benar SECARA STRUKTURAL untuk kedua format Detail
+// yang pernah ada di sini: teks bebas guru (`keperluan=...`) SELALU
+// digabung SEBELUM label yang dihitung sistem (`konteks=...`), baik pada
+// format lama (`keperluan=X | konteks=Y`, konteks jadi ekor kalimat) maupun
+// format baru (`keperluan=X | konteks=Y | id=Z`, konteks tetap sebelum
+// id=). Apa pun yang disisipkan guru di keperluan-nya sendiri PASTI berada
+// SEBELUM label asli secara tekstual — jadi kemunculan TERAKHIR selalu
+// milik sistem, tidak pernah bisa didahului oleh suntikan dari field bebas
+// manapun. Tidak perlu skema delimiter baru atau kolom Audit_Log terpisah
+// (yang berarti mengubah struktur sheet yang dipakai puluhan aksi lain).
+function extractKonteksLabel(detail) {
+  var regex = /konteks=([^|]+)/g;
+  var match;
+  var last = null;
+  while ((match = regex.exec(String(detail || ''))) !== null) {
+    last = match[1].trim();
+  }
+  return last;
+}
+
+function getKonteksApprovalFromAuditLog(ss, izinId, nisn, name, waktuPersetujuan) {
+  var sheet = ss.getSheetByName('Audit_Log');
+  if (!sheet) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  var idMarker = 'id=' + String(izinId || '').trim();
+  var nisnMarker = '(' + String(nisn || '').trim() + ')';
+  var namaGb = String(name || '').trim();
+  var targetTime = waktuPersetujuan instanceof Date ? waktuPersetujuan.getTime() : new Date(waktuPersetujuan).getTime();
+
+  var bestFallback = null;
+  var bestFallbackDiff = 60000; // toleransi 1 menit untuk baris lama
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][3] || '') !== 'Persetujuan Izin Keluar') continue; // jalur khusus tidak punya konteks
+    var detail = String(rows[i][4] || '');
+    var label = extractKonteksLabel(detail);
+    if (!label) continue;
+    if (detail.indexOf(idMarker) !== -1) return label; // cocok persis lewat ID_Izin, langsung berhenti
+    if (namaGb && detail.indexOf(namaGb) === 0 && detail.indexOf(nisnMarker) !== -1 && !isNaN(targetTime)) {
+      var rowTime = new Date(rows[i][0]).getTime();
+      if (!isNaN(rowTime)) {
+        var diff = Math.abs(rowTime - targetTime);
+        if (diff < bestFallbackDiff) { bestFallbackDiff = diff; bestFallback = label; }
+      }
+    }
+  }
+  return bestFallback;
+}
+
+// Fallback TERAKHIR kalau Audit Log tidak menyimpan apa pun yang cocok
+// (mis. sudah dibersihkan) — hitung ulang dari data yang masih ada
+// SEKARANG, mencerminkan wali kelas hari ini persis seperti yang dipakai
+// izinPeranPersetujuan() di helpers.js (frontend) untuk label kartu.
+function izinKonteksLabelTerkini(ss, izin) {
+  var sheet = ss.getSheetByName('Master_Guru');
+  if (!sheet) return izinKonteksLabel(IZIN_KONTEKS_GURU_MAPEL);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return izinKonteksLabel(IZIN_KONTEKS_GURU_MAPEL);
+  var rows = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var namaPersetuju = String(izin.disetujui_oleh || '').trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][5]).toLowerCase().trim() === 'nonaktif') continue;
+    var kelasWali = String(rows[i][6] || '').trim();
+    if (kelasWali && sameClass(kelasWali, izin.class) && String(rows[i][1]).trim() === namaPersetuju) {
+      return izinKonteksLabel(IZIN_KONTEKS_WALI_KELAS);
+    }
+  }
+  return izinKonteksLabel(IZIN_KONTEKS_GURU_MAPEL);
+}
+
+// Label status untuk surat cetak — kalimat yang masuk akal dibaca orang
+// tua/siswa, bukan nilai Status mentah yang berorientasi ke petugas piket.
+// 'Kembali' legacy (lihat IZIN_STATUS_KEMBALI di atas) dibaca sama seperti
+// 'Selesai', konsisten dengan bucket "Selesai Hari Ini" di layar Gerbang.
+function izinStatusSuratLabel(status) {
+  if (status === IZIN_STATUS_DI_LUAR) return 'Sedang di Luar Sekolah';
+  if (status === IZIN_STATUS_PULANG) return 'Pulang (Tidak Kembali ke Sekolah)';
+  if (status === IZIN_STATUS_SELESAI || status === IZIN_STATUS_KEMBALI) return 'Selesai (Sudah Kembali ke Sekolah)';
+  return asText(status);
+}
+
+// Format tanggal/jam Indonesia panjang, khusus surat cetak (beda dari
+// formatExportDate/formatExportTime di atas yang numerik DD/MM/YYYY untuk
+// laporan tabel) — "Kamis, 3 September 2026" & "10:30 WITA". hariPiketServer
+// dipakai apa adanya (array nama harinya sudah persis Indonesia).
+var IZIN_BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+function formatTanggalPanjangID(d) {
+  var date = d instanceof Date ? d : new Date(d);
+  if (!date || isNaN(date.getTime())) return '';
+  return hariPiketServer(date) + ', ' + date.getDate() + ' ' + IZIN_BULAN_ID[date.getMonth()] + ' ' + date.getFullYear();
+}
+
+function formatJamWITA(d) {
+  var date = d instanceof Date ? d : new Date(d);
+  if (!date || isNaN(date.getTime())) return '';
+  return pad2Export(date.getHours()) + ':' + pad2Export(date.getMinutes()) + ' WITA';
 }
 
 // ===== IZIN KELOMPOK (kegiatan dengan banyak peserta) =====

@@ -747,7 +747,12 @@ test('kolom Izin_Keluar lama tidak bergeser — ID_Kelompok ditambahkan di ujung
   const headers = JSON.parse(JSON.stringify(vm.runInContext('IZIN_HEADERS', s.sandbox)));
   assert.deepEqual(headers.slice(0, lama.length), lama, 'urutan kolom lama harus persis sama');
   assert.equal(headers[20], 'ID_Kelompok');
-  assert.equal(headers.length, 21);
+  // Kolom 22-24 (Cetak Surat Izin, audit September 2026) ditambahkan DI
+  // UJUNG juga — sama prinsipnya dengan ID_Kelompok, tidak menggeser kolom
+  // manapun sebelumnya (termasuk ID_Kelompok itu sendiri, yang tetap di
+  // index 20/kolom ke-21).
+  assert.deepEqual(headers.slice(21), ['Nomor_Surat', 'Waktu_Print', 'Status_Print']);
+  assert.equal(headers.length, 24);
 });
 
 test('penanda versi backend naik & menyebut fitur kelompok', () => {

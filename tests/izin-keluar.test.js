@@ -1251,8 +1251,11 @@ test('lima status, tidak ada status baru yang ditambahkan oleh perubahan ini', (
     'IZIN_STATUS_DI_LUAR', 'IZIN_STATUS_KEMBALI', 'IZIN_STATUS_MENUNGGU',
     'IZIN_STATUS_PULANG', 'IZIN_STATUS_SELESAI', 'IZIN_STATUS_TERBUKA',
   ]);
-  // Skema Izin_Keluar tetap 21 kolom — tidak ada kolom baru untuk fitur ini.
-  assert.match(utils, /var IZIN_NUM_COLS = IZIN_HEADERS\.length; \/\/ 21/);
+  // Skema Izin_Keluar tetap 24 kolom (21 dari sebelumnya + Nomor_Surat/
+  // Waktu_Print/Status_Print milik fitur Cetak Surat Izin, audit September
+  // 2026) — audit satu-langkah "Tandai Kembali" yang diuji test ini sendiri
+  // TIDAK menambah kolom apa pun.
+  assert.match(utils, /var IZIN_NUM_COLS = IZIN_HEADERS\.length; \/\/ 24/);
 });
 
 test('tidak ada role "Guru Piket" yang dibuat — kewenangannya tetap dari Jadwal_Piket', () => {
