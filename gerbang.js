@@ -602,30 +602,37 @@
                });
            };
 
-           // Blob + link sementara — pola unduh standar browser, tidak perlu
-           // dependensi apa pun. File yang dihasilkan langsung bisa dibuka di
-           // browser mana pun (HTML biasa, bukan format khusus).
-           const downloadSuratAsHTML = (html, nomorSurat) => {
-               const blob = new Blob([html], { type: 'text/html' });
-               const url = URL.createObjectURL(blob);
-               const a = document.createElement('a');
-               a.href = url;
-               a.download = `Surat_Izin_${nomorSurat}.html`;
-               document.body.appendChild(a);
-               a.click();
-               document.body.removeChild(a);
-               URL.revokeObjectURL(url);
-           };
-
-           // Jendela baru + document.write, lalu trigger dialog print browser —
-           // pengguna sendiri yang memilih print ke printer fisik atau "Simpan
-           // sebagai PDF" dari dialog itu. Tidak ada asumsi perangkat cetak apa
-           // pun di sini (lihat catatan lama soal BETA pencetakan yang sekarang
-           // berakhir: printer/media/ukuran kertas tetap urusan dialog print
-           // bawaan browser, bukan sesuatu yang SIGAP putuskan sendiri).
+           // Unduh HTML DIHAPUS (audit September 2026, feedback lapangan) —
+           // dulu ada 2 tombol (Download HTML / Print). File .html yang
+           // diunduh lalu dibuka terpisah kadang gagal memuat logo sekolah
+           // (gambar eksternal dari GitHub, butuh koneksi & origin browser
+           // yang berbeda dari saat surat digenerate) dan pengguna sebenarnya
+           // menginginkan PDF, bukan HTML. Jalan paling andal ke PDF BUKAN
+           // konversi HTML->PDF sendiri (Apps Script tidak punya rendering
+           // engine sungguhan — konversi lewat Google Docs akan merusak tata
+           // letak flexbox surat ini, dan layanan render pihak ketiga yang
+           // bagus itu berbayar/butuh server sendiri) — tapi dialog print
+           // BAWAAN BROWSER, yang di hampir semua browser/OS modern punya
+           // pilihan "Save as PDF"/"Microsoft Print to PDF": hasilnya PDF asli
+           // yang dirender persis oleh browser itu sendiri, tanpa risiko
+           // rusak. Jadi sekarang cukup SATU tombol Print, dan labelnya
+           // eksplisit menyebut PDF supaya jelas caranya.
+           //
+           // Jendela baru + document.write, lalu trigger dialog print browser
+           // — pengguna sendiri yang memilih print ke printer fisik atau
+           // "Simpan sebagai PDF" dari dialog itu. Tidak ada asumsi perangkat
+           // cetak apa pun di sini (lihat catatan lama soal BETA pencetakan
+           // yang sekarang berakhir: printer/media/ukuran kertas tetap urusan
+           // dialog print bawaan browser, bukan sesuatu yang SIGAP putuskan
+           // sendiri). Popup yang diblokir browser TIDAK diam-diam gagal lagi
+           // — showMsg memberi tahu penggunanya, bukan sekadar tidak terjadi
+           // apa-apa.
            const printSuratFromContent = (html) => {
                const win = window.open('', '_blank');
-               if (!win) return;
+               if (!win) {
+                   showMsg(false, 'Jendela print diblokir browser. Izinkan pop-up untuk situs ini, lalu coba lagi.');
+                   return;
+               }
                win.document.write(html);
                win.document.close();
                win.focus();
@@ -854,10 +861,8 @@
                                    className="w-full flex-1 min-h-[50vh] border border-slate-200 rounded-xl bg-white"
                                />
                                <div className="flex-shrink-0 space-y-2">
-                                   <div className="grid grid-cols-2 gap-2">
-                                       <Button onClick={() => downloadSuratAsHTML(suratPreview.html, suratPreview.nomorSurat)} variant="secondary" size="compact">📥 Download HTML</Button>
-                                       <Button onClick={() => printSuratFromContent(suratPreview.html)} size="compact">🖨️ Print</Button>
-                                   </div>
+                                   <Button onClick={() => printSuratFromContent(suratPreview.html)} className="w-full">🖨️ Print / Simpan sebagai PDF</Button>
+                                   <p className="text-[10px] text-slate-500 text-center -mt-0.5">Di dialog print, pilih "Save as PDF" (atau "Microsoft Print to PDF") untuk menyimpan sebagai file PDF.</p>
                                    <Button onClick={() => setSuratPreview(null)} variant="secondary" className="w-full">Tutup</Button>
                                </div>
                            </div>
