@@ -1707,7 +1707,12 @@ function renderIzinKeluarSuratHTML(suratData) {
     '<div class="tempat-tanggal">Tarakan, ' + escapeHtml(String(d.tgl_cetak || '').replace(/^[^,]+,\s*/, '')) + '</div>' +
     '<div class="ttd-block">' +
     (qrImg ? '<div class="qr-block">' + qrImg + '<p>Pindai untuk verifikasi online</p></div>' : '<div></div>') +
-    '<div class="elektronik">Dokumen ini dihasilkan secara elektronik oleh sistem SIGAP<br>dan sah tanpa tanda tangan basah.<br>Nomor referensi: ' + escapeHtml(d.nomor_surat) + '<br>Dicetak: ' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</div>' +
+    // Dipangkas dari 4 baris jadi 2 (masukan lapangan: surat ini kecil,
+    // ruang vertikalnya berharga). "Nomor referensi" DIHAPUS di sini —
+    // nomor suratnya sudah tertulis besar di judul atas ("Nomor: IK-..."),
+    // menuliskannya lagi di sini cuma duplikat. Kalimat sah-tanpa-tanda-
+    // tangan dipersingkat tapi maknanya dipertahankan utuh.
+    '<div class="elektronik">Dihasilkan otomatis oleh SIGAP, sah tanpa tanda tangan basah.<br>Dicetak: ' + escapeHtml(d.tgl_cetak) + ', ' + escapeHtml(d.jam_cetak) + '</div>' +
     '</div>' +
     '</body></html>';
 }
