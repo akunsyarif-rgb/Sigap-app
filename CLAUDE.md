@@ -951,6 +951,34 @@ the network at all, so that early release no longer serves a purpose and was
 removed too — the action now stays inside `sigapLock` for its full duration,
 consistent with every other write action in this file.
 
+**Logo kop surat: embedded as base64, not fetched from a URL (audit
+September 2026, follow-up).** The kop surat `<img>` used to point at
+`https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg`
+— a URL that is genuinely public (verified: 200 OK, correct `image/jpeg`
+content-type), but this was still a real gap in the "no network calls" claim
+above: that claim is about `UrlFetchApp` from Apps Script, which was already
+true, but the logo `<img>` is fetched by the **guru's own browser** when the
+surat is previewed/printed, from a domain entirely separate from the one
+serving the rest of SIGAP (unlike the two other `IMG_1966.jpeg` usages in
+`ui-common.js`, LoginScreen and Header, which use a relative same-origin path
+and were never affected by this). Reported symptom: logo blank on the
+preview/print surat specifically on Android. Root cause almost certainly
+isn't reachability (already confirmed reachable) but size: the source file is
+2482×2923px / 301KB, displayed at 60×60px in the kop surat — a large,
+unnecessary fetch on every preview/print, exactly the kind of thing likely to
+stall or fail on a slow mobile connection or a carrier compression proxy
+(same theme as the Android `index.html` caching investigation above). Fixed
+by embedding a resized (max 300×300px) and compressed (JPEG quality 85,
+~18KB) copy of the same `IMG_1966.jpeg` directly as a base64 `data:` URI —
+`IZIN_SURAT_LOGO_DATA_URI` in `Utils.gs` — so `renderIzinKeluarSuratHTML` now
+means it literally: zero network calls of any kind, from Apps Script or from
+the browser, for the entire surat. `tests/izin-keluar-surat.test.js` pins
+this (asserts a `data:image/jpeg;base64,` src and that no `http(s)://` `<img>`
+src or `raw.githubusercontent.com` reference remains). If the source photo is
+ever replaced, regenerate `IZIN_SURAT_LOGO_DATA_URI` the same way (resize to
+~300px on the long edge, JPEG quality ~85, base64-encode) rather than
+reverting to an external URL.
+
 Every free-text field that reaches the slip (`keperluan`, `alasan_khusus`,
 and — defensively — names too) goes through `escapeHtml` (`Utils.gs`) before
 being concatenated into the HTML string in `renderIzinKeluarSuratHTML`

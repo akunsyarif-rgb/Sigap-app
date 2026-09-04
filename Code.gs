@@ -15,7 +15,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-04-surat-tanpa-qr';
+var BACKEND_VERSION = '2026-09-04-logo-surat-base64';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin'];
 
 // ===== doPost =====
@@ -1539,9 +1539,27 @@ function generateIzinKeluarSuratData(ss, izinId, sessionUser) {
 //    Konsekuensinya: renderIzinKeluarSuratHTML sekarang TIDAK PERNAH
 //    memanggil layanan luar apa pun — murni menyusun teks dari data yang
 //    sudah ada.
+// 5. Logo kop surat DIUBAH dari <img src="https://raw.githubusercontent...">
+//    menjadi base64 tertanam langsung di IZIN_SURAT_LOGO_DATA_URI di bawah
+//    (audit September 2026) — poin 4 di atas mengklaim fungsi ini "TIDAK
+//    PERNAH memanggil layanan luar apa pun", tapi klaim itu sebenarnya
+//    salah selama logo masih di-fetch dari raw.githubusercontent.com
+//    (domain LAIN dari yang menghosting SIGAP sendiri, beda dari dua
+//    pemakaian IMG_1966.jpeg lain di ui-common.js yang relatif/satu-origin
+//    dengan app). Laporan lapangan: logo kosong di preview/print pada
+//    Android — root cause paling mungkin BUKAN url-nya tidak publik (sudah
+//    dicek, 200 OK, image/jpeg), tapi ukurannya: file sumber 2482x2923px /
+//    301KB untuk tampilan yang cuma 60x60px di kop surat, gampang lambat
+//    atau gagal di koneksi seluler lambat/proxy kompresi operator (tema
+//    yang sama dengan investigasi cache Android index.html, lihat
+//    CLAUDE.md). Base64 di bawah adalah hasil resize ke maks 300x300px +
+//    kompresi JPEG (~18KB) dari IMG_1966.jpeg yang sama — bukan gambar
+//    baru, cuma versi kecilnya, ditanam langsung supaya BENAR-BENAR tidak
+//    ada fetch jaringan sama sekali saat surat dibuat, sama seperti alasan
+//    QR dihapus di poin 4.
 function renderIzinKeluarSuratHTML(suratData) {
   var d = suratData || {};
-  var logoUrl = 'https://raw.githubusercontent.com/akunsyarif-rgb/sigap-app/main/IMG_1966.jpeg';
+  var logoUrl = IZIN_SURAT_LOGO_DATA_URI;
   var jalurKhusus = d.jalur === IZIN_JALUR_KHUSUS;
   var rencanaKepulangan = d.tujuan === 'Pulang' ? 'Pulang (tidak kembali ke sekolah)' : 'Kembali ke sekolah';
 
