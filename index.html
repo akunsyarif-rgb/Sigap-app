@@ -4,6 +4,21 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
    <title>SIGAP - SMAN 2 Tarakan</title>
+   <!-- index.html sendiri TIDAK ikut skema cache-busting ?v=BUILD_VERSION di
+        bawah -- itu cuma menandai file .js yang di-fetch. Kalau index.html
+        ini sendiri tersimpan lama di cache (HTTP cache browser atau proxy
+        kompresi data operator seluler -- lazim di Android dengan paket data
+        murah, jauh lebih sering daripada di iOS/Safari), permintaan .js di
+        bawah tetap memakai ?v=LAMA yang tertulis di HTML basi itu, sehingga
+        seluruh app membeku di versi lama TANPA batas waktu (termasuk bug
+        yang sudah lama diperbaiki, mis. sesi yang langsung logout lagi
+        setelah login berhasil -- lihat shouldClearSessionForResponse di
+        helpers.js). Header Cache-Control sungguhan diset lewat vercel.json
+        (yang sebenarnya berlaku); tag meta di bawah cuma cadangan best-effort
+        untuk proxy yang mengabaikan header respons. -->
+   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+   <meta http-equiv="Pragma" content="no-cache">
+   <meta http-equiv="Expires" content="0">
    <!-- PWA: manifest + ikon. Registrasi service worker (sw.js) TIDAK di sini —
         dilakukan dari notifikasi.js (pushRegisterServiceWorker), hanya untuk
         pengguna yang benar-benar termasuk kelompok penerima push, supaya

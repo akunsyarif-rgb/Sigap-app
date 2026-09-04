@@ -412,6 +412,35 @@ constant appended as `?v=` to every fetched file. **Bump this on every deploy
 that touches any `.js` file** — otherwise returning users keep serving stale
 cached files indefinitely.
 
+**`index.html` itself was NOT covered by that scheme (audit September 2026)**
+— `?v=BUILD_VERSION` only busts the `.js` files it fetches; `index.html` was
+served with whatever default `Cache-Control` Vercel/the browser chose, no
+explicit header at all. Reported symptom: a subset of users, disproportionately
+on Android, saw an app "stuck" many versions behind — missing even the
+original (pre-print, pre-audit) Izin Keluar BETA feature — and Android users
+were consistently the ones reporting login failures. Root cause: a browser (or,
+plausibly, a carrier data-compression proxy — common on budget Android/prepaid
+data in Indonesia, much less common on iOS/Safari) that caches `index.html`
+itself for a long time never re-fetches it, so it keeps requesting the `.js`
+files at the **old** `?v=N` baked into that stale HTML — which the browser
+then also happily serves from its own cache, since it's an exact URL match. The
+app was frozen at whatever version that copy of `index.html` was fetched at,
+with no way to un-stick itself client-side. This explains both symptoms with
+one cause: a stale-enough copy predates features, **and** still carries
+whatever login/session bugs existed at that point — e.g. the
+`shouldClearSessionForResponse` token-scoping fix and the three-key→one-key
+session write fix documented above, both of which specifically manifested as
+login trouble. Fixed with `vercel.json` (`Cache-Control: no-cache, no-store,
+must-revalidate` on `/` and `/index.html`, forcing every load to hit the
+network) plus matching `<meta http-equiv="Cache-Control">`/`Pragma`/`Expires`
+tags in `index.html` as a best-effort fallback for a proxy that ignores
+response headers. `.js` files are untouched by this — they keep their existing
+`?v=` caching, which only works correctly once `index.html` itself is fresh.
+`tests/push-frontend.test.js` pins both the meta tag and `vercel.json`'s
+headers. If a report like this recurs, this is now covered — check whether the
+affected device is actually pulling a current `index.html` (view source, check
+`BUILD_VERSION` and the file list) before assuming a different cause.
+
 **CDN dependencies** are pinned to major-version tags, not floating `latest`,
 and use production (not development) builds:
 `react@18`/`react-dom@18` → `production.min.js`, `@babel/standalone@7`. Keep
