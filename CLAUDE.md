@@ -441,6 +441,36 @@ headers. If a report like this recurs, this is now covered — check whether the
 affected device is actually pulling a current `index.html` (view source, check
 `BUILD_VERSION` and the file list) before assuming a different cause.
 
+**Remaining gap the header fix alone can't close: a session left open for
+hours.** The no-cache header only gets checked on a fresh *navigation*
+(refresh, or reopening after the app was actually closed) — a teacher who
+opens SIGAP and simply leaves the tab/PWA running in the foreground/background
+never triggers another navigation, so nothing makes that already-loaded page
+re-check anything. `App()` in `app.js` closes this with a lightweight active
+poll: every 5 minutes (skipped while `document.visibilityState === 'hidden'`,
+so a backgrounded tab doesn't burn requests for nothing), it re-fetches
+`index.html?_check=<timestamp>` with `cache: 'no-store'` — both the query
+buster and the fetch option, same defense-in-depth reasoning as the carrier-
+proxy note above — reads its `BUILD_VERSION` via `extractBuildVersionFromHtml`
+(`helpers.js`, a pure regex match so it's testable without a DOM), and
+compares it to `window.SIGAP_BUILD_VERSION` (set once, at the top of
+`index.html`'s loader, from the same `BUILD_VERSION` that's already used for
+the `?v=` cache-busting). Strictly-greater, not merely different — a stale
+open tab should never be told to refresh into an *older* build. A mismatch
+shows a small dismiss-free banner ("Ada pembaruan SIGAP...") with a Refresh
+button that just calls `window.location.reload()` — no auto-reload, a guru
+mid-entry should never lose unsaved form state without choosing to. This is
+in-app JS, so — same chicken-and-egg constraint as any client-side fix — it
+can only help a session that already has this code; it doesn't retroactively
+reach a device that's *never* gotten past the pre-fix `index.html`, which
+still needs the one-time manual refresh/clear-cache described above.
+`tests/push-frontend.test.js` covers the pure `extractBuildVersionFromHtml`
+function directly and statically pins the polling wiring in `app.js`
+(visibility skip, `no-store`, the strictly-greater comparison, the reload
+button) — `App()` itself isn't rendered in any test (needs full session/data
+state, see `render-smoke.test.js`'s own note on this), so this is deliberately
+a static check, not a rendered one.
+
 **CDN dependencies** are pinned to major-version tags, not floating `latest`,
 and use production (not development) builds:
 `react@18`/`react-dom@18` → `production.min.js`, `@babel/standalone@7`. Keep
