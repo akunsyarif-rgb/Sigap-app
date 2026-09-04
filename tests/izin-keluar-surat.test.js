@@ -18,8 +18,11 @@
 // didiagnosis cepat dari jarak jauh — lihat catatan di
 // renderIzinKeluarSuratHTML, Code.gs) — jadi tidak ada lagi test untuk itu
 // di sini, dan sandbox di bawah TIDAK PERLU LAGI menyediakan stub
-// UrlFetchApp/ScriptApp: renderIzinKeluarSuratHTML sekarang murni menyusun
-// teks dari data yang sudah ada, tidak pernah memanggil jaringan luar.
+// UrlFetchApp/ScriptApp: renderIzinKeluarSuratHTML tidak pernah memanggil
+// UrlFetchApp dari Apps Script. Logo kop surat (audit lanjutan, September
+// 2026) juga sudah tidak lagi bergantung pada CLIENT (browser guru) yang
+// mem-fetch gambar dari raw.githubusercontent.com — sekarang base64
+// tertanam langsung di HTML yang dikembalikan, lihat test khusus di bawah.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -429,4 +432,27 @@ test('QR/verifikasi publik sudah dihapus total -- tidak ada JEJAK HIDUP generate
   assert.doesNotMatch(kode, /function generateVerificationURL/);
   assert.doesNotMatch(kode, /action === 'verifyIzinSurat'/);
   assert.doesNotMatch(kode, /api\.qrserver\.com/);
+});
+
+// ============================================================
+// Logo kop surat: tertanam base64, BUKAN di-fetch dari URL luar
+// ============================================================
+//
+// Laporan lapangan (September 2026): logo kosong di preview/print pada
+// Android. Sebelumnya <img src="https://raw.githubusercontent.com/...">
+// -- URL itu memang publik (dicek manual, 200 OK), tapi sumbernya
+// 2482x2923px/301KB untuk tampilan 60x60px, rawan lambat/gagal di koneksi
+// seluler lambat atau proxy kompresi operator (sama seperti investigasi
+// cache Android index.html). Diganti jadi base64 tertanam supaya BENAR-
+// BENAR tidak ada fetch jaringan sama sekali untuk logo, konsisten dengan
+// alasan QR dihapus (test di atas).
+test('Logo kop surat: tertanam sebagai data URI, tidak ada lagi fetch ke raw.githubusercontent.com', () => {
+  const s = loadServer();
+  const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'pulang', keperluan: 'Ambil obat' });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
+  assert.equal(cetak.status, 'success');
+  assert.match(cetak.data.htmlContent, /<img src="data:image\/jpeg;base64,/, 'logo harus embedded base64, bukan URL eksternal');
+  assert.doesNotMatch(cetak.data.htmlContent, /raw\.githubusercontent\.com/, 'tidak boleh ada lagi fetch gambar dari domain luar');
+  assert.doesNotMatch(cetak.data.htmlContent, /<img src="https?:\/\//, 'kop surat tidak boleh punya <img> dengan src http(s) apa pun');
 });

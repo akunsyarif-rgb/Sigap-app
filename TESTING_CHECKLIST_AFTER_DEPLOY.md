@@ -41,10 +41,14 @@ kartu/kotak app), dengan Disetujui/Diverifikasi/Status dikelompokkan dalam
 satu kotak info. Cek SEMUA berikut tampil dan **datanya benar** (cocok
 dengan transaksi di langkah 1):
 
-- [ ] Logo SMAN 2 Tarakan tampil di header (kalau tidak tampil/rusak,
-      bukan blocker — ada fallback `onerror` yang menyembunyikannya, tapi
-      tetap cek: kemungkinan `IMG_1966.jpeg` tidak accessible publik dari
-      `raw.githubusercontent.com`).
+- [ ] Logo SMAN 2 Tarakan tampil di header. Sejak audit September 2026
+      (`IZIN_SURAT_LOGO_DATA_URI` di Utils.gs) logo ini base64 tertanam,
+      BUKAN lagi di-fetch dari `raw.githubusercontent.com` — jadi seharusnya
+      SELALU tampil, di jaringan apa pun, termasuk Android/koneksi lambat
+      (root cause laporan lapangan sebelumnya: file sumber 2482x2923px/
+      301KB untuk tampilan 60x60px, bukan URL-nya tidak publik). Kalau masih
+      kosong setelah deploy ini, itu sekarang benar-benar bug baru, bukan
+      masalah jaringan lama — cek `CLAUDE.md` bagian "Logo kop surat".
 - [ ] Nama sekolah + "Sistem Informasi Gerbang & Absensi Pelanggaran
       (SIGAP)" di bawah logo.
 - [ ] Judul "SURAT IZIN KELUAR" + "Nomor: IK-YYYYMMDD-NNN" (tanggal hari
