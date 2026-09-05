@@ -132,6 +132,14 @@
                return list.filter(item => item.nisn === nisn && parseTimestamp(item.timestamp).getMonth() === now.getMonth() && parseTimestamp(item.timestamp).getFullYear() === now.getFullYear()).length;
            };
 
+           // Peringatan riwayat Surat -- MURNI informatif (lihat RIWAYAT_WARNING_THRESHOLD
+           // di config.js, satu-satunya tempat ambangnya diatur). Dihitung dari
+           // suratList yang sama dengan yang sudah dikirim ke layar ini (sudah
+           // dibatasi RBAC oleh server -- scopeDailyRecordsForUser di Utils.gs),
+           // bukan panggilan server baru: sama persis dengan cara "Surat/bln" di
+           // bottom sheet ringkasan di bawah sudah dihitung.
+           const suratHistoryCount = suratStudent ? suratList.filter(s => s.nisn === suratStudent.nisn).length : 0;
+
            // Pilih siswa -> buka satu bottom sheet ringkasan (bukan langsung
            // masuk mode tertentu) — di situ guru baru memilih mau "Catat
            // Terlambat" atau "Catat Surat", dan kalau salah satunya sudah
@@ -369,6 +377,19 @@
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{suratStudent.name}</div>
                                    <div className="text-xs text-slate-500">{suratStudent.class}</div>
                                </div>
+
+                               {/* Peringatan riwayat -- kotak & ikon yang sama persis dengan
+                                   peringatan "Sudah Nx tercatat sebelumnya" di PelanggaranTab,
+                                   supaya bahasanya konsisten, bukan komponen baru. Non-blocking:
+                                   tombol Simpan di bawah tidak ikut dipengaruhi oleh ini. */}
+                               {suratHistoryCount >= RIWAYAT_WARNING_THRESHOLD && (
+                                   <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl p-3">
+                                       <div className="flex items-center gap-1.5 text-[10px] text-sky-dim font-bold uppercase tracking-wide">
+                                           <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
+                                           <span>Sudah {suratHistoryCount}x tercatat sebelumnya</span>
+                                       </div>
+                                   </div>
+                               )}
 
                                <div className="grid grid-cols-3 gap-2">
                                    {['Sakit', 'Izin', 'Lainnya'].map(j => (

@@ -20,6 +20,18 @@
        // kunci privat yang baru.
        const VAPID_PUBLIC_KEY = "BBGeLh0xTBdRYq3HIESmYtY6Lps8hix9eG0FurryAQL1TZySOMPxTGI443PQIoDNFOdf-xvZQiiBqWivX7wppb8";
 
+       // Ambang tampilnya peringatan riwayat (Surat/Pelanggaran) di layar catat —
+       // SATU-SATUNYA tempat angka ini didefinisikan, supaya mengubahnya nanti
+       // tidak perlu mencari "3" tersebar di banyak file. Dipakai oleh
+       // PelanggaranTab (pelanggaran-bimbingan-upacara.js) dan GerbangTab mode
+       // Surat (gerbang.js). Murni informatif -- lihat catatan di kedua tempat
+       // itu: TIDAK PERNAH memblokir input, mengubah status siswa, RBAC, atau
+       // alur persetujuan. Sengaja TIDAK dipakai untuk peringatan "sudah Nx
+       // terlambat" di RecordModal (gerbang.js) -- itu fitur lama yang berbeda,
+       // sudah punya angka tetap sendiri dan dipin oleh test terpisah
+       // (rbac-riwayat-pelanggaran.test.js), tidak disentuh oleh perubahan ini.
+       const RIWAYAT_WARNING_THRESHOLD = 3;
+
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
        // - bk_kesiswaan: sama seperti guru + Bimbingan Khusus + Pelanggaran Upacara (guru BK & tim kesiswaan)

@@ -615,7 +615,13 @@
                <div className="space-y-4 animate-rise">
                    <p className="text-[11px] text-slate-500 text-center">Bulan ini: <span className="font-semibold text-slate-600">{monthLateCount} terlambat</span> • <span className="font-semibold text-slate-600">{monthPelanggaranCount} pelanggaran</span> • <span className="font-semibold text-slate-600">{monthSuratCount} surat</span> • <span className="font-semibold text-slate-600">{monthIzinCount} izin keluar</span></p>
 
-                   <div className="grid grid-cols-4 gap-1.5 bg-white border border-slate-200 rounded-2xl p-1.5">
+                   {/* grid-cols-2 (2x2), bukan 1 baris 4 kolom -- persis alasan yang
+                       sama dengan SummaryCard 2x2 di DashboardTab (lihat komentarnya):
+                       di layar 360-375px, kolom 4-in-a-row untuk label sekata seperti
+                       "Pelanggaran"/"Izin Keluar" nyaris tidak muat dan berisiko
+                       terpotong. DashboardTab sudah diperbaiki lebih dulu untuk 4
+                       label yang sama persis; switcher ini menyusul pola yang sama. */}
+                   <div className="grid grid-cols-2 gap-1.5 bg-white border border-slate-200 rounded-2xl p-1.5">
                        {categories.map(c => (
                            <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 px-1 rounded-xl text-[11px] font-bold transition leading-tight ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
                        ))}

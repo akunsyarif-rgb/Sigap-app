@@ -139,8 +139,14 @@
                                    </div>
                                </div>
 
+                               {/* Peringatan riwayat -- MURNI informatif, tidak pernah memblokir
+                                   Simpan (lihat tombol di bawah, disabled-nya cuma bergantung
+                                   jenis/sanksi) atau mengubah apa pun yang tersimpan. Ambang
+                                   ditentukan SATU tempat (RIWAYAT_WARNING_THRESHOLD, config.js) --
+                                   0..threshold-1 catatan sebelumnya = tidak tampil sama sekali,
+                                   bukan cuma disembunyikan lewat CSS. */}
                                {canSeeClassDetail ? (
-                                   studentHistory.length > 0 && (
+                                   studentHistory.length >= RIWAYAT_WARNING_THRESHOLD && (
                                        <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3 space-y-1.5">
                                            <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
                                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
@@ -155,7 +161,7 @@
                                ) : (
                                    // Cuma angka total (termasuk dicatat guru lain), tanpa detail
                                    // isinya — lihat getPelanggaranCountForStudent di Code.gs.
-                                   otherTotalCount > 0 && (
+                                   otherTotalCount >= RIWAYAT_WARNING_THRESHOLD && (
                                        <div className="bg-crimson/10 border border-crimson/40 rounded-2xl p-3">
                                            <div className="flex items-center gap-1.5 text-[10px] text-crimson font-bold uppercase tracking-wide">
                                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />} className="h-3 w-3 flex-shrink-0" />
