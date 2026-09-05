@@ -25,15 +25,19 @@
                surat: 'bg-sky-dim/10 text-sky-dim border-sky-dim/20',
            };
            const labelMap = { terlambat: 'Terlambat', pelanggaran: 'Pelanggaran', surat: 'Surat' };
+           // Pemisah "•" (sama seperti kelas/detail di baris bawahnya) dipakai
+           // konsisten di sini juga -- audit desain: sebelumnya jenis/sanksi dan
+           // jenis/keterangan dipisah tanda hubung panjang " — ", satu-satunya
+           // tempat di kartu ini yang beda gaya dari pemisah "•" yang sudah dipakai.
            const detailMap = {
                terlambat: item.type,
-               pelanggaran: `${item.jenis_pelanggaran} — ${item.sanksi}`,
+               pelanggaran: `${item.jenis_pelanggaran} • ${item.sanksi}`,
                // Keterangan surat ikut ditampilkan: untuk jenis "Lainnya",
                // keterangan itulah satu-satunya isi sebenarnya — tanpa ini
                // kartu cuma menampilkan label preset sementara Sheet menyimpan
                // penjelasan yang diketik guru. (Daftar Surat di Beranda sudah
                // menampilkannya, kartu gabungan ini yang belum.)
-               surat: item.keterangan ? `${item.jenis} — ${item.keterangan}` : item.jenis,
+               surat: item.keterangan ? `${item.jenis} • ${item.keterangan}` : item.jenis,
            };
            return (
                <RowCard className="space-y-1 shadow-sm">

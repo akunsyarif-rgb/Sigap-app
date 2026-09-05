@@ -143,21 +143,16 @@
            );
        }
 
-       // icon (path SVG, opsional) ditambahkan berdampingan dengan emoji -- BUKAN
-       // pengganti -- supaya 11 pemanggil lama tetap jalan tanpa migrasi serentak
-       // (audit desain Fase 3: migrasi call site dilakukan bertahap/terpisah).
-       // Kirim salah satu: `icon` untuk line-art duotone navy/paper baru, atau
-       // `emoji` seperti sebelumnya kalau belum sempat dimigrasi.
-       function EmptyState({ emoji, icon, text }) {
+       // Migrasi emoji -> line-art duotone navy/paper (audit desain Fase 3)
+       // sudah selesai di semua pemanggil -- tidak ada lagi yang mengirim
+       // `emoji`, jadi jalur itu dihapus daripada dibiarkan sebagai cabang
+       // mati yang tidak pernah dipakai.
+       function EmptyState({ icon, text }) {
            return (
                <div className="text-center py-16 bg-white/50 rounded-2xl border border-dashed border-slate-200">
-                   {icon ? (
-                       <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-navy/5 border border-navy/10 flex items-center justify-center">
-                           <Icon path={icon} className="h-7 w-7 text-navy/40" />
-                       </div>
-                   ) : (
-                       <div className="text-4xl mb-2">{emoji}</div>
-                   )}
+                   <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-navy/5 border border-navy/10 flex items-center justify-center">
+                       <Icon path={icon} className="h-7 w-7 text-navy/40" />
+                   </div>
                    <div className="text-slate-500 text-xs font-medium px-6">{text}</div>
                </div>
            );
