@@ -49,7 +49,7 @@ dengan transaksi di langkah 1):
       301KB untuk tampilan 60x60px, bukan URL-nya tidak publik). Kalau masih
       kosong setelah deploy ini, itu sekarang benar-benar bug baru, bukan
       masalah jaringan lama — cek `CLAUDE.md` bagian "Logo kop surat".
-- [ ] Nama sekolah + "Sistem Informasi Gerbang & Absensi Pelanggaran
+- [ ] Nama sekolah + "Sistem Informasi Gerbang, Absensi, dan Pelanggaran
       (SIGAP)" di bawah logo.
 - [ ] Judul "SURAT IZIN KELUAR" + "Nomor: IK-YYYYMMDD-NNN" (tanggal hari
       ini, urutan dimulai dari 001 kalau ini surat pertama hari ini).

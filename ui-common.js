@@ -254,7 +254,7 @@
                            </div>
                            <h1 className="font-display text-3xl font-extrabold text-navy tracking-tight">SIGAP</h1>
                            <p className="text-[11px] text-slate-500 mt-2 font-semibold max-w-[280px] mx-auto leading-snug uppercase tracking-wide">
-                               Sistem Informasi Gerbang &amp; Absensi Pelanggaran
+                               Sistem Informasi Gerbang, Absensi, dan Pelanggaran
                            </p>
                            <p className="text-[10px] text-slate-500 mt-1">SMAN 2 Tarakan</p>
                        </div>
