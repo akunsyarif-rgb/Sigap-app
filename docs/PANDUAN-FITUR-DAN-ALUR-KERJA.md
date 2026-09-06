@@ -103,12 +103,12 @@ Statusnya **BETA** karena masih tahap uji coba dan perangkat pencetakan slip bel
 
 Persetujuan guru **saja belum membuat siswa boleh keluar** — jam keluar baru dicatat saat guru piket memverifikasi.
 
-**Konteks persetujuan: Wali Kelas atau Guru Mapel.** Setelah memilih siswa, layar menunjukkan satu dari dua kartu singkat:
+**Konteks persetujuan: Wali Kelas atau Guru Mapel.** Setelah memilih siswa dari pencarian, formulirnya langsung terbuka dengan judul dan kalimat pembuka yang menyesuaikan:
 
-- Kalau siswa itu **kelas perwalian Anda** → *"Anda adalah wali kelas siswa ini."* + tombol **Berikan Persetujuan**.
-- Kalau **bukan** → *"Siswa ini bukan kelas perwalian Anda."* + tombol **Berikan Izin sebagai Guru Mapel**.
+- Kalau siswa itu **kelas perwalian Anda** → judul *"Persetujuan sebagai Wali Kelas"* + kalimat *"Anda adalah wali kelas siswa ini."*
+- Kalau **bukan** → judul *"Persetujuan sebagai Guru Mapel"* + kalimat *"Siswa ini bukan kelas perwalian Anda."*
 
-Menekan salah satu tombol membuka **formulir yang sama persis** (keperluan, tujuan, dst.) — bedanya cuma judul dan kalimat pembukanya. Ini bukan formulir "mengaku jadwal mengajar": SIGAP **tidak menyimpan jadwal mengajar guru per jam**, dan data itu memang sengaja tidak ditambahkan — jadwal sebenarnya di sekolah bisa berubah sewaktu-waktu, jadi aplikasi tidak akan pernah bisa memastikan siapa yang "seharusnya" mengajar di jam itu. "Guru Mapel" di sini murni **label konteks** (dihitung otomatis dari kelas perwalian Anda vs kelas siswa yang dipilih), bukan klaim yang diperiksa — dan tidak menambah atau mengurangi kewenangan apa pun: guru mana pun tetap boleh menyetujui siswa kelas mana pun, seperti sebelumnya. Yang benar-benar dicatat aplikasi tetap sama: **siapa yang memberikan persetujuan** (diambil dari akun yang sedang login, bukan diketik) dan **kapan** — layarnya menegaskan ini apa adanya: *"Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini."*
+Keduanya adalah **formulir yang sama persis** (keperluan, tujuan, dst.) — bedanya cuma judul dan kalimat pembukanya, tanpa langkah/tombol perantara di antaranya (audit UX September 2026 menghapus kartu konfirmasi terpisah yang dulu ada di sini, supaya alurnya sama ringkasnya dengan Izin Kelompok). Ini bukan formulir "mengaku jadwal mengajar": SIGAP **tidak menyimpan jadwal mengajar guru per jam**, dan data itu memang sengaja tidak ditambahkan — jadwal sebenarnya di sekolah bisa berubah sewaktu-waktu, jadi aplikasi tidak akan pernah bisa memastikan siapa yang "seharusnya" mengajar di jam itu. "Guru Mapel" di sini murni **label konteks** (dihitung otomatis dari kelas perwalian Anda vs kelas siswa yang dipilih), bukan klaim yang diperiksa — dan tidak menambah atau mengurangi kewenangan apa pun: guru mana pun tetap boleh menyetujui siswa kelas mana pun, seperti sebelumnya. Yang benar-benar dicatat aplikasi tetap sama: **siapa yang memberikan persetujuan** (diambil dari akun yang sedang login, bukan diketik) dan **kapan** — layarnya menegaskan ini apa adanya: *"Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini."*
 
 **Dua pilihan tujuan saat izin dibuat:**
 
@@ -270,7 +270,7 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 
 1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar · BETA**.
 2. Cari dan pilih siswanya. (Kalau siswa itu masih punya izin yang berjalan, namanya tidak bisa dipilih lagi.)
-3. Layar menunjukkan konteksnya: kalau ini kelas perwalian Anda, tekan **Berikan Persetujuan**; kalau bukan, tekan **Berikan Izin sebagai Guru Mapel**. Keduanya membuka formulir yang sama.
+3. Formulirnya langsung terbuka dengan judul yang menyesuaikan konteks: *"Persetujuan sebagai Wali Kelas"* kalau ini kelas perwalian Anda, atau *"Persetujuan sebagai Guru Mapel"* kalau bukan — isinya tetap formulir yang sama.
 4. Isi **keperluan**, lalu pilih tujuan: **Kembali ke sekolah** atau **Pulang / tidak kembali**.
 5. Tekan **Setujui Izin**. Anda tercatat sebagai pihak yang memberikan persetujuan; statusnya jadi *Menunggu Verifikasi* — siswa **belum boleh keluar**.
 6. **Guru piket** membuka layar yang sama, melihat izin itu di daftar *Menunggu Verifikasi*, lalu menekan **Verifikasi & Siswa Keluar**.

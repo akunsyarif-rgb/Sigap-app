@@ -717,14 +717,33 @@ Who may do what — **all of it re-checked server-side in `canVerifyIzin()`**
   schedule sheet/mapping/endpoint, don't add a role, and don't trust a role
   claim sent by the client — an unverifiable claim only buys false confidence.
 
-  The UI *does* show two different framings — "Anda adalah wali kelas siswa
-  ini" + **Berikan Persetujuan**, vs "Siswa ini bukan kelas perwalian Anda" +
-  **Berikan Izin sebagai Guru Mapel** — but this is a **context label, not a
+  The UI *does* show two different framings — the approval form's title reads
+  "Persetujuan sebagai Wali Kelas" vs "Persetujuan sebagai Guru Mapel", with a
+  matching opening sentence ("Anda adalah wali kelas siswa ini." / "Siswa ini
+  bukan kelas perwalian Anda.") — but this is a **context label, not a
   role claim**: which one shows is computed from data already on screen
   (`user.waliKelas` vs the picked student's class, via the same `sameClass()`
   used everywhere else), both lead to the *identical* approval form
   ("Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini."),
-  and neither branch changes what the server will accept. The server
+  and neither branch changes what the server will accept.
+
+  **UX audit (September 2026): the two-step confirmation card was merged into
+  the form itself.** Picking a student used to open an intermediate
+  confirmation card — just the context sentence plus a "Berikan
+  Persetujuan"/"Berikan Izin sebagai Guru Mapel" button — before the actual
+  form (Keperluan/Tujuan/Jalur Persetujuan) opened as a *second*, separate
+  modal. Reported as confusing: that intermediate card looked like a complete
+  screen on its own, so anyone who didn't tap through to the second modal
+  never saw Jalur Persetujuan at all — read as "Izin Khusus is missing from
+  the individual flow," when Izin Kelompok (which was always a single flat
+  form, no intermediate card) made the same option visible immediately. Search
+  results now set `formStudent` directly — there is no more intermediate
+  `pickedStudent` state — and the context sentence is folded into the form's
+  existing "Anda akan tercatat sebagai pihak..." paragraph. Same information,
+  same authorization, one screen instead of two. `tests/izin-keluar-frontend.test.js`
+  pins this: no "Berikan Persetujuan"/"Berikan Izin sebagai Guru Mapel" text
+  survives anywhere, and the context sentence renders in the same tree as the
+  Keperluan/Tujuan/Jalur Persetujuan fields. The server
   **independently recomputes** the same label itself — `izinKonteksPersetujuan()`
   in `Utils.gs`, from `sessionUser.waliKelas` + the NISN's class resolved from
   `Master_Siswa` — for the Audit Log line only (`konteks=Wali Kelas` /

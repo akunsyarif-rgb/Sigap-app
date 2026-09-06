@@ -202,16 +202,16 @@ const cases = [
   ['GerbangTab (mode surat, picker: belum dicatat)', { students: [student], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {}, isAdminUser: true, waliKelasMap }, 'GerbangTab', ['surat', undefined, student]],
   ['GerbangTab (mode surat, picker: sudah dicatat)', { students: [student], allLogs: [logEntry], pelanggaranList: [pelanggaranEntry], onSelectLate: () => {}, suratList: [suratEntry], onAddSurat: () => {}, isAdminUser: true, waliKelasMap }, 'GerbangTab', ['surat', undefined, student]],
   // ---- Izin Keluar / Pulang (BETA) ----
-  // Urutan useState IzinKeluarPanel: searchQuery, pickedStudent, formStudent,
-  // keperluan, tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId.
+  // Urutan useState IzinKeluarPanel: searchQuery, formStudent, keperluan,
+  // tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId. (UX audit
+  // September 2026: kartu konteks terpisah sebelum form -- pickedStudent --
+  // digabung ke formStudent, lihat catatan di gerbang.js.)
   ['IzinKeluarPanel (petugas berwenang)', { students: [student], izinList: izinSemua, canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel'],
   ['IzinKeluarPanel (guru biasa, tanpa tombol proses)', { students: [student], izinList: izinSemua, canVerify: false, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel'],
   ['IzinKeluarPanel (daftar kosong / prop belum datang)', { students: [student], izinList: undefined, canVerify: true, waliKelasMap: undefined, ...izinHandlers }, 'IzinKeluarPanel'],
   ['IzinKeluarPanel (hasil pencarian terbuka, siswa masih punya izin berjalan)', { students: [student], izinList: izinSemua, canVerify: true, waliKelasMap, ...izinHandlers }, 'IzinKeluarPanel', ['Rah']],
-  ['IzinKeluarPanel (kartu konteks: wali kelas)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
-  ['IzinKeluarPanel (kartu konteks: guru mapel)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI A', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
-  ['IzinKeluarPanel (form izin terbuka, konteks wali kelas)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel', [undefined, undefined, student]],
-  ['IzinKeluarPanel (form izin khusus terbuka, konteks guru mapel)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI A', ...izinHandlers }, 'IzinKeluarPanel', [undefined, undefined, student, 'sakit', 'pulang', true, 'Guru yang menangani siswa tidak di sekolah']],
+  ['IzinKeluarPanel (form izin terbuka, konteks wali kelas)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI B', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student]],
+  ['IzinKeluarPanel (form izin khusus terbuka, konteks guru mapel)', { students: [student], izinList: [], canVerify: true, waliKelasMap, myWaliKelas: 'XI A', ...izinHandlers }, 'IzinKeluarPanel', [undefined, student, 'sakit', 'pulang', true, 'Guru yang menangani siswa tidak di sekolah']],
   ['KartuIzinKeluar (menunggu verifikasi)', { izin: izinMenunggu, children: null }, 'KartuIzinKeluar'],
   ['KartuIzinKeluar (izin khusus, sudah pulang)', { izin: izinKhusus, children: null }, 'KartuIzinKeluar'],
   ['KartuIzinKeluar (sudah kembali)', { izin: izinKembali, children: null }, 'KartuIzinKeluar'],

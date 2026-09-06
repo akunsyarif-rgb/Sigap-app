@@ -16,8 +16,8 @@ lapangan, lihat `CLAUDE.md` bagian "Cetak Surat Izin Keluar" untuk alasannya.
 ## 1. Siapkan satu transaksi yang bisa dicetak
 
 - [ ] Buat izin keluar baru untuk satu siswa uji coba (Gerbang → Izin
-      Keluar → cari siswa → Berikan Persetujuan/Izin → isi keperluan →
-      Setujui Izin).
+      Keluar → cari & pilih siswa → formulir langsung terbuka → isi
+      keperluan → Setujui Izin).
 - [ ] Verifikasi izin itu (sebagai guru piket) → status jadi "Sedang di
       Luar" (kalau tujuannya "kembali") atau "Pulang" (kalau "pulang").
 - [ ] Catat NAMA siswa uji coba ini — dipakai untuk cocokkan isi surat di

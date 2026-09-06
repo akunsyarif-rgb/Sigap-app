@@ -482,13 +482,15 @@
 
        function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, waliKelasMap, myWaliKelas, onGenerateSurat }) {
            const [searchQuery, setSearchQuery] = useState('');
-           // Siswa yang baru dipilih dari pencarian, SEBELUM konteks persetujuan
-           // dikonfirmasi — kartu kecil "Anda wali kelas siswa ini" / "Siswa ini
-           // bukan kelas perwalian Anda" tampil dulu di sini, baru setelah
-           // dikonfirmasi pindah ke formStudent (form lengkap). Dipisah dari
-           // formStudent supaya "Batal" di kartu konteks tidak perlu membersihkan
-           // isian form yang belum sempat ada.
-           const [pickedStudent, setPickedStudent] = useState(null);
+           // UX audit (September 2026): dulu ada kartu konteks terpisah
+           // ("Anda wali kelas siswa ini."/"Siswa ini bukan kelas perwalian
+           // Anda." + satu tombol) yang tampil SEBELUM form lengkap terbuka —
+           // digabung jadi satu modal (lihat formStudent di bawah) karena
+           // kartu perantara itu terlihat seperti layar yang sudah lengkap,
+           // membuat Jalur Persetujuan (yang baru ada di form kedua) terkesan
+           // hilang padahal cuma belum sempat dibuka. Memilih siswa dari
+           // pencarian sekarang langsung membuka form lengkap, kalimat
+           // konteksnya digabung ke paragraf yang sudah ada di form itu.
            const [formStudent, setFormStudent] = useState(null);
            const [keperluan, setKeperluan] = useState('');
            const [tujuan, setTujuan] = useState('kembali');
@@ -546,7 +548,7 @@
            // pernah mempercayai apa pun dari klien (lihat addIzinKeluar, Code.gs).
            const konteksUntuk = (s) => (myWaliKelas && s && sameClass(s.class, myWaliKelas)) ? 'wali_kelas' : 'guru_mapel';
 
-           const resetForm = () => { setPickedStudent(null); setFormStudent(null); setKeperluan(''); setTujuan('kembali'); setJalurKhusus(false); setAlasanKhusus(''); };
+           const resetForm = () => { setFormStudent(null); setKeperluan(''); setTujuan('kembali'); setJalurKhusus(false); setAlasanKhusus(''); };
 
            const submitIzin = () => {
                if (saving) return;
@@ -662,7 +664,7 @@
                                {filtered.length > 0 ? filtered.map((s, i) => {
                                    const terbuka = izinTerbukaByNisn[String(s.nisn)];
                                    return (
-                                       <div key={`${s.nisn}-${i}`} onClick={() => { if (!terbuka) { setSearchQuery(''); setPickedStudent(s); } }} className={`px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between transition ${terbuka ? 'opacity-60' : 'hover:bg-slate-100 active:bg-slate-200 cursor-pointer'}`}>
+                                       <div key={`${s.nisn}-${i}`} onClick={() => { if (!terbuka) { setSearchQuery(''); setFormStudent(s); } }} className={`px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between transition ${terbuka ? 'opacity-60' : 'hover:bg-slate-100 active:bg-slate-200 cursor-pointer'}`}>
                                            <div className="min-w-0">
                                                <div className="font-bold text-sm text-slate-900">{s.name}</div>
                                                <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| {waliByClass[normalizeClass(s.class)] || 'Belum ada wali kelas'}</span></div>
@@ -735,36 +737,14 @@
                        </div>
                    )}
 
-                   {/* Kartu konteks — tampil dulu setelah siswa dipilih, SEBELUM
-                       form. Ini bukan formulir klaim role: cuma menentukan label
-                       mana yang dipakai ("Wali Kelas" vs "Guru Mapel"), dihitung
-                       dari kelas perwalian pengguna vs kelas siswa yang dipilih —
-                       tanpa jadwal mengajar apa pun. Menekan tombolnya cuma
-                       membuka form yang sama seperti sebelumnya, dengan judul
-                       yang menyesuaikan konteksnya. */}
-                   {pickedStudent && (() => {
-                       const konteks = konteksUntuk(pickedStudent);
-                       return (
-                           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                               <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
-                                   <div className="text-center">
-                                       <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
-                                       <div className="font-display text-xl font-extrabold text-slate-900">{pickedStudent.name}</div>
-                                       <div className="text-xs text-slate-500 font-medium mt-1">{pickedStudent.class}</div>
-                                   </div>
-                                   <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
-                                       {konteks === 'wali_kelas' ? 'Anda adalah wali kelas siswa ini.' : 'Siswa ini bukan kelas perwalian Anda.'}
-                                   </p>
-                                   <Button onClick={() => { setFormStudent(pickedStudent); setPickedStudent(null); }} className="w-full">
-                                       {konteks === 'wali_kelas' ? 'Berikan Persetujuan' : 'Berikan Izin sebagai Guru Mapel'}
-                                   </Button>
-                                   <Button onClick={() => setPickedStudent(null)} variant="secondary" className="w-full">Batal</Button>
-                               </div>
-                           </div>
-                       );
-                   })()}
-
-                   {/* Form pembuatan izin — dibuka setelah konteks dikonfirmasi. */}
+                   {/* Form pembuatan izin — dibuka LANGSUNG saat siswa dipilih dari
+                       pencarian (UX audit September 2026: dulu ada kartu konteks
+                       terpisah sebelum ini, lihat catatan di deklarasi formStudent
+                       di atas). Judul & kalimat pembuka menyesuaikan konteks
+                       (Wali Kelas vs Guru Mapel) — murni label tampilan, dihitung
+                       dari kelas perwalian pengguna vs kelas siswa yang dipilih,
+                       tanpa jadwal mengajar apa pun; server menghitung ulang
+                       sendiri, tidak pernah mempercayai apa pun dari klien. */}
                    {formStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
@@ -780,9 +760,12 @@
                                {/* "Guru Mapel" di sini adalah KONTEKS TINDAKAN, bukan
                                    klaim jadwal mengajar — SIGAP tidak punya data jadwal
                                    per jam dan tidak memverifikasinya. Identitas yang
-                                   tercatat tetap dari sesi, sama seperti jalur Wali Kelas. */}
+                                   tercatat tetap dari sesi, sama seperti jalur Wali Kelas.
+                                   Kalimat pertama di sini dulu tampil sendirian di kartu
+                                   konteks terpisah (lihat catatan formStudent) — sekarang
+                                   digabung ke paragraf yang sama dengan kalimat kedua. */}
                                <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">
-                                   Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini.
+                                   {konteksUntuk(formStudent) === 'wali_kelas' ? 'Anda adalah wali kelas siswa ini.' : 'Siswa ini bukan kelas perwalian Anda.'} Anda akan tercatat sebagai pihak yang memberikan persetujuan izin ini.
                                </p>
 
                                <div>

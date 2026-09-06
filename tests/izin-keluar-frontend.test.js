@@ -280,11 +280,13 @@ test('layar persetujuan: mencatat pemberi persetujuan, tanpa klaim peran', () =>
     students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [], waliKelasMap: [], canVerify: false,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
-  // Urutan useState IzinKeluarPanel: searchQuery, pickedStudent, formStudent,
-  // keperluan, tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId.
+  // Urutan useState IzinKeluarPanel: searchQuery, formStudent, keperluan,
+  // tujuan, jalurKhusus, alasanKhusus, saving, msg, msgTone, busyId. (UX audit
+  // September 2026: pickedStudent -- kartu konteks terpisah sebelum form --
+  // digabung ke formStudent, lihat catatan di gerbang.js.)
   const kosong = JSON.stringify(get('IzinKeluarPanel')(props));
   assert.ok(!kosong.includes('Persetujuan sebagai'), 'belum ada siswa dipilih, jadi judul form belum tampil');
-  assert.ok(!kosong.includes('Anda akan tercatat sebagai pihak'), 'kartu konteks/form belum terbuka');
+  assert.ok(!kosong.includes('Anda akan tercatat sebagai pihak'), 'form belum terbuka');
 
   const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
   const form = gerbang.split('{formStudent && (')[1];
@@ -295,27 +297,41 @@ test('layar persetujuan: mencatat pemberi persetujuan, tanpa klaim peran', () =>
   assert.match(form, />Batal</);
 });
 
-test('kartu konteks: wali kelas vs guru mapel, dihitung dari waliKelas pengguna — bukan diketik', () => {
+// UX audit (September 2026): kartu konteks terpisah ("Anda adalah wali
+// kelas siswa ini."/"Siswa ini bukan kelas perwalian Anda." + tombol
+// "Berikan Persetujuan"/"Berikan Izin sebagai Guru Mapel") yang dulu tampil
+// SEBELUM form terbuka DIHAPUS -- terlihat seperti layar yang sudah
+// lengkap, membuat Jalur Persetujuan (yang cuma ada di form) terkesan
+// hilang di alur individual (dilaporkan sebagai inkonsistensi dengan Izin
+// Kelompok, yang selalu satu form datar tanpa kartu perantara). Memilih
+// siswa sekarang langsung membuka form lengkap; kalimat konteksnya digabung
+// ke paragraf pembuka form itu sendiri.
+test('konteks wali kelas vs guru mapel: dihitung dari waliKelas pengguna — bukan diketik, langsung di form yang sama (bukan kartu terpisah)', () => {
   const student = { nisn: '111', name: 'Rahma', class: 'XI B' };
   const props = {
     students: [student], izinList: [], waliKelasMap: [], canVerify: false,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
-  // idx 1 = pickedStudent -> kartu konteks terbuka (belum form).
+  // idx 1 = formStudent -> form langsung terbuka (bukan kartu konteks terpisah).
   const walas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, student]));
   assert.ok(walas.includes('Anda adalah wali kelas siswa ini.'));
-  assert.ok(walas.includes('Berikan Persetujuan'));
-  assert.ok(!walas.includes('Berikan Izin sebagai Guru Mapel'));
+  assert.ok(walas.includes('Persetujuan sebagai Wali Kelas'));
+  assert.ok(!walas.includes('Persetujuan sebagai Guru Mapel'));
+  // Field form (Keperluan dkk.) sudah ikut tampil di layar yang sama —
+  // bukan menunggu tombol perantara yang sudah tidak ada lagi.
+  assert.ok(walas.includes('Keperluan'));
+  assert.ok(!walas.includes('Berikan Persetujuan'), 'tombol perantara sudah dihapus, kartu konteks digabung ke form');
 
   const bukanWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI A' }, [undefined, student]));
   assert.ok(bukanWalas.includes('Siswa ini bukan kelas perwalian Anda.'));
-  assert.ok(bukanWalas.includes('Berikan Izin sebagai Guru Mapel'));
-  assert.ok(!bukanWalas.includes('Anda adalah wali kelas siswa ini.'));
+  assert.ok(bukanWalas.includes('Persetujuan sebagai Guru Mapel'));
+  assert.ok(!bukanWalas.includes('Persetujuan sebagai Wali Kelas'));
+  assert.ok(!bukanWalas.includes('Berikan Izin sebagai Guru Mapel'), 'tombol perantara sudah dihapus, kartu konteks digabung ke form');
 
   // Guru tanpa kelas perwalian sama sekali (myWaliKelas kosong/tidak dikirim)
   // selalu jatuh ke jalur Guru Mapel — sesuai aturan existing (guru biasa).
   const guruBiasa = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props }, [undefined, student]));
-  assert.ok(guruBiasa.includes('Berikan Izin sebagai Guru Mapel'));
+  assert.ok(guruBiasa.includes('Persetujuan sebagai Guru Mapel'));
 });
 
 test('form: judul menyesuaikan konteks, tapi tetap satu form yang sama (bukan dua alur berbeda)', () => {
@@ -324,12 +340,12 @@ test('form: judul menyesuaikan konteks, tapi tetap satu form yang sama (bukan du
     students: [student], izinList: [], waliKelasMap: [], canVerify: true,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
-  // idx 2 = formStudent -> form langsung terbuka (konteks sudah "dikonfirmasi").
-  const formWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, undefined, student]));
+  // idx 1 = formStudent -> form langsung terbuka.
+  const formWalas = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI B' }, [undefined, student]));
   assert.ok(formWalas.includes('Persetujuan sebagai Wali Kelas'));
   assert.ok(!formWalas.includes('Persetujuan sebagai Guru Mapel'));
 
-  const formMapel = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI A' }, [undefined, undefined, student]));
+  const formMapel = JSON.stringify(renderWithState('IzinKeluarPanel', { ...props, myWaliKelas: 'XI A' }, [undefined, student]));
   assert.ok(formMapel.includes('Persetujuan sebagai Guru Mapel'));
   assert.ok(!formMapel.includes('Persetujuan sebagai Wali Kelas'));
 
@@ -350,7 +366,7 @@ test('Jalur Persetujuan (individual): dua pilihan eksplisit "Persetujuan normal"
     students: [student], izinList: [], waliKelasMap: [], canVerify: true,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
-  const form = JSON.stringify(renderWithState('IzinKeluarPanel', props, [undefined, undefined, student]));
+  const form = JSON.stringify(renderWithState('IzinKeluarPanel', props, [undefined, student]));
   assert.ok(form.includes('Jalur Persetujuan'));
   assert.ok(form.includes('Persetujuan normal'));
   assert.ok(form.includes('Izin Khusus'));
@@ -388,7 +404,7 @@ test('Jalur Persetujuan tidak ditawarkan sama sekali untuk yang tidak berwenang 
   const formIndividual = JSON.stringify(renderWithState('IzinKeluarPanel', {
     students: [student], izinList: [], waliKelasMap: [], canVerify: false,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
-  }, [undefined, undefined, student]));
+  }, [undefined, student]));
   assert.ok(!formIndividual.includes('Jalur Persetujuan'));
   assert.ok(!formIndividual.includes('Izin Khusus'));
 
@@ -403,9 +419,9 @@ test('tombol Setujui Izin TIDAK disabled saat Izin Khusus dipilih dan semua syar
     students: [student], izinList: [], waliKelasMap: [], canVerify: true,
     onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {},
   };
-  // idx: 0 searchQuery, 1 pickedStudent, 2 formStudent, 3 keperluan, 4 tujuan,
-  // 5 jalurKhusus, 6 alasanKhusus.
-  const tree = renderWithState('IzinKeluarPanel', props, [undefined, undefined, student, 'kontrol ke dokter', undefined, true, 'wali kelas & guru mapel tidak bisa dihubungi']);
+  // idx: 0 searchQuery, 1 formStudent, 2 keperluan, 3 tujuan, 4 jalurKhusus,
+  // 5 alasanKhusus.
+  const tree = renderWithState('IzinKeluarPanel', props, [undefined, student, 'kontrol ke dokter', undefined, true, 'wali kelas & guru mapel tidak bisa dihubungi']);
   const tombol = findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) && n.children.join('').includes('Catat Izin Khusus'))[0];
   assert.ok(tombol, 'tombol "Catat Izin Khusus" harus ada saat form terbuka dengan jalur khusus dipilih');
   assert.equal(tombol.props.disabled, false, 'tombol tidak boleh disabled ketika keperluan & alasan sudah terisi');
@@ -990,7 +1006,7 @@ test('audit UX Agustus 2026: "Tutup transaksi" DIHAPUS — Tandai Kembali langsu
   // bukan aksi status, murni OUTPUT dari transaksi yang sudah final, dan
   // sengaja tetap tersedia di sini supaya surat tetap bisa dicetak/diunduh
   // kapan saja setelah transaksinya selesai.
-  const blokSelesai = gerbangSrc.split('Selesai Hari Ini ({selesaiHariIni.length})')[1].split('Kartu konteks')[0];
+  const blokSelesai = gerbangSrc.split('Selesai Hari Ini ({selesaiHariIni.length})')[1].split('{formStudent && (')[0];
   assert.ok(!/<button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol HTML mentah');
   const tombolDiBlokSelesai = blokSelesai.match(/<Button/g) || [];
   assert.equal(tombolDiBlokSelesai.length, 1, 'kartu Selesai Hari Ini hanya boleh punya SATU <Button> — Cetak Surat Izin');
