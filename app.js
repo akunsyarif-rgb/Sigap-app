@@ -1,6 +1,13 @@
 // ===== app.js =====
 // Komponen utama App(): login, sesi, fetch data, semua handler simpan,
 // dan render seluruh tampilan. Dimuat PALING TERAKHIR.
+//
+/**
+ * SIGAP - Sistem Informasi Gerbang, Absensi, dan Pelanggaran
+ * Dikembangkan oleh Syarif Hidayatullah, S.Pd.I. - SMAN 2 Tarakan
+ * Kontak: syarifhidayatullah89@guru.sma.belajar.id
+ * Versi: v2026.09
+ */
 
        // Sesi login disimpan di localStorage supaya tidak logout tiap refresh.
        // Sesi di server (CacheService) hidup MAKSIMAL 6 jam sejak login; batas
@@ -1218,7 +1225,16 @@
                                    <React.Fragment>
                                        <NotifikasiOnboardingBanner user={user} eligible={effectiveMenus.includes('notifikasi')} onOpenSettings={() => navigateTab('notifikasi')} />
                                        <DashboardTab user={user} allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} jadwalPiket={jadwalPiket} onRefresh={fetchData} loading={loadingLogs} tindakLanjutList={tindakLanjutList} canViewRanking={roleConfig.canViewRanking} isAdmin={roleKey === 'admin'} onAjukanTindakLanjut={handleAjukanTindakLanjut} onApproveTindakLanjut={handleApproveTindakLanjut} izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onGoToIzin={effectiveMenus.includes('scan') ? goToIzinKeluar : null} />
+                                       <AppFooter onOpenTentang={() => navigateTab('tentang')} />
                                    </React.Fragment>
+                               )}
+                               {/* 'tentang' sengaja TIDAK ada di `menus` role mana pun (config.js) --
+                                   tidak pernah muncul di BottomNav/"Lainnya", satu-satunya jalan
+                                   masuk adalah tautan atribusi di AppFooter di atas. Sama seperti
+                                   goToIzinKeluar/goToExportData, ini navigasi murni -- tidak ada
+                                   perubahan wewenang apa pun yang ikut berpindah. */}
+                               {activeTab === 'tentang' && (
+                                   <TentangSigapPage onBack={() => navigateTab('dashboard')} />
                                )}
                                {activeTab === 'notifikasi' && effectiveMenus.includes('notifikasi') && (
                                    <NotifikasiTab user={user} sessionToken={sessionToken} />

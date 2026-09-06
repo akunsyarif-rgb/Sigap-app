@@ -199,6 +199,11 @@
        // usersState: 'loading' | 'ready' | 'error'
        function LoginScreen({ onLogin, loading, error, password, setPassword, users, usersState, onRetryUsers, selectedTeacher, setSelectedTeacher }) {
            const [query, setQuery] = useState('');
+           // Sebelum login belum ada sesi/activeTab App() untuk dinavigasikan
+           // (lihat 'tentang' di app.js, hanya ada SETELAH login) -- jadi
+           // halaman Tentang di layar ini murni state lokal, ditukar in-place
+           // dengan form login, bukan route terpisah.
+           const [showTentang, setShowTentang] = useState(false);
            // Papan ketik HP dibuka sebagai keyboard HURUF (inputMode="text"),
            // bukan numpad -- yang dibagikan admin ke guru di sekolah ini adalah
            // PASSWORD (boleh mengandung huruf), bukan PIN angka. Sakelar
@@ -238,6 +243,10 @@
                // Masuk kelihatan. pb-24 menyisakan ruang aman di bawahnya.
                <div className="min-h-[100dvh] overflow-y-auto flex flex-col justify-center p-6 pb-24 bg-slate-50">
                    <div className="w-full max-w-sm mx-auto">
+                   {showTentang ? (
+                       <TentangSigapPage onBack={() => setShowTentang(false)} />
+                   ) : (
+                   <React.Fragment>
                        <div className="text-center mb-8 mt-2">
                            <div className="relative inline-block mb-6">
                                <div className="absolute inset-0 bg-sky blur-[34px] opacity-20 rounded-[40px]"></div>
@@ -328,6 +337,9 @@
                                {loading ? 'Memeriksa Akses...' : 'Masuk Aplikasi'}
                            </Button>
                        </form>
+                       <AppFooter onOpenTentang={() => setShowTentang(true)} />
+                   </React.Fragment>
+                   )}
                    </div>
                </div>
            );
@@ -502,6 +514,98 @@
                                </button>
                            )}
                        </div>
+                   </div>
+               </div>
+           );
+       }
+
+       // Atribusi pengembang (identitas/provenance, BUKAN klaim kepemilikan HKI —
+       // SIGAP berpotensi direplikasi ke sekolah lain, lihat TentangSigapPage di
+       // bawah). Dirender HANYA di layar Login dan tab Beranda (lihat pemanggilnya
+       // di LoginScreen di atas dan di app.js) — sengaja TIDAK di halaman kerja
+       // (Gerbang/Pelanggaran/Izin Keluar/dst.) supaya tidak mengalihkan perhatian
+       // guru piket dari tugas utamanya di layar itu.
+       function AppFooter({ onOpenTentang }) {
+           return (
+               <div className="text-center px-4 py-4">
+                   <button
+                       type="button"
+                       onClick={onOpenTentang}
+                       // text-slate-400 (bukan slate-500 seperti teks sekunder lain di app
+                       // ini) -- footer ini memang dimaksud "kalah" dari konten utama,
+                       // tapi tetap AA-terbaca di atas bg-slate-50/putih. break-words +
+                       // max-w-full: teks ini satu kalimat panjang tanpa spasi wajib,
+                       // supaya tidak overflow horizontal di layar 360px.
+                       className="text-[11px] text-slate-400 hover:text-slate-500 hover:underline transition break-words max-w-full"
+                   >
+                       SIGAP v2026.09 · Syarif Hidayatullah, S.Pd.I. · SMAN 2 Tarakan
+                   </button>
+               </div>
+           );
+       }
+
+       // Halaman "Tentang SIGAP" — identitas/provenance pengembang lengkap.
+       // BUKAN tab role-based: sengaja tidak dimasukkan ke `menus` role mana pun
+       // di config.js, jadi tidak pernah muncul di BottomNav/"Lainnya" — satu-
+       // satunya jalan masuk adalah tautan atribusi di AppFooter (lewat
+       // activeTab 'tentang' di app.js untuk pengguna yang sudah login, pola
+       // navigasi yang sama dengan goToIzinKeluar/goToExportData; atau lewat
+       // state showTentang lokal di LoginScreen untuk yang belum login).
+       function TentangSigapPage({ onBack }) {
+           return (
+               <div className="space-y-4 animate-rise">
+                   <button onClick={onBack} className="flex items-center gap-1 text-[11px] font-bold text-sky-dim">
+                       <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />} className="h-3.5 w-3.5" />
+                       Kembali
+                   </button>
+
+                   <div>
+                       <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Tentang SIGAP</h2>
+                       <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                           SIGAP (Sistem Informasi Gerbang, Absensi, dan Pelanggaran) adalah sistem informasi untuk membantu pengelolaan pencatatan keterlambatan, izin keluar, dan pelanggaran siswa di sekolah.
+                       </p>
+                   </div>
+
+                   <Card className="space-y-3">
+                       <div>
+                           <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Dikembangkan oleh</div>
+                           <div className="text-sm font-bold text-slate-900">Syarif Hidayatullah, S.Pd.I.</div>
+                       </div>
+                       <div>
+                           <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Instansi asal</div>
+                           <div className="text-sm text-slate-800">SMAN 2 Tarakan, Kalimantan Utara</div>
+                       </div>
+                       <div className="flex flex-wrap gap-x-6 gap-y-3">
+                           <div>
+                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Mulai dikembangkan</div>
+                               <div className="text-sm text-slate-800">Agustus 2026</div>
+                           </div>
+                           <div>
+                               <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Versi saat ini</div>
+                               <div className="text-sm text-slate-800">v2026.09</div>
+                           </div>
+                       </div>
+                   </Card>
+
+                   <div>
+                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Kontak</h3>
+                       <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                           Untuk pertanyaan teknis, laporan kendala, atau ketertarikan replikasi ke sekolah lain, silakan hubungi:
+                       </p>
+                       {/* break-all -- alamat email ini cukup panjang untuk meluber di
+                           layar 360px kalau tidak dipaksa patah di sembarang karakter
+                           (tidak ada spasi untuk patah alami). */}
+                       <p className="text-xs font-semibold text-sky-dim mt-1 break-all">syarifhidayatullah89@guru.sma.belajar.id</p>
+                   </div>
+
+                   <div>
+                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Atribusi</h3>
+                       <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                           SIGAP terbuka untuk diadaptasi oleh sekolah lain di Kalimantan Utara sebagai bagian dari semangat berbagi praktik baik inovasi daerah. Sekolah yang berminat dapat menghubungi pengembang untuk mendapatkan panduan konfigurasi.
+                       </p>
+                       <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                           Kami meminta agar atribusi pengembang asal tetap dicantumkan sebagai bentuk penghargaan atas proses pengembangan yang telah dilakukan.
+                       </p>
                    </div>
                </div>
            );

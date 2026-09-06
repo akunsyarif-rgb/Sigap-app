@@ -1,6 +1,13 @@
 // ===== Code.gs (Main / Router) =====
 // Titik masuk utama Web App: doPost dan doGet menangani semua permintaan
 // dari index.html. Logika keamanan (checkToken, sesi) ada di Auth.gs/Utils.gs.
+//
+/**
+ * SIGAP - Sistem Informasi Gerbang, Absensi, dan Pelanggaran
+ * Dikembangkan oleh Syarif Hidayatullah, S.Pd.I. - SMAN 2 Tarakan
+ * Kontak: syarifhidayatullah89@guru.sma.belajar.id
+ * Versi: v2026.09
+ */
 
 // ===== Penanda versi backend =====
 // Repo ini TIDAK pernah men-deploy Apps Script otomatis (lihat CLAUDE.md), dan
