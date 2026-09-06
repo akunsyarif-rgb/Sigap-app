@@ -682,6 +682,11 @@ function doPost(e) {
         if (hjDef.cacheCategory) clearCacheForCategory(hjDef.cacheCategory);
         if (jenisKey === 'izin') clearIzinCache();
       }
+      // Celah lama ditambal di sini: menghapus baris Izin_Keluar lewat rentang
+      // tanggal tidak pernah membersihkan kegiatan Izin_Kelompok yang jadi
+      // kehilangan semua pesertanya — dipanggil sekali di akhir (bukan per
+      // baris) karena jumlah kegiatan jauh lebih sedikit daripada baris izin.
+      if (hapusJenisList.indexOf('izin') !== -1) cleanupOrphanedIzinKelompok(ss);
 
       var hapusDetail = buildHapusDataAuditDetail(hapusJenisList, hapusPeriod.label, hapusCounts, hapusTotal, hapusTotal ? 'berhasil' : 'tidak ada data');
       logAudit(sessionUser, hapusTotal ? 'Hapus Data Massal' : 'Hapus Data Massal Kosong', hapusDetail);
@@ -962,6 +967,69 @@ function doPost(e) {
       logAudit(sessionUser, 'Tandai Pulang Izin Keluar', buildIzinAuditDetail(plgFound.data, 'status=' + IZIN_STATUS_PULANG + ' (tidak kembali ke sekolah) | kapasitas=' + izinKapasitasLabel(plgKapasitas)));
       notifyRelevantUsers({ jenis: 'izin_pulang', nisn: plgFound.data.nisn, kelas: plgFound.data.class, refId: plgFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: IZIN_STATUS_PULANG });
+    }
+
+    // ---- Hapus 1 transaksi Izin Keluar (kebutuhan testing developer +
+    // pembersihan operasional harian — celah lama: sebelum ini, Izin Keluar
+    // sama sekali tidak punya jalan hapus per-transaksi, cuma "Hapus Data"
+    // massal per-periode di Kelola yang admin-only, lihat HAPUS_DATA_JENIS
+    // di Utils.gs). Kewenangannya SENGAJA BUKAN ownership-by-name seperti
+    // Keterlambatan/Pelanggaran/Surat (action 'deleteEntry' di atas) — Izin
+    // Keluar tidak dicatat oleh satu 'Dicatat_Oleh' tunggal, dan dikelola
+    // bersama oleh guru piket/BK yang bertugas, bukan cuma penyetujunya.
+    // Jadi kewenangannya memakai fungsi yang SAMA dengan verifikasi
+    // (izinKapasitasVerifikasi) supaya tidak pernah berselisih dengan siapa
+    // yang boleh memverifikasi/menandai kembali transaksi yang sama:
+    //   - Admin: tanpa batasan (status apa pun, kapan pun dicatat).
+    //   - Guru piket bertugas hari ini / BK-Kesiswaan (cadangan): HANYA
+    //     transaksi yang BELUM final (IZIN_STATUS_TERBUKA), dan HANYA dalam
+    //     5 menit sejak dicatat — batas yang sama persis dengan
+    //     editEntry/deleteEntry kategori lain, supaya tidak ada kategori
+    //     yang diam-diam punya jendela koreksi lebih longgar.
+    //   - Selain itu (termasuk guru biasa yang bukan piket/BK/admin, dan
+    //     OSIS): ditolak. Transaksi yang sudah final (Selesai/Pulang) sudah
+    //     melibatkan pihak lain (penyetuju + guru piket yang memverifikasi/
+    //     menandai kembali) — keputusan produk: cuma admin yang boleh
+    //     menghapusnya, bukan piket/BK yang kebetulan sedang bertugas hari
+    //     ini.
+    if (action === 'deleteIzinKeluar') {
+      var delNow = new Date();
+      var delSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+      var delFound = delSheet ? findIzinRowById(delSheet, data.id) : null;
+      if (!delFound) {
+        return jsonOut({ status: 'error', message: 'Transaksi tidak ditemukan (mungkin sudah dihapus pengguna lain).' });
+      }
+      var delIzin = delFound.data;
+      var delKapasitas = izinKapasitasVerifikasi(ss, sessionUser, delNow);
+      if (!isAdminRole(sessionUser.role)) {
+        if (!delKapasitas) {
+          return jsonOut({ status: 'error', message: 'Hanya Guru Piket yang bertugas hari ini (atau BK/Admin) yang bisa menghapus izin keluar.' });
+        }
+        if (IZIN_STATUS_TERBUKA.indexOf(String(delIzin.status).trim()) === -1) {
+          return jsonOut({ status: 'error', message: 'Transaksi ini sudah selesai — hanya admin yang bisa menghapusnya.' });
+        }
+        var delElapsedMs = delNow.getTime() - new Date(delIzin.timestamp).getTime();
+        if (delElapsedMs > 5 * 60 * 1000) {
+          return jsonOut({ status: 'error', message: 'Sudah lewat 5 menit sejak dicatat — tidak bisa dihapus lagi.' });
+        }
+      }
+      delSheet.deleteRow(delFound.rowIndex);
+      // Kegiatan rombongan yang kehilangan SEMUA pesertanya gara-gara baris
+      // ini dihapus ikut dibersihkan — mencegah kegiatan "hantu" 0 peserta
+      // yang masih nongkrong di layar Kelompok (celah yang sama juga
+      // ditambal di hapusDataPeriode lewat cleanupOrphanedIzinKelompok,
+      // Utils.gs). Dicek SETELAH deleteRow supaya findPesertaKelompok
+      // membaca keadaan terkini, bukan sebelum baris ini hilang.
+      if (delIzin.kelompok_id) {
+        var delKelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
+        if (delKelSheet && findPesertaKelompok(delSheet, delIzin.kelompok_id).length === 0) {
+          var delKelFound = findIzinKelompokRowById(delKelSheet, delIzin.kelompok_id);
+          if (delKelFound) delKelSheet.deleteRow(delKelFound.rowIndex);
+        }
+      }
+      clearIzinCache();
+      logAudit(sessionUser, 'Hapus Izin Keluar', buildIzinAuditDetail(delIzin, 'status=' + delIzin.status + ' | kapasitas=' + izinKapasitasLabel(delKapasitas)));
+      return jsonOut({ status: 'success' });
     }
 
     // ---- Cetak Surat Izin Keluar (audit September 2026) — MURNI OUTPUT

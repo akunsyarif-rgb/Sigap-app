@@ -869,6 +869,103 @@ reasoning), so members marked back together no longer rest at an
 intermediate `Kembali` waiting for a close step that never existed for
 groups in the first place.
 
+#### Hapus per-transaksi (audit September 2026)
+
+Until this audit, Izin Keluar was the **only** category with no self-service
+delete: `getSheetForCategory()` (Utils.gs) deliberately doesn't map `'izin'`,
+so the generic `deleteEntry` action always rejected it — a deliberate
+exclusion at the time, since Izin Keluar is a stateful multi-step transaction
+with no single owning `Dicatat_Oleh` name, unlike Keterlambatan/Pelanggaran/
+Surat. The only way to remove a stuck/test transaction was the admin-only
+bulk delete-by-date-range (`hapusDataPeriode`, below) — real, but useless for
+"I made a mistake on the one I just approved" during normal daily use, and
+reported as a real gap by developer testing.
+
+`deleteIzinKeluar` (a `doPost` action, `Code.gs`) closes that gap **without**
+inventing a new ownership model — it reuses the existing verification
+authority wholesale:
+
+- **Transaction not yet final** (`IZIN_STATUS_TERBUKA` — `Menunggu
+  Verifikasi`/`Sedang di Luar`): deletable by whoever can currently verify it
+  — `izinKapasitasVerifikasi()`, the same function `canVerifyIzin` already
+  wraps (Guru Piket on duty today, or BK/Kesiswaan/admin as backup) — **and**
+  only within 5 minutes of the row's own `Timestamp`, the exact same window
+  `editEntry`/`deleteEntry` already enforce for every other category. This is
+  deliberately an *authority* check, not an *ownership* check: the teacher
+  who approved the transaction has no special right to delete it just because
+  they created it, same as `tandaiKembaliIzinKeluar` was never gated on who
+  approved.
+- **Transaction already final** (`Selesai`/`Pulang`): admin **only**, with
+  **no** time limit. Product decision, not an oversight: a final transaction
+  already involved another party (the approver *and* the verifying piket
+  teacher), so undoing it needs the one role with unrestricted authority —
+  not whichever piket teacher happens to be on duty when someone notices a
+  mistake days later.
+- **Admin**: no restriction of any kind — any status, any age. This is the
+  one deliberate asymmetry in the whole feature: every other actor is capped
+  by both the status gate and the 5-minute window; admin is capped by
+  neither.
+
+There is **no "revert status" option** — delete is the only recovery path.
+This was an explicit product choice (the alternative — restoring a deleted
+transaction to a previous status instead of removing it — was proposed and
+rejected as unnecessary complexity for what is fundamentally a correction
+tool, not an undo history).
+
+Deleting a group member (`kelompok_id` set) that turns out to be the
+activity's **last** remaining participant cascades: the now-0-participant
+`Izin_Kelompok` row is removed too, via `cleanupOrphanedIzinKelompok(ss)`
+(Utils.gs) — checked *after* the `Izin_Keluar` row is actually gone, so it
+reads current state, not stale state. **The same helper closes a pre-existing
+bug found while building this**: bulk-deleting `Izin_Keluar` rows via
+`hapusDataPeriode` (below) with `'izin'` in the selected jenis never cleaned
+up activities that lost every participant that way either, leaving "ghost"
+0-participant `Izin_Kelompok` rows visible in the Kelompok screen forever.
+Both call sites now share the one cleanup function — `hapusDataPeriode` calls
+it once at the end (after its whole per-jenis delete loop, not per row, since
+there are far fewer activities than izin rows).
+
+Deleting a **group** as a whole (all members at once from one button) is
+**out of scope for this pass** — the UI only exposes the delete button on the
+Individual Izin Keluar cards (`KartuIzinKeluar` in `gerbang.js`), not on
+`KartuKelompok`/`IzinKelompokPanel`. The backend action itself is generic
+(it operates per `Izin_Keluar` row regardless of whether `kelompok_id` is
+set, and already cascades correctly, as above) — wiring a per-member or
+whole-activity delete button into the Kelompok panel is a small, low-risk
+follow-up if ever wanted, not a backend change.
+
+The client **never sends a status or capacity** — same principle as every
+other Izin Keluar action — the server derives what's allowed purely from the
+row's current status, its own timestamp, and `izinKapasitasVerifikasi()`
+computed fresh from `Jadwal_Piket`/`sessionUser`. A `kapasitas`/`role` field
+in the request body, if sent at all, is never read. Every deletion (successful
+or rejected) is written to `Audit_Log` via `buildIzinAuditDetail`, including
+the transaction's status and the actor's computed capacity label
+(`kapasitas=Guru Piket` / `kapasitas=BK/Kesiswaan`) at the moment of deletion
+— an authoritative record of who was actually allowed to act, immune to a
+later `Jadwal_Piket` edit, same pattern as every other Izin Keluar action's
+audit line.
+
+On the client, the "🗑️ Hapus" button (`handleHapusIzin` in `gerbang.js`,
+`handleDeleteIzin` in `app.js`) is shown per the same rule the server
+enforces — never as the actual gate, just to avoid offering a button the
+server is certain to reject: `canVerify` in the Menunggu Verifikasi/Sedang di
+Luar buckets, `isAdmin` (not `canVerify`) in the Selesai Hari Ini bucket. A
+`window.confirm()` guards against an accidental tap, same lightweight pattern
+already used for `handleCetakSuratIzin`.
+
+`tests/izin-keluar.test.js` pins the full authorization matrix (piket/BK/
+admin/plain-guru/off-duty-guru/OSIS × open/old-open/final status, the 5-minute
+window, audit trail, and that a missing/already-deleted id errors cleanly
+rather than silently succeeding); `tests/izin-kelompok.test.js` pins the
+cascade behavior (deleting one of several members leaves the activity intact,
+deleting the last one removes it) and that a group member is still bound by
+the exact same rules as an individual transaction; `tests/hapus-data.test.js`
+now also exercises `hapusDataPeriode` actually deleting real `Izin_Keluar`
+rows (previously only a zero-data preview touched `'izin'` at all) plus the
+`Izin_Kelompok` cleanup side effect, including that an activity with a
+surviving member outside the deleted range is left alone.
+
 #### Beranda: Izin Keluar summary + clickable notification
 
 Beranda now carries **four** summary cards (Terlambat / Surat / Pelanggaran /
@@ -1474,7 +1571,10 @@ real `doPost`/`doGet` (approve → verify → return → close, both jalur, ever
 invalid transition, double submit, parameter tampering, audit trail and read
 scope, plus the Wali Kelas/Guru Mapel konteks label — derived correctly,
 recomputed server-side even when the client sends a spoofed value, and never
-gating anything); `tests/izin-keluar-frontend.test.js` covers its client
+gating anything) and now also the full `deleteIzinKeluar` authorization
+matrix (piket/BK/admin/plain-guru/off-duty-guru/OSIS × open/old-open/final
+status, the 5-minute window, audit trail, and a missing/already-deleted id);
+`tests/izin-keluar-frontend.test.js` covers its client
 wiring (including the context card shown before the approval form) and now
 pins down "no BETA label, no vendor-specific print-protocol assumptions"
 (not "no printing" — printing shipped, see "Cetak Surat Izin Keluar" above).
@@ -1485,7 +1585,16 @@ konteks accuracy, HTML-escaping, and QR/verification) through real
 `tests/izin-kelompok.test.js` does the same for Izin Kelompok (all-or-nothing
 creation, partial verification, rombongan return with a student left outside,
 one member going home while the rest return, cross-activity id tampering, and
-that the individual flow still works beside it).
+that the individual flow still works beside it) plus the `deleteIzinKeluar`
+cascade onto `Izin_Kelompok` (deleting one of several members leaves the
+activity intact, deleting the last one removes the now-0-participant
+activity row, and a group member is bound by the exact same delete rules as
+an individual transaction). `tests/hapus-data.test.js` exercises
+`hapusDataPeriode` actually deleting real `Izin_Keluar` rows for jenis
+`'izin'` (not just a zero-data preview) and the accompanying
+`cleanupOrphanedIzinKelompok` side effect — an activity that loses every
+participant to a bulk delete is removed, one with a surviving member outside
+the deleted range is left alone.
 The Beranda notification/summary, its RBAC gating, the Gerbang badge, the
 Beranda→Gerbang routing, the one-step "Tandai Kembali" close (column-by-column,
 including that `selesaikanIzinKeluar` no longer exists), the card-level
