@@ -219,6 +219,44 @@
            return hits.slice(0, max).map(h => ({ id: h.id, name: h.name }));
        }
 
+       // ===== Layar Login: cache daftar guru lintas-pembukaan =====
+       // Audit performa (Sep 2026): getLoginUsers SUDAH di-cache 5 menit di
+       // SERVER (lihat komentar di atas action itu di Code.gs), tapi device
+       // yang baru membuka halaman tetap menunggu satu round-trip penuh ke
+       // Apps Script (cold start + baca sheet) sebelum kotak pencarian
+       // punya apa pun untuk dicocokkan -- pencarian itu sendiri murni
+       // client-side (filterLoginUsers di atas, tanpa request per huruf),
+       // jadi yang lambat bukan pencariannya, tapi MENUNGGU daftarnya
+       // datang. Menyimpan hasil TERAKHIR di localStorage membuat
+       // pembukaan BERIKUTNYA (kasus sehari-hari untuk PWA yang dipakai
+       // guru piket berkali-kali) langsung punya daftar untuk dicari sejak
+       // frame pertama, sementara fetchLoginUsers() di app.js tetap jalan
+       // di latar belakang untuk menyegarkannya.
+       //
+       // Staleness-nya TIDAK lebih buruk daripada yang sudah ditoleransi
+       // cache server 5 menit itu (guru yang baru dinonaktifkan bisa saja
+       // masih muncul sebentar di pencarian) -- ini bukan risiko baru, cuma
+       // jendela stale yang sama dipindah juga ke klien. Hanya {id, name}
+       // yang disimpan (bentuk yang sama seperti yang sudah dilempar ke
+       // React state), tidak pernah role/jabatan/status/hash/salt.
+       const LOGIN_USERS_CACHE_KEY = 'sigap_login_users_cache';
+
+       function loadCachedLoginUsers(raw) {
+           try {
+               const parsed = JSON.parse(raw);
+               if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+                   return parsed.users
+                       .filter(u => u && u.id && u.name)
+                       .map(u => ({ id: String(u.id), name: String(u.name) }));
+               }
+           } catch (e) {}
+           return null;
+       }
+
+       function buildLoginUsersCachePayload(users) {
+           return JSON.stringify({ users: Array.isArray(users) ? users : [] });
+       }
+
        // ===== Gerbang: pencarian siswa (Catat Terlambat / Catat Surat) =====
        // Sama polanya seperti filterLoginUsers di atas -- diambil terpisah
        // (murni, bisa diuji tanpa React) setelah laporan lapangan: ketik "Ter"

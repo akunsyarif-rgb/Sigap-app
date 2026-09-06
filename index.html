@@ -124,11 +124,28 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 59;
+           var BUILD_VERSION = 60;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.
            window.SIGAP_BUILD_VERSION = BUILD_VERSION;
+           // Audit performa (Sep 2026): Babel.transform() di bawah memproses
+           // gabungan SEMUA file .js (>500KB) SETIAP KALI halaman ini dibuka,
+           // walau isinya belum berubah sejak pembukaan sebelumnya -- diukur
+           // dengan @babel/core (mesin yang sama, tanpa overhead standalone)
+           // di server pengembangan: ~250-440ms untuk sumber sebesar ini,
+           // kemungkinan jauh lebih lama di HP Android kelas menengah/bawah
+           // lewat @babel/standalone. Itu semua CPU murni yang menahan
+           // render pertama, terjadi lagi dan lagi tanpa alasan begitu
+           // BUILD_VERSION sama dengan pembukaan sebelumnya. Hasil transform
+           // di-cache di localStorage per BUILD_VERSION persis di bawah ini
+           // -- begitu versinya cocok, fetch 13 file DAN Babel.transform
+           // dilewati sepenuhnya, langsung pakai hasil lama. Cache otomatis
+           // basi begitu BUILD_VERSION naik (developer memang wajib
+           // menaikkannya di setiap deploy yang menyentuh salah satu file
+           // .js, lihat komentar di atas) -- tidak ada risiko stale di luar
+           // yang sudah ditoleransi skema ?v= yang sudah ada.
+           var JS_BUNDLE_CACHE_KEY = 'sigap_js_bundle_cache';
            var files = [
                'config.js',
                'helpers.js',
@@ -145,28 +162,56 @@
                'app.js'
            ];
            try {
-               // Ambil semua file SEKALIGUS (paralel), bukan satu-satu berurutan —
-               // sebelumnya ini 10 round-trip jaringan berturutan sebelum app mulai
-               // jalan. Promise.all tetap menjaga urutan hasil sesuai array `files`
-               // walau responsnya datang tidak berurutan, jadi urutan gabungan kode
-               // tetap PASTI benar seperti sebelumnya.
-               var responses = await Promise.all(files.map(function (f) { return fetch(f + '?v=' + BUILD_VERSION); }));
-               var texts = await Promise.all(responses.map(function (res, i) {
-                   if (!res.ok) throw new Error('Gagal memuat ' + files[i] + ' (status ' + res.status + ')');
-                   return res.text();
-               }));
-               var combined = texts.join('\n');
-               // runtime: 'classic' dipaksa eksplisit — Babel standalone terbaru dari
-               // CDN (versi tidak dipin) defaultnya berubah ke JSX runtime 'automatic',
-               // yang menyisipkan `import ... from "react/jsx-runtime"` di awal kode.
-               // Statement import itu bikin appendChild(script) gagal total (SyntaxError:
-               // Cannot use import statement outside a module) karena skrip ini bukan
-               // ES module — hasilnya layar putih kosong tanpa pesan error yang jelas.
-               var transformed = Babel.transform(combined, { presets: [['react', { runtime: 'classic' }]] }).code;
+               // Cache hit: langsung pakai hasil transform pembukaan sebelumnya,
+               // LEWATI fetch 13 file + Babel.transform sepenuhnya — lihat
+               // catatan JS_BUNDLE_CACHE_KEY di atas.
+               var transformed = null;
+               try {
+                   var cachedBundleRaw = localStorage.getItem(JS_BUNDLE_CACHE_KEY);
+                   if (cachedBundleRaw) {
+                       var cachedBundle = JSON.parse(cachedBundleRaw);
+                       if (cachedBundle && cachedBundle.version === BUILD_VERSION && typeof cachedBundle.code === 'string' && cachedBundle.code) {
+                           transformed = cachedBundle.code;
+                       }
+                   }
+               } catch (cacheReadErr) { transformed = null; }
+
+               if (transformed === null) {
+                   // Ambil semua file SEKALIGUS (paralel), bukan satu-satu berurutan —
+                   // sebelumnya ini 10 round-trip jaringan berturutan sebelum app mulai
+                   // jalan. Promise.all tetap menjaga urutan hasil sesuai array `files`
+                   // walau responsnya datang tidak berurutan, jadi urutan gabungan kode
+                   // tetap PASTI benar seperti sebelumnya.
+                   var responses = await Promise.all(files.map(function (f) { return fetch(f + '?v=' + BUILD_VERSION); }));
+                   var texts = await Promise.all(responses.map(function (res, i) {
+                       if (!res.ok) throw new Error('Gagal memuat ' + files[i] + ' (status ' + res.status + ')');
+                       return res.text();
+                   }));
+                   var combined = texts.join('\n');
+                   // runtime: 'classic' dipaksa eksplisit — Babel standalone terbaru dari
+                   // CDN (versi tidak dipin) defaultnya berubah ke JSX runtime 'automatic',
+                   // yang menyisipkan `import ... from "react/jsx-runtime"` di awal kode.
+                   // Statement import itu bikin appendChild(script) gagal total (SyntaxError:
+                   // Cannot use import statement outside a module) karena skrip ini bukan
+                   // ES module — hasilnya layar putih kosong tanpa pesan error yang jelas.
+                   transformed = Babel.transform(combined, { presets: [['react', { runtime: 'classic' }]] }).code;
+                   try {
+                       localStorage.setItem(JS_BUNDLE_CACHE_KEY, JSON.stringify({ version: BUILD_VERSION, code: transformed }));
+                   } catch (cacheWriteErr) {
+                       // Kuota penuh / mode privat — app tetap jalan dari hasil transform
+                       // yang baru saja dihitung, cuma tidak ikut dipercepat di
+                       // pembukaan berikutnya.
+                   }
+               }
                var script = document.createElement('script');
                script.textContent = transformed;
                document.body.appendChild(script);
            } catch (err) {
+               // Bersihkan cache bundle: kalau penyebabnya cache basi/rusak (mis.
+               // versi berubah di tengah proses, atau isi tersimpan tidak lengkap),
+               // refresh berikutnya harus mengambil & mentransformasi ulang dari
+               // awal, bukan mengulang kegagalan yang sama selamanya.
+               try { localStorage.removeItem(JS_BUNDLE_CACHE_KEY); } catch (cleanupErr) {}
                document.getElementById('root').innerHTML =
                    '<div style="padding:24px;font-family:sans-serif;color:#B93A31;">' +
                    '<b>Gagal memuat aplikasi.</b><br>' + err.message +

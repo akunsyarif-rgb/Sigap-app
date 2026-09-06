@@ -112,11 +112,18 @@
            const [loadingLogin, setLoadingLogin] = useState(false);
            const [loginError, setLoginError] = useState(storedSession.expired ? 'Sesi sebelumnya sudah berakhir. Silakan login ulang.' : '');
 
-           // Daftar nama guru untuk pencarian di layar login. 'loading' dari
-           // awal supaya LoginScreen tahu bedanya "belum datang" dan "gagal" —
-           // keduanya tetap membiarkan form bisa dipakai (mode legacy PIN saja).
-           const [loginUsers, setLoginUsers] = useState([]);
-           const [loginUsersState, setLoginUsersState] = useState('loading');
+           // Daftar nama guru untuk pencarian di layar login. Kalau pembukaan
+           // SEBELUMNYA sempat menyimpannya (lihat LOGIN_USERS_CACHE_KEY di
+           // helpers.js), dipakai LANGSUNG sebagai 'ready' sejak frame
+           // pertama -- fetchLoginUsers() di bawah tetap menyegarkannya di
+           // latar belakang. Tanpa cache, 'loading' dari awal supaya
+           // LoginScreen tahu bedanya "belum datang" dan "gagal" — keduanya
+           // tetap membiarkan form bisa dipakai (mode legacy PIN saja).
+           const [loginUsersCache] = useState(() => {
+               try { return loadCachedLoginUsers(localStorage.getItem(LOGIN_USERS_CACHE_KEY)); } catch (e) { return null; }
+           });
+           const [loginUsers, setLoginUsers] = useState(loginUsersCache || []);
+           const [loginUsersState, setLoginUsersState] = useState(loginUsersCache ? 'ready' : 'loading');
            const [selectedTeacher, setSelectedTeacher] = useState(null);
            // Penjaga double-tap tombol Masuk. Pakai ref, bukan loadingLogin:
            // state React baru terlihat di render berikutnya, jadi dua tap cepat
@@ -445,20 +452,28 @@
            // Tidak butuh sesi (dipanggil justru sebelum login) — lihat
            // getLoginUsers di doGet Code.gs. Kegagalannya BUKAN kondisi fatal:
            // layar login tetap jalan penuh dalam mode legacy (PIN saja).
+           //
+           // Kalau sudah ada daftar untuk dipakai (dari cache lokal ATAU dari
+           // fetch sebelumnya di sesi ini), permintaan ini murni PENYEGARAN
+           // di latar belakang: 'loading' TIDAK ditampilkan lagi (pencarian
+           // yang sudah bisa dipakai tidak boleh berkedip balik ke "Memuat...")
+           // dan kegagalannya tidak menghapus daftar lama yang masih valid.
            const fetchLoginUsers = () => {
-               setLoginUsersState('loading');
+               if (loginUsers.length === 0) setLoginUsersState('loading');
                fetch(`${API_URL}?action=getLoginUsers&token=${API_TOKEN}`)
                    .then(res => res.json())
                    .then(data => {
                        if (data && data.status === 'success' && Array.isArray(data.users) && data.users.length > 0) {
-                           setLoginUsers(data.users.map(u => ({ id: u.id, name: u.name })));
+                           const mapped = data.users.map(u => ({ id: u.id, name: u.name }));
+                           setLoginUsers(mapped);
                            setLoginUsersState('ready');
-                       } else {
+                           try { localStorage.setItem(LOGIN_USERS_CACHE_KEY, buildLoginUsersCachePayload(mapped)); } catch (e) {}
+                       } else if (loginUsers.length === 0) {
                            setLoginUsers([]);
                            setLoginUsersState('error');
                        }
                    })
-                   .catch(() => { setLoginUsers([]); setLoginUsersState('error'); });
+                   .catch(() => { if (loginUsers.length === 0) { setLoginUsers([]); setLoginUsersState('error'); } });
            };
 
            // Ditarik saat layar login tampil (termasuk setelah sesi habis),
