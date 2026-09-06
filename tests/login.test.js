@@ -484,3 +484,97 @@ test('App: daftar guru ditarik tanpa sessionToken (dipanggil sebelum login)', ()
   assert.match(call, /action=getLoginUsers/);
   assert.doesNotMatch(call, /sessionToken/, 'endpoint ini memang dipanggil sebelum ada sesi');
 });
+
+// ===== Audit performa (Sep 2026): cache daftar guru lintas-pembukaan =====
+// getLoginUsers sudah di-cache 5 menit di SERVER, tapi device yang baru
+// membuka halaman tetap menunggu satu round-trip Apps Script (lambat)
+// sebelum kotak pencarian punya apa pun untuk dicocokkan. Hasil TERAKHIR
+// disimpan di localStorage (LOGIN_USERS_CACHE_KEY, helpers.js) supaya
+// pembukaan berikutnya langsung 'ready' sejak frame pertama.
+
+test('loadCachedLoginUsers: hanya {id,name}, JSON rusak/bentuk salah tidak melempar', () => {
+  const loadCachedLoginUsers = get('loadCachedLoginUsers');
+
+  eq(loadCachedLoginUsers(JSON.stringify({ users: USERS })), USERS);
+  assert.equal(loadCachedLoginUsers('{bukan json valid'), null);
+  assert.equal(loadCachedLoginUsers(null), null);
+  assert.equal(loadCachedLoginUsers(undefined), null);
+  assert.equal(loadCachedLoginUsers(JSON.stringify({ users: [] })), null, 'daftar kosong dianggap tidak ada cache yang bisa dipakai');
+  assert.equal(loadCachedLoginUsers(JSON.stringify({ notUsers: 'x' })), null);
+
+  // Field tambahan (role/jabatan/hash/salt) dibuang, sama seperti filterLoginUsers.
+  const dirty = JSON.stringify({ users: [{ id: 'G01', name: 'Kartina', role: 'admin', salt: 'zzz' }] });
+  eq(loadCachedLoginUsers(dirty), [{ id: 'G01', name: 'Kartina' }]);
+
+  // Baris rusak di tengah daftar tidak boleh menggagalkan seluruh cache.
+  const mixed = JSON.stringify({ users: [{ id: 'G01', name: 'Kartina' }, { id: '', name: 'Tanpa ID' }, null] });
+  eq(loadCachedLoginUsers(mixed), [{ id: 'G01', name: 'Kartina' }]);
+});
+
+test('buildLoginUsersCachePayload: bentuk yang ditulis bisa langsung dibaca lagi oleh loadCachedLoginUsers', () => {
+  const buildLoginUsersCachePayload = get('buildLoginUsersCachePayload');
+  const loadCachedLoginUsers = get('loadCachedLoginUsers');
+  eq(loadCachedLoginUsers(buildLoginUsersCachePayload(USERS)), USERS);
+  eq(loadCachedLoginUsers(buildLoginUsersCachePayload([])), null);
+  eq(loadCachedLoginUsers(buildLoginUsersCachePayload(undefined)), null);
+});
+
+test('App: ada cache guru dari pembukaan sebelumnya -> LoginScreen langsung "ready" sejak frame pertama, tanpa menunggu fetch', () => {
+  const LOGIN_USERS_CACHE_KEY = get('LOGIN_USERS_CACHE_KEY');
+  storage[LOGIN_USERS_CACHE_KEY] = JSON.stringify({ users: USERS });
+
+  // fetch belum sempat dipanggil sama sekali (useEffect di-stub di sandbox
+  // ini) -- render pertama App() harus tetap 'ready' murni dari cache lokal.
+  const tree = render('App', {});
+  const login = findAll(tree, (n) => n.type === get('LoginScreen'))[0];
+  assert.equal(login.props.usersState, 'ready', 'cache lokal harus langsung dipakai tanpa menunggu network');
+  eq(login.props.users, USERS);
+
+  // Diteruskan sungguhan ke LoginScreen: render langsung dengan props yang
+  // sama harus langsung menampilkan hasil pencarian, tanpa status "Memuat".
+  const rendered = render('LoginScreen', login.props, ['ka']);
+  assert.match(allText(rendered), /Kartina/);
+  assert.doesNotMatch(allText(rendered), /Memuat daftar guru/);
+});
+
+test('App: tanpa cache guru sebelumnya -> tetap mulai dari "loading" seperti semula', () => {
+  const tree = render('App', {});
+  const login = findAll(tree, (n) => n.type === get('LoginScreen'))[0];
+  assert.equal(login.props.usersState, 'loading');
+  eq(login.props.users, []);
+});
+
+test('App: penyegaran daftar guru di latar belakang sukses -> state tetap "ready" (tidak berkedip ke "loading") dan cache lokal ikut diperbarui', async () => {
+  const LOGIN_USERS_CACHE_KEY = get('LOGIN_USERS_CACHE_KEY');
+  storage[LOGIN_USERS_CACHE_KEY] = JSON.stringify({ users: [{ id: 'G01', name: 'Kartina' }] });
+
+  const freshUsers = [{ id: 'G01', name: 'Kartina' }, { id: 'G05', name: 'Guru Baru' }];
+  fetchImpl = () => Promise.resolve({ json: () => Promise.resolve({ status: 'success', users: freshUsers }) });
+
+  const tree = render('App', {});
+  const login = findAll(tree, (n) => n.type === get('LoginScreen'))[0];
+  assert.equal(login.props.usersState, 'ready', 'harus mulai dari ready (dari cache), bukan loading');
+
+  login.props.onRetryUsers();
+  await new Promise((r) => setTimeout(r, 0));
+
+  const saved = JSON.parse(storage[LOGIN_USERS_CACHE_KEY]);
+  eq(saved.users, freshUsers, 'cache lokal harus ikut diperbarui begitu penyegaran di latar belakang sukses');
+});
+
+test('App: penyegaran daftar guru di latar belakang GAGAL, tapi sudah ada cache -> daftar lama TETAP dipakai, tidak turun ke "error"', async () => {
+  const LOGIN_USERS_CACHE_KEY = get('LOGIN_USERS_CACHE_KEY');
+  storage[LOGIN_USERS_CACHE_KEY] = JSON.stringify({ users: USERS });
+  fetchImpl = () => Promise.reject(new Error('network down'));
+
+  const tree = render('App', {});
+  const login = findAll(tree, (n) => n.type === get('LoginScreen'))[0];
+  login.props.onRetryUsers();
+  await new Promise((r) => setTimeout(r, 0));
+
+  // React state sungguhan tidak diamati lewat re-render di sandbox palsu ini
+  // (setState adalah no-op), tapi localStorage TIDAK boleh berubah sama
+  // sekali -- itu bukti fetchLoginUsers tidak menganggap kegagalan ini
+  // sebagai alasan menghapus daftar yang sudah ada.
+  eq(JSON.parse(storage[LOGIN_USERS_CACHE_KEY]).users, USERS);
+});

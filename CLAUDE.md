@@ -412,6 +412,88 @@ constant appended as `?v=` to every fetched file. **Bump this on every deploy
 that touches any `.js` file** — otherwise returning users keep serving stale
 cached files indefinitely.
 
+**Startup performance audit (September 2026): the Babel transform itself is
+cached, not just the fetch.** `index.html` already fetches all 13 `.js` files
+in parallel and runs `Babel.transform()` over the joined ~500KB result exactly
+once — but until this audit it did that on *every single page load*, even
+when nothing had changed since the previous one. Measured with `@babel/core`
+(same transform logic as the in-browser `@babel/standalone`, without its
+in-browser overhead) against this repo's actual combined source: **~250–440ms
+of pure CPU**, before React ever gets to render a single element — likely
+substantially more on a mid/low-end Android phone, which is this app's
+primary device profile (see the carrier-proxy note below). This is a real,
+measured cost, not a guess — reproduce it with `@babel/core`'s
+`transformSync` over the joined `files` list from `index.html` if it needs
+re-checking. It directly delays the login screen (and therefore the "Nama
+Guru" search box) becoming visible, on top of whatever Apps Script latency
+`getLoginUsers` itself has — see the client-side login-users cache below for
+that separate half of the fix.
+
+The fix: the transformed output is cached in `localStorage`
+(`JS_BUNDLE_CACHE_KEY = 'sigap_js_bundle_cache'`) keyed by `BUILD_VERSION`. On
+a cache hit (same `BUILD_VERSION` as last time — the common case for a PWA a
+teacher reopens many times a day) the loader skips fetching all 13 files
+*and* skips `Babel.transform()` entirely, and runs the cached code directly.
+A version bump (any `.js`-touching deploy, per the rule above) is
+automatically a cache miss — there is no staleness risk beyond what the
+existing `?v=` scheme already accepts, since a version mismatch always
+re-fetches and re-transforms from scratch, then overwrites the cache entry.
+Reading and writing the cache are both wrapped in their own `try/catch`
+(corrupted JSON, or `setItem` failing under quota/private-mode, must never be
+fatal — same defensive pattern as `saveStoredSession` in `app.js`), and the
+top-level `catch` block additionally calls
+`localStorage.removeItem(JS_BUNDLE_CACHE_KEY)` before showing the "Gagal
+memuat aplikasi" fallback — so a corrupted or partially-written cache entry
+self-heals on the very next reload instead of reproducing the same failure
+forever. `tests/index-html-bundle-cache.test.js` extracts the loader IIFE
+straight out of `index.html` (it isn't a named function — there's nothing
+else to import) and runs it in a `vm` sandbox with fake
+`fetch`/`localStorage`/`document`/`Babel`, pinning: cache hit skips both fetch
+and transform, a version mismatch is treated as a miss and overwrites the
+cache, corrupted JSON falls back to a normal fetch+transform without
+throwing, a `setItem` quota failure doesn't block the app from loading, and a
+genuine load failure clears any stale cache entry before showing the error.
+
+**Startup performance audit (September 2026): daftar guru layar Login cached
+across page loads too.** The teacher-name search on the login screen
+(`filterLoginUsers`, `helpers.js`) was already 100% client-side — a pure
+`Array.prototype.indexOf` scan with no per-keystroke network request and no
+debounce needed, because there's nothing to debounce. The actual latency
+teachers were reporting as "pencarian lambat" was the *list itself* not being
+there yet: `getLoginUsers` is a real round-trip to Apps Script (already
+cached 5 minutes server-side, but that doesn't help the first hit) and on a
+cold app open, the search box sits in its `'loading'` state ("Memuat daftar
+guru...") with nothing to match against until that resolves. The fix keeps
+the network call — that's still needed to catch a newly-added or
+newly-deactivated teacher — but stops making every page load start from
+zero: the last successful `getLoginUsers` result is mirrored into
+`localStorage` (`LOGIN_USERS_CACHE_KEY = 'sigap_login_users_cache'`,
+`loadCachedLoginUsers`/`buildLoginUsersCachePayload` in `helpers.js`, same
+`{id, name}`-only shape as everywhere else this list is handled — role/
+jabatan/status/hash/salt are never stored). `App()` in `app.js` seeds
+`loginUsers`/`loginUsersState` from that cache at mount (mirroring the
+existing `bootCache`/`CLIENT_CACHE_KEY` pattern used for post-login data), so
+a repeat app open — the normal case for a PWA a guru piket opens dozens of
+times a day — shows a *usable, searchable* list on the very first frame,
+while `fetchLoginUsers()` still fires in the background exactly as before to
+refresh it. Two related tweaks in `fetchLoginUsers()` make that background
+refresh invisible when it doesn't need to be seen: it no longer resets state
+to `'loading'` when a list (cached or previously fetched) is already being
+shown — the search must never flash back to "Memuat..." once it's already
+usable — and a failed background refresh no longer wipes an existing list
+down to `'error'`; it just leaves the last-known-good list in place and tries
+again next time. Staleness risk is not new: it's the *same* window the
+server's own 5-minute cache already tolerates (a just-deactivated teacher can
+still show up in search for a few minutes either way), just mirrored onto
+the client rather than only living on the server. `tests/login.test.js`
+covers `loadCachedLoginUsers`/`buildLoginUsersCachePayload` directly (bad
+JSON, empty list, stripped extra fields, one corrupt row not poisoning the
+rest) and drives `App()` end to end: a cache hit renders `LoginScreen` as
+`'ready'` with searchable results before any fetch resolves, no cache still
+starts from `'loading'` as before, a successful background refresh updates
+the stored cache, and a failed one leaves the existing cached list untouched
+rather than downgrading to `'error'`.
+
 **`index.html` itself was NOT covered by that scheme (audit September 2026)**
 — `?v=BUILD_VERSION` only busts the `.js` files it fetches; `index.html` was
 served with whatever default `Cache-Control` Vercel/the browser chose, no
