@@ -1627,7 +1627,7 @@ function renderIzinKeluarSuratHTML(suratData) {
     '</style></head><body>' +
     '<div class="kop"><img src="' + logoUrl + '" alt="Logo SMAN 2 Tarakan" onerror="this.style.display=\'none\'"/>' +
     '<div class="nama-sekolah">SMAN 2 Tarakan</div>' +
-    '<div class="sub">Sistem Informasi Gerbang &amp; Absensi Pelanggaran (SIGAP)</div></div>' +
+    '<div class="sub">Sistem Informasi Gerbang, Absensi, dan Pelanggaran (SIGAP)</div></div>' +
     '<h1>Surat Izin Keluar</h1>' +
     '<div class="nomor">Nomor: ' + escapeHtml(d.nomor_surat) + '</div>' +
     '<p class="pembuka">Yang bertanda tangan di bawah ini menerangkan bahwa siswa berikut telah diberikan izin untuk meninggalkan lingkungan sekolah pada jam pelajaran berlangsung:</p>' +

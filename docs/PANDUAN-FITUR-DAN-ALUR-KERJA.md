@@ -7,7 +7,7 @@
 
 ## 1. Ringkasan Singkat
 
-SIGAP (Sistem Informasi Gerbang & Absensi Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, izin keluar/pulang di tengah jam pelajaran (BETA), pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
+SIGAP (Sistem Informasi Gerbang, Absensi, dan Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, izin keluar/pulang di tengah jam pelajaran (BETA), pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
 
 Aplikasi ini dipakai **oleh guru dan petugas sekolah**, dibuka lewat **browser HP atau laptop** — tidak perlu instal apa pun dari Play Store atau App Store.
 

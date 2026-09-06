@@ -1,4 +1,4 @@
-# SIGAP — Sistem Informasi Gerbang & Absensi Pelanggaran
+# SIGAP — Sistem Informasi Gerbang, Absensi, dan Pelanggaran
 
 [![Test](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml)
 
