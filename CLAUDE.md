@@ -17,6 +17,21 @@ photo upload/display feature without re-reading that history first.
 
 **There is no build step for the frontend** (see `package.json` description).
 
+## Kredit / Attribution
+
+- **Pengembang:** Syarif Hidayatullah, S.Pd.I.
+- **Instansi asal:** SMAN 2 Tarakan, Kalimantan Utara
+- **Mulai dikembangkan:** Agustus 2026
+- **Versi saat ini:** v2026.09
+- **Kontak:** syarifhidayatullah89@guru.sma.belajar.id
+
+This is identity/provenance for the original developer, not a legal IP-ownership
+claim — SIGAP is meant to be replicable by other schools (see the in-app
+"Tentang SIGAP" page, reachable from the footer on Login/Beranda — described
+under "Frontend: React with no bundler" below). Keep this block, `README.md`'s
+own Kredit section, and the in-app "Tentang SIGAP" content consistent if any
+of these details ever change.
+
 ## Two SEPARATE deploy targets — merging to `main` does NOT deploy both
 
 This repo maps to two independently-deployed systems, and a merged PR only
@@ -384,7 +399,20 @@ File load order (`index.html`'s `files` array):
 - **`helpers.js`** — pure functions (date formatting, period math, chart data
   shaping, CSV export) used by nearly every tab file.
 - **`ui-common.js`** — shared small components (Badge, stat cards, bar chart)
-  plus `LoginScreen`, Header, and Bottom Nav.
+  plus `LoginScreen`, Header, and Bottom Nav. Also `AppFooter` and
+  `TentangSigapPage` (developer attribution, added September 2026 — see
+  Kredit/Attribution above): `AppFooter` renders **only** inside `LoginScreen`
+  and the `activeTab === 'dashboard'` block in `app.js`, deliberately not on
+  any working screen (Gerbang/Pelanggaran/Izin Keluar/etc.) so it never
+  distracts from the actual task there. There is no URL router in this app —
+  navigation is the existing `activeTab` state machine in `App()` — so
+  "Tentang SIGAP" is reached the same way as the `goToIzinKeluar`/
+  `goToExportData` shortcuts: the footer calls `navigateTab('tentang')`.
+  `'tentang'` is deliberately **not** added to any role's `menus` in
+  `config.js`, so it never appears in `BottomNav`/"Lainnya" — the footer link
+  is the only entry point. Before login (no `activeTab` to route through
+  yet), `LoginScreen` swaps in `TentangSigapPage` via its own local
+  `showTentang` state instead.
 - **`app.js`** (loaded last) — the `App()` root component: login/session flow
   (session persisted in `localStorage`, server session lives 6h — the two are
   independent, client-side "logged in" state can outlive the server session),
@@ -1479,3 +1507,13 @@ dependency, `Notifikasi.gs` allowed through clasp). `NotifikasiOnboardingBanner`
 `NotifikasiTab` themselves are exercised (never throw, across eligible/
 ineligible/dismissed states) as additional cases in `render-smoke.test.js`,
 same as every other tab component.
+
+`tests/attribution.test.js` covers the developer-attribution footer and
+"Tentang SIGAP" page (see Kredit/Attribution and `ui-common.js` above):
+`AppFooter` text/link renders in `LoginScreen` and is absent from working
+screens (`GerbangTab`/`PelanggaranTab`), `TentangSigapPage` renders every
+required field and its back button, `LoginScreen`'s local `showTentang`
+toggle swaps the page in without also rendering the login form underneath,
+and static checks on `app.js`/`config.js` pin that `AppFooter` is wired only
+into the `dashboard` block and that `'tentang'` is never added to any role's
+`menus` (so it can never appear in `BottomNav`/"Lainnya").

@@ -149,3 +149,18 @@ docs/                         panduan fitur untuk pengguna non-teknis
 SCHEMA.md                     struktur lengkap 15 sheet Google Sheet
 API.md                        referensi lengkap seluruh action doGet/doPost
 ```
+
+## Kredit / Attribution
+
+- **Pengembang:** Syarif Hidayatullah, S.Pd.I.
+- **Instansi asal:** SMAN 2 Tarakan, Kalimantan Utara
+- **Mulai dikembangkan:** Agustus 2026
+- **Versi saat ini:** v2026.09
+- **Kontak:** syarifhidayatullah89@guru.sma.belajar.id
+
+SIGAP terbuka untuk diadaptasi oleh sekolah lain sebagai bagian dari semangat
+berbagi praktik baik inovasi daerah. Atribusi pengembang asal di atas
+diharapkan tetap dicantumkan pada replikasi/turunan aplikasi ini — lihat
+halaman **Tentang SIGAP** di dalam aplikasi (dari layar Login atau tab
+Beranda) untuk versi lengkapnya. Ini murni identitas/provenance pengembang,
+bukan klaim kepemilikan HKI secara hukum.
