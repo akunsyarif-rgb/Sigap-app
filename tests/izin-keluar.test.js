@@ -1277,3 +1277,158 @@ test('tidak ada role "Guru Piket" yang dibuat — kewenangannya tetap dari Jadwa
   // membaca sessionUser.role terhadap nilai piket apa pun.
   assert.match(utils, /function izinKapasitasVerifikasi/);
 });
+
+// ============================================================
+// HAPUS PER-TRANSAKSI IZIN KELUAR (action 'deleteIzinKeluar') — fitur baru,
+// dibuat atas permintaan eksplisit developer: sebelumnya Izin Keluar adalah
+// SATU-SATUNYA kategori tanpa opsi hapus per-baris (deleteEntry/Utils.gs
+// sengaja tidak memetakan 'izin', lihat getSheetForCategory), sehingga data
+// uji coba yang tersangkut tidak bisa dibersihkan tanpa hapus massal
+// per-rentang-tanggal (hapusDataPeriode, admin-only).
+//
+// Aturan produk (persis seperti diminta): kewenangan hapus untuk transaksi
+// yang BELUM final = SAMA dengan kewenangan verifikasi (Guru Piket bertugas
+// hari ini, atau BK/Kesiswaan/Admin sebagai cadangan) + jendela 5 menit sejak
+// dicatat, SAMA seperti editEntry/deleteEntry kategori lain. Untuk transaksi
+// yang SUDAH final (Selesai/Pulang): HANYA admin, TANPA batas waktu. Admin
+// sendiri TIDAK PERNAH dibatasi apa pun (status maupun waktu).
+// ============================================================
+
+test('Guru Piket bertugas hari ini dapat menghapus transaksi "Menunggu Verifikasi" miliknya sendiri ataupun bukan, dalam 5 menit', () => {
+  const s = loadServer();
+  // Pemberi persetujuan (wali) BUKAN piket — kewenangan hapus di sini datang
+  // dari kapasitas piket/BK, bukan dari kepemilikan (siapa yang mencatat).
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(buat.id), undefined, 'baris benar-benar hilang dari sheet');
+});
+
+test('Guru Piket bertugas hari ini dapat menghapus transaksi "Sedang di Luar" dalam 5 menit', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(s.izinById(buat.id)[7], 'Sedang di Luar');
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+});
+
+test('BK/Kesiswaan (cadangan, tidak sedang piket) tetap dapat menghapus transaksi yang belum final', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  const res = s.post('bk', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+});
+
+test('Admin dapat menghapus transaksi yang belum final juga', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  const res = s.post('admin', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+});
+
+test('guru biasa (bukan piket hari ini, bukan BK/Admin) ditolak menghapus — sekalipun dia sendiri pemberi persetujuannya', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'pemberiIzin', '3003', 'kembali', 'testing developer');
+  const res = s.post('pemberiIzin', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+  assert.ok(s.izinById(buat.id), 'baris tidak terhapus');
+});
+
+test('guru yang piket di HARI LAIN (bukan hari ini) ditolak menghapus', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  const res = s.post('bukanPiket', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+});
+
+test('OSIS ditolak menghapus transaksi izin keluar sepenuhnya', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  const res = s.post('osis', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+});
+
+test('Guru Piket ditolak menghapus transaksi yang sudah lewat 5 menit sejak dicatat — jendela yang sama dengan kategori lain', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  // Mundurkan waktu pencatatannya secara langsung di sheet (simulasi "sudah
+  // lama", bukan menunggu beneran) — pola yang sama seperti window 5 menit
+  // deleteEntry kategori lain.
+  s.izinById(buat.id)[0] = new Date(Date.now() - 6 * 60 * 1000);
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /5 menit/);
+  assert.ok(s.izinById(buat.id), 'baris tidak terhapus karena ditolak');
+});
+
+test('Guru Piket ditolak menghapus transaksi yang statusnya SUDAH FINAL (Selesai) sekalipun masih dalam 5 menit', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+  assert.equal(s.izinById(buat.id)[7], 'Selesai');
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /admin/i);
+  assert.ok(s.izinById(buat.id), 'transaksi final tidak terhapus oleh non-admin');
+});
+
+test('Guru Piket ditolak menghapus transaksi berstatus Pulang (final) — sama seperti Selesai', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'pulang', 'testing developer');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(s.izinById(buat.id)[7], 'Pulang');
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'error');
+});
+
+test('Admin dapat menghapus transaksi FINAL (Selesai) — pengecualian yang disengaja untuk admin', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
+  const res = s.post('admin', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+  assert.equal(s.izinById(buat.id), undefined);
+});
+
+test('Admin dapat menghapus transaksi apa pun walau sudah lewat 5 menit — admin tidak dibatasi jendela waktu', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  s.izinById(buat.id)[0] = new Date(Date.now() - 60 * 60 * 1000);
+  const res = s.post('admin', { action: 'deleteIzinKeluar', id: buat.id });
+  assert.equal(res.status, 'success');
+});
+
+test('menghapus transaksi yang sudah tidak ada (id salah/sudah terhapus) mengembalikan error, bukan diam-diam sukses', () => {
+  const s = loadServer();
+  const res = s.post('admin', { action: 'deleteIzinKeluar', id: 'TIDAK-ADA-123' });
+  assert.equal(res.status, 'error');
+});
+
+test('klaim kapasitas/role dari client tidak bisa melewati aturan hapus — server yang menentukan, sama seperti aksi izin lainnya', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '3003', 'kembali', 'testing developer');
+  const res = s.post('pemberiIzin', { action: 'deleteIzinKeluar', id: buat.id, kapasitas: 'guru_piket', role: 'admin' });
+  assert.equal(res.status, 'error', 'klaim dari body request diabaikan sepenuhnya');
+});
+
+test('hapus per-transaksi tercatat ke Audit Log dengan status & kapasitas pelaku, bukan cuma nama', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
+  s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
+  const aksi = s.auditRows().filter((r) => String(r[3]) === 'Hapus Izin Keluar').pop();
+  assert.ok(aksi, 'baris audit log tertulis');
+  assert.equal(aksi[1], 'Pak Piket Pagi');
+  assert.match(String(aksi[4]), /status=Menunggu Verifikasi/);
+  assert.match(String(aksi[4]), /kapasitas=Guru Piket/);
+});
+
+test('data riwayat (transaksi lama dari fixture) yang sudah final tetap tidak bisa dihapus non-admin walau kapasitasnya piket', () => {
+  const s = loadServer();
+  // 'HARIINI-SELESAI' dari IZIN_FIXTURE berstatus 'Pulang' (final).
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: 'HARIINI-SELESAI' });
+  assert.equal(res.status, 'error');
+  assert.ok(s.izinById('HARIINI-SELESAI'));
+});

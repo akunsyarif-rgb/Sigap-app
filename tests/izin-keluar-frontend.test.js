@@ -1001,17 +1001,22 @@ test('audit UX Agustus 2026: "Tutup transaksi" DIHAPUS — Tandai Kembali langsu
   // bukan "silakan tutup transaksi berikutnya".
   assert.match(gerbangSrc, /runAction\(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai\.'\)/);
   // Kartu "Selesai Hari Ini" tidak lagi punya tombol yang MENGUBAH STATUS
-  // transaksi apa pun — cuma menampilkan status akhirnya. Satu pengecualian
-  // yang disengaja (audit September 2026): tombol "Cetak Surat Izin" — itu
+  // transaksi apa pun — cuma menampilkan status akhirnya. Dua pengecualian
+  // yang disengaja: tombol "Cetak Surat Izin" (audit September 2026) — itu
   // bukan aksi status, murni OUTPUT dari transaksi yang sudah final, dan
   // sengaja tetap tersedia di sini supaya surat tetap bisa dicetak/diunduh
-  // kapan saja setelah transaksinya selesai.
+  // kapan saja setelah transaksinya selesai — dan tombol "Hapus" (fitur hapus
+  // per-transaksi) yang khusus di bucket ini dibatasi HANYA untuk admin
+  // (bukan canVerify) karena transaksi final sudah melibatkan pihak lain
+  // (penyetuju + guru piket); lihat 'deleteIzinKeluar' di Code.gs.
   const blokSelesai = gerbangSrc.split('Selesai Hari Ini ({selesaiHariIni.length})')[1].split('{formStudent && (')[0];
   assert.ok(!/<button/.test(blokSelesai), 'kartu Selesai Hari Ini tidak boleh punya tombol HTML mentah');
   const tombolDiBlokSelesai = blokSelesai.match(/<Button/g) || [];
-  assert.equal(tombolDiBlokSelesai.length, 1, 'kartu Selesai Hari Ini hanya boleh punya SATU <Button> — Cetak Surat Izin');
-  assert.match(blokSelesai, /handleCetakSuratIzin\(izin\)/, 'satu-satunya tombol yang boleh ada adalah Cetak Surat Izin');
-  assert.doesNotMatch(blokSelesai, /onTandaiKembali|onVerifikasi|runAction\(/, 'tidak boleh ada tombol yang mengubah status transaksi');
+  assert.equal(tombolDiBlokSelesai.length, 2, 'kartu Selesai Hari Ini hanya boleh punya DUA <Button> — Cetak Surat Izin dan Hapus (admin)');
+  assert.match(blokSelesai, /handleCetakSuratIzin\(izin\)/, 'tombol Cetak Surat Izin harus tetap ada');
+  assert.match(blokSelesai, /isAdmin && \(/, 'tombol Hapus di bucket ini harus dibungkus gate isAdmin');
+  assert.match(blokSelesai, /handleHapusIzin\(izin\)/, 'tombol hapus harus memanggil handleHapusIzin, bukan aksi status langsung');
+  assert.doesNotMatch(blokSelesai, /onTandaiKembali|onVerifikasi|runAction\(/, 'tidak boleh ada tombol yang langsung mengubah status transaksi (Hapus lewat handleHapusIzin, bukan runAction langsung di JSX)');
 });
 
 test('status "Kembali" legacy tidak pernah ditampilkan mentah — dibaca sebagai Selesai', () => {

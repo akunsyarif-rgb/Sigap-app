@@ -69,7 +69,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onDeleteIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
@@ -196,9 +196,11 @@
                    {mode === 'izin' ? (
                        <IzinKeluarTab
                            students={students} izinList={izinList} kelompokList={kelompokList} canVerify={canVerifyIzin} waliKelasMap={waliKelasMap}
+                           isAdmin={isAdminUser}
                            onCreateIzin={onCreateIzin} onVerifikasi={onVerifikasiIzin}
                            onTandaiKembali={onTandaiKembaliIzin}
                            onTandaiPulang={onTandaiPulangIzin}
+                           onDeleteIzin={onDeleteIzin}
                            onCreateKelompok={onCreateKelompok} onVerifikasiKelompok={onVerifikasiKelompok}
                            onTandaiKembaliKelompok={onTandaiKembaliKelompok}
                            myWaliKelas={myWaliKelas}
@@ -480,7 +482,7 @@
            );
        }
 
-       function IzinKeluarPanel({ students, izinList, canVerify, onCreateIzin, onVerifikasi, onTandaiKembali, waliKelasMap, myWaliKelas, onGenerateSurat }) {
+       function IzinKeluarPanel({ students, izinList, canVerify, isAdmin, onCreateIzin, onVerifikasi, onTandaiKembali, onDeleteIzin, waliKelasMap, myWaliKelas, onGenerateSurat }) {
            const [searchQuery, setSearchQuery] = useState('');
            // UX audit (September 2026): dulu ada kartu konteks terpisah
            // ("Anda wali kelas siswa ini."/"Siswa ini bukan kelas perwalian
@@ -578,6 +580,19 @@
                    setBusyId('');
                    showMsg(ok, text || konfirmasiTeks);
                });
+           };
+
+           // Hapus 1 transaksi — kewenangan SUNGGUHAN dicek ulang di server
+           // (canVerifyIzin untuk yang belum final, admin tanpa batasan; lihat
+           // action 'deleteIzinKeluar', Code.gs). Tombolnya sendiri baru
+           // ditampilkan sesuai aturan yang sama (canVerify untuk bucket
+           // Menunggu Verifikasi/Sedang di Luar, isAdmin untuk Selesai Hari
+           // Ini) — tersembunyi bukan berarti aman, cuma supaya tidak
+           // menawarkan tombol yang pasti ditolak server.
+           const handleHapusIzin = (izin) => {
+               if (busyId) return;
+               if (!window.confirm(`Hapus transaksi izin keluar ${izin.name}? Tindakan ini tidak bisa dibatalkan.`)) return;
+               runAction(onDeleteIzin, izin, 'Transaksi izin keluar dihapus.');
            };
 
            // ===== Cetak Surat Izin Keluar (audit September 2026) =====
@@ -691,6 +706,12 @@
                                ) : (
                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5 text-center">Menunggu diverifikasi Guru Piket yang bertugas.</div>
                                )}
+                               {/* Hapus — sama gatenya dengan Verifikasi (canVerify): guru
+                                   piket bertugas/BK/admin, tapi cuma dalam 5 menit sejak
+                                   dicatat (dicek ulang server, lihat 'deleteIzinKeluar'). */}
+                               {canVerify && (
+                                   <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                               )}
                            </KartuIzinKeluar>
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />} text="Tidak ada izin yang menunggu verifikasi." />}
                    </div>
@@ -711,6 +732,9 @@
                                <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
                                    {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
                                </Button>
+                               {canVerify && (
+                                   <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                               )}
                            </KartuIzinKeluar>
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} text="Tidak ada siswa yang sedang di luar." />}
                    </div>
@@ -732,6 +756,14 @@
                                    <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
                                        {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
                                    </Button>
+                                   {/* Transaksi final (Selesai/Pulang) sudah melibatkan pihak
+                                       lain (penyetuju + guru piket) — cuma admin yang boleh
+                                       menghapusnya, bukan guru piket/BK yang kebetulan
+                                       bertugas hari ini (server menolak selain admin, lihat
+                                       'deleteIzinKeluar' di Code.gs). */}
+                                   {isAdmin && (
+                                       <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                                   )}
                                </KartuIzinKeluar>
                            ))}
                        </div>
@@ -1317,8 +1349,10 @@
                    ) : (
                        <IzinKeluarPanel
                            students={props.students} izinList={props.izinList} canVerify={props.canVerify} waliKelasMap={props.waliKelasMap}
+                           isAdmin={props.isAdmin}
                            onCreateIzin={props.onCreateIzin} onVerifikasi={props.onVerifikasi}
                            onTandaiKembali={props.onTandaiKembali}
+                           onDeleteIzin={props.onDeleteIzin}
                            myWaliKelas={props.myWaliKelas}
                            onGenerateSurat={props.onGenerateSurat}
                        />

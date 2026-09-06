@@ -1098,6 +1098,11 @@
            // sekarang menulis status Selesai langsung).
            const handleTandaiKembaliIzin = (payload, callback) => handleIzinAction('tandaiKembaliIzinKeluar', payload, callback, '✓ Siswa ditandai kembali — transaksi selesai.');
            const handleTandaiPulangIzin = (payload, callback) => handleIzinAction('tandaiPulangIzinKeluar', payload, callback, '✓ Siswa ditandai pulang (tidak kembali ke sekolah).');
+           // Hapus 1 transaksi — kewenangannya sendiri dicek server (canVerifyIzin
+           // untuk transaksi yang belum final, admin tanpa batasan; lihat
+           // action 'deleteIzinKeluar', Code.gs), tombolnya sendiri baru
+           // ditampilkan sesuai itu di IzinKeluarPanel (gerbang.js).
+           const handleDeleteIzin = (payload, callback) => handleIzinAction('deleteIzinKeluar', payload, callback, '✓ Transaksi izin keluar dihapus.');
 
            // ---- Izin Kelompok (satu kegiatan, banyak peserta) ----
            // Sama seperti izin individual: hasilnya selalu ditarik ulang dari
@@ -1214,7 +1219,7 @@
                                        students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} onSelectLate={setSelectedStudent} suratList={suratList} onAddSurat={handleAddSurat} isAdminUser={roleKey === 'admin'} waliKelasMap={waliKelasMap}
                                        izinList={izinList} kelompokList={kelompokList} canVerifyIzin={canVerifyIzin} onCreateIzin={handleCreateIzin}
                                        onVerifikasiIzin={handleVerifikasiIzin} onTandaiKembaliIzin={handleTandaiKembaliIzin}
-                                       onTandaiPulangIzin={handleTandaiPulangIzin} myWaliKelas={user.waliKelas || ''}
+                                       onTandaiPulangIzin={handleTandaiPulangIzin} onDeleteIzin={handleDeleteIzin} myWaliKelas={user.waliKelas || ''}
                                        onCreateKelompok={handleCreateKelompok} onVerifikasiKelompok={handleVerifikasiKelompok}
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
                                        initialMode={gerbangMode}
