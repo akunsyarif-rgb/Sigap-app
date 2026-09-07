@@ -1531,6 +1531,34 @@ function findPesertaKelompok(sheet, idKelompok) {
   return hasil;
 }
 
+// Kegiatan Izin_Kelompok yang kehilangan SEMUA pesertanya (baris Izin_Keluar
+// yang menunjuk ke kegiatan itu sudah dihapus semua — lewat 'deleteIzinKeluar'
+// di Code.gs, atau lewat 'hapusDataPeriode' saat jenis 'izin' ikut dipilih)
+// dibersihkan supaya tidak ada kegiatan "hantu" 0 peserta yang masih
+// nongkrong di layar Kelompok. Dipanggil SETELAH baris Izin_Keluar yang
+// relevan benar-benar hilang dari sheet, supaya findPesertaKelompok membaca
+// keadaan TERKINI. Dari BAWAH ke ATAS (pola sama dengan deleteRowsInRange)
+// supaya deleteRow tidak menggeser baris yang belum diperiksa.
+function cleanupOrphanedIzinKelompok(ss) {
+  var kelSheet = ss.getSheetByName(IZIN_KELOMPOK_SHEET_NAME);
+  if (!kelSheet) return 0;
+  var lastRow = kelSheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  var izinSheet = ss.getSheetByName(IZIN_SHEET_NAME);
+  var ids = kelSheet.getRange(2, IZIN_KELOMPOK_COL_ID, lastRow - 1, 1).getValues();
+  var removed = 0;
+  for (var i = ids.length - 1; i >= 0; i--) {
+    var id = String(ids[i][0] || '').trim();
+    if (!id) continue;
+    var sisaPeserta = izinSheet ? findPesertaKelompok(izinSheet, id) : [];
+    if (sisaPeserta.length === 0) {
+      kelSheet.deleteRow(i + 2);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 // Ringkasan keadaan rombongan, DIHITUNG dari baris peserta (bukan disimpan).
 // Inilah yang membuat "8 siswa · 7 di luar · 1 kembali" tidak pernah bisa
 // berselisih dengan status siswanya sendiri.

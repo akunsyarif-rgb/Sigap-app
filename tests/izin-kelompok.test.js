@@ -903,3 +903,53 @@ test('kelompok: client mencoba memalsukan kapasitas tetap diabaikan, server yang
   const izinAdmin = s.get('admin', { action: 'getIzinKeluar' }).izin.filter((i) => i.kelompok_id === buat.id);
   izinAdmin.forEach((i) => assert.equal(i.dicatat_kembali_kapasitas, 'bk_kesiswaan', 'klaim klien diabaikan'));
 });
+
+// ============================================================
+// HAPUS PER-TRANSAKSI (fitur baru) x KELOMPOK: kegiatan induk yang
+// kehilangan SEMUA pesertanya lewat deleteIzinKeluar harus ikut dibersihkan
+// (cleanupOrphanedIzinKelompok, Utils.gs) — supaya tidak ada kegiatan
+// "hantu" 0 peserta yang masih nongkrong di layar Kelompok.
+// ============================================================
+
+test('hapus SATU peserta rombongan (bukan yang terakhir) tidak menghapus kegiatan induknya', () => {
+  const s = loadServer();
+  const buat = ajukan(s, 'wali');
+  const semua = s.peserta(buat.id);
+  const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: semua[0].id });
+  assert.equal(res.status, 'success');
+
+  assert.equal(s.izinRows().length, 7, 'tinggal 7 dari 8 peserta');
+  assert.equal(s.kelompokRows().length, 1, 'kegiatan induk masih ada karena masih ada peserta lain');
+});
+
+test('menghapus PESERTA TERAKHIR sebuah kegiatan ikut menghapus baris kegiatan induknya (tidak ada kegiatan hantu 0 peserta)', () => {
+  const s = loadServer();
+  const buat = ajukan(s, 'wali');
+  const semua = s.peserta(buat.id);
+  // Hapus 7 dari 8 peserta satu per satu dulu — kegiatan tetap ada.
+  for (let i = 0; i < 7; i++) {
+    const r = s.post('piketPagi', { action: 'deleteIzinKeluar', id: semua[i].id });
+    assert.equal(r.status, 'success');
+  }
+  assert.equal(s.kelompokRows().length, 1, 'kegiatan masih ada — masih ada 1 peserta tersisa');
+
+  // Hapus peserta terakhir → kegiatan induk ikut lenyap.
+  const terakhir = s.post('piketPagi', { action: 'deleteIzinKeluar', id: semua[7].id });
+  assert.equal(terakhir.status, 'success');
+  assert.equal(s.izinRows().length, 0);
+  assert.equal(s.kelompokRows().length, 0, 'kegiatan induk 0-peserta ikut dibersihkan, bukan tertinggal jadi hantu');
+});
+
+test('hapus per-transaksi pada peserta kelompok tetap tunduk pada aturan yang sama (status & jendela waktu) seperti izin individual', () => {
+  const s = loadServer();
+  const buat = rombonganDiLuar(s); // semua peserta 'Sedang di Luar' — belum final
+  const target = s.peserta(buat.id)[0];
+  // Guru biasa (bukan piket/BK/admin) tetap ditolak, sama seperti individual.
+  const ditolak = s.post('bukanPiket', { action: 'deleteIzinKeluar', id: target.id });
+  assert.equal(ditolak.status, 'error');
+  assert.equal(s.izinRows().length, 8, 'tidak ada baris yang terhapus dari percobaan yang ditolak');
+
+  // Piket bertugas hari ini tetap boleh menghapus transaksi yang belum final.
+  const berhasil = s.post('piketPagi', { action: 'deleteIzinKeluar', id: target.id });
+  assert.equal(berhasil.status, 'success');
+});

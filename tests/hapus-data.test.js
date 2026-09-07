@@ -451,6 +451,86 @@ test('Hapus Data: fitur Export Data yang sudah ada tetap berfungsi berdampingan 
 
 // ================= PAGAR VOLUME =================
 
+// ================= IZIN KELUAR ('izin') & PEMBERSIHAN Izin_Kelompok YATIM =================
+// Celah nyata yang ditambal di sini (bukan cuma diuji ulang): sebelum ini,
+// tidak ada satu pun test permanen yang benar-benar mengeksekusi hapus baris
+// Izin_Keluar sungguhan lewat hapusDataPeriode (satu-satunya referensi 'izin'
+// sebelumnya cuma test pratinjau nol-data di atas) — walau 'izin' sudah lama
+// terdaftar di HAPUS_DATA_JENIS (Utils.gs). Sekaligus menguji bug yang
+// ditemukan & diperbaiki bersamaan dengan fitur hapus per-transaksi: hapus
+// massal per-rentang untuk jenis 'izin' dulu tidak pernah membersihkan baris
+// Izin_Kelompok yang kehilangan SEMUA pesertanya — sekarang dibersihkan lewat
+// cleanupOrphanedIzinKelompok (Utils.gs), dipanggil sekali di akhir setelah
+// baris Izin_Keluar yang relevan benar-benar hilang.
+
+const IZIN_KELOMPOK_HEADER_TEST = [
+  'Timestamp', 'ID_Kelompok', 'Kegiatan', 'Tujuan', 'Keperluan', 'Pola_Kembali', 'Jumlah_Peserta',
+  'Jalur', 'Alasan_Khusus',
+  'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan',
+  'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID', 'Waktu_Verifikasi',
+];
+
+function buildSheetsDenganKelompok() {
+  const sheets = buildSheets();
+  // IZ-1 (Januari, dalam rentang JAN) jadi satu-satunya peserta KEL-1 —
+  // menghapusnya harus membuat KEL-1 kehilangan seluruh pesertanya.
+  sheets.Izin_Keluar._data[1][20] = 'KEL-1';
+  // Tambahan: IZ-3 (Januari, dalam rentang) & IZ-4 (Maret, di luar rentang)
+  // sama-sama peserta KEL-2 — menghapus IZ-3 saja TIDAK boleh membuat KEL-2
+  // ikut hilang, karena IZ-4 masih ada.
+  sheets.Izin_Keluar.appendRow([
+    D('2026-01-18T08:00:00'), '3003', 'Citra', 'XII C', 'IZ-3', 'kegiatan', 'kembali', 'Selesai', 'normal', '',
+    'Pak Anwar', 'G03', D('2026-01-18T08:00:00'), 'Pak Piket', 'G10', D('2026-01-18T08:05:00'),
+    D('2026-01-18T08:05:00'), D('2026-01-18T10:00:00'), 'Bu Piket', 'G11', 'KEL-2',
+  ]);
+  sheets.Izin_Keluar.appendRow([
+    D('2026-03-05T08:00:00'), '4004', 'Dedi', 'XII C', 'IZ-4', 'kegiatan', 'kembali', 'Selesai', 'normal', '',
+    'Pak Anwar', 'G03', D('2026-03-05T08:00:00'), 'Pak Piket', 'G10', D('2026-03-05T08:05:00'),
+    D('2026-03-05T08:05:00'), D('2026-03-05T10:00:00'), 'Bu Piket', 'G11', 'KEL-2',
+  ]);
+  sheets.Izin_Kelompok = makeSheet(IZIN_KELOMPOK_HEADER_TEST, [
+    [D('2026-01-14T09:00:00'), 'KEL-1', 'Kontrol Kesehatan', 'kembali', 'kontrol', 'individual', 1, 'normal', '',
+      'Bu Kartina', 'G02', D('2026-01-14T09:00:00'), 'Pak Piket', 'G10', D('2026-01-14T09:05:00')],
+    [D('2026-01-18T08:00:00'), 'KEL-2', 'Kegiatan Sekolah', 'kembali', 'kegiatan', 'bersama', 2, 'normal', '',
+      'Pak Anwar', 'G03', D('2026-01-18T08:00:00'), 'Pak Piket', 'G10', D('2026-01-18T08:05:00')],
+  ]);
+  return sheets;
+}
+
+test('Hapus Data: jenis "izin" bisa dieksekusi sungguhan — hanya baris dalam rentang yang hilang', () => {
+  const s = loadServer(buildSheetsDenganKelompok());
+  const res = s.hapus('admin', { jenis: ['izin'], ...JAN, confirm: true });
+  assert.equal(res.status, 'success');
+  // IZ-1 & IZ-3 (Januari) terhapus, IZ-2 (Maret) & IZ-4 (Maret) tetap ada.
+  assert.equal(res.counts.izin, 2);
+  const sisaId = s.sheets.Izin_Keluar._data.slice(1).map((r) => r[4]);
+  assert.deepEqual(sisaId.sort(), ['IZ-2', 'IZ-4']);
+});
+
+test('Hapus Data: menghapus izin per-rentang membersihkan Izin_Kelompok yang kehilangan SEMUA pesertanya', () => {
+  const s = loadServer(buildSheetsDenganKelompok());
+  s.hapus('admin', { jenis: ['izin'], ...JAN, confirm: true });
+  const sisaKelompok = s.sheets.Izin_Kelompok._data.slice(1).map((r) => r[1]);
+  assert.deepEqual(sisaKelompok, ['KEL-2'], 'KEL-1 (0 peserta tersisa) dibersihkan, KEL-2 (masih punya IZ-4) tetap ada');
+});
+
+test('Hapus Data: jenis lain (bukan "izin") tidak memicu pembersihan Izin_Kelompok sama sekali', () => {
+  const s = loadServer(buildSheetsDenganKelompok());
+  s.hapus('admin', { jenis: ['keterlambatan'], ...JAN, confirm: true });
+  // Baris Izin_Keluar & Izin_Kelompok utuh — jenis 'izin' tidak dipilih.
+  assert.equal(s.sheets.Izin_Keluar._data.length - 1, 4);
+  assert.equal(s.sheets.Izin_Kelompok._data.length - 1, 2);
+});
+
+test('Hapus Data: pratinjau jenis "izin" ikut menghitung baris yang akan terhapus (tanpa menghapus apa pun)', () => {
+  const s = loadServer(buildSheetsDenganKelompok());
+  const pratinjau = s.preview('admin', { jenis: ['izin'], ...JAN });
+  assert.equal(pratinjau.status, 'success');
+  assert.equal(pratinjau.counts.izin, 2);
+  assert.equal(s.sheets.Izin_Keluar._data.length - 1, 4, 'pratinjau tidak menghapus apa pun');
+  assert.equal(s.sheets.Izin_Kelompok._data.length - 1, 2, 'pratinjau tidak membersihkan Izin_Kelompok apa pun');
+});
+
 test('Hapus Data: volume yang melebihi batas ditolak SEBELUM satu baris pun terhapus', () => {
   const banyak = [];
   for (let i = 0; i < 3005; i++) {
