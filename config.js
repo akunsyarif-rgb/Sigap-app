@@ -7,7 +7,7 @@
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
        const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
-       const API_TOKEN = "sigap2026rahasia8x9zK2mP";
+       const API_TOKEN = "cd0Tum0Hg4mqgDaXx3MEll8k6loCXJd3";
 
        // Kunci PUBLIK VAPID untuk Web Push (lihat notifikasi.js, CLAUDE.md bagian
        // Push Notification). Kunci publik VAPID memang dirancang untuk diketahui
