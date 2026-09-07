@@ -11,3 +11,7 @@ node_modules/
 # ke folder terpisah — bukan konfigurasi yang perlu di-commit.
 .clasp-pull.json
 
+
+# Laporan audit lokal (bisa berisi info deployment) - jangan commit
+SIGAP_AUDIT_KESIAPAN.md
+SIGAP_AUDIT_KESIAPAN_REDACTED.md
