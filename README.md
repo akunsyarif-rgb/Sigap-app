@@ -69,7 +69,7 @@ digembok token API + sesi guru yang login.
 - **Gerbang**: catat keterlambatan & surat izin/sakit, termasuk Izin
   Keluar/Pulang di tengah jam pelajaran (BETA) — perorangan maupun
   rombongan (Izin Kelompok).
-- **Pelanggaran**: catat pelanggaran tata tertib + sanksi, dan pelanggaran
+- **Pelanggaran**: catat pelanggaran tata tertib + tindakan, dan pelanggaran
   saat upacara (dicatat OSIS/BK/Admin).
 - **Bimbingan Khusus**: catatan konseling, dibatasi ketat untuk BK/Admin.
 - **Rekap Kelas, Statistik**: rekap per kelas untuk wali kelas/BK/Admin.

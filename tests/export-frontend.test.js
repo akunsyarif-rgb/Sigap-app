@@ -134,7 +134,7 @@ const report = (over) => Object.assign({
   jenisLabel: 'Pelanggaran',
   judul: 'LAPORAN PELANGGARAN',
   sekolah: 'SMAN 2 Tarakan',
-  columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat Oleh'],
+  columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Tindakan', 'Catatan', 'Dicatat Oleh'],
   rows: [
     ['08/01/2026', 'Rahma', 'XI A', 'Atribut', 'Teguran Lisan', 'dasi & <topi>', 'Bu Kartina'],
     ['09/01/2026', 'Budi (kelas "B")', 'XI B', 'Bolos', 'Panggilan Ortu', '', 'Pak Anwar'],
