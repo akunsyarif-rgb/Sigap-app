@@ -145,7 +145,7 @@ Satu siswa tetap **tidak bisa punya dua izin berjalan sekaligus**: kalau ada sat
 
 ### 3.4 Pelanggaran — Catat Pelanggaran Tata Tertib
 
-- Cari siswa, lalu isi **jenis pelanggaran** (tombol cepat: Bolos, Rambut/Seragam, Merokok — atau ketik sendiri), **sanksi** (Teguran Lisan, Surat Peringatan, Panggil Orang Tua — atau ketik sendiri), dan catatan tambahan bila perlu.
+- Cari siswa, lalu isi **jenis pelanggaran** (tombol cepat: Bolos, Rambut/Seragam, Merokok — atau ketik sendiri), **tindakan** (Teguran Lisan, Surat Peringatan, Panggil Orang Tua — atau ketik sendiri), dan catatan tambahan bila perlu.
 - Saat siswa dipilih, aplikasi menampilkan **berapa kali siswa itu sudah pernah tercatat** — supaya guru tahu apakah ini kejadian berulang.
 - Dari halaman ini, guru BK/Kesiswaan dan Admin juga bisa menandai siswa sebagai **"Perlu Bimbingan Khusus"** beserta catatannya.
 
@@ -232,7 +232,7 @@ Perlu dijelaskan sejujurnya: **SIGAP saat ini tidak memiliki aplikasi khusus sis
 Yang ada sekarang:
 
 - **Siswa** terlibat sebagai pengurus **OSIS** yang diberi akun khusus untuk mencatat pelanggaran upacara. Akun OSIS hanya bisa membuka menu Upacara.
-- **Orang tua** mendapat informasi melalui jalur sekolah seperti biasa — wali kelas atau guru BK menghubungi orang tua berdasarkan data yang sudah rapi di SIGAP (misalnya "sudah 5 kali terlambat bulan ini"), termasuk lewat sanksi "Panggil Orang Tua" yang tercatat di aplikasi.
+- **Orang tua** mendapat informasi melalui jalur sekolah seperti biasa — wali kelas atau guru BK menghubungi orang tua berdasarkan data yang sudah rapi di SIGAP (misalnya "sudah 5 kali terlambat bulan ini"), termasuk lewat tindakan "Panggil Orang Tua" yang tercatat di aplikasi.
 
 Manfaat SIGAP bagi siswa dan orang tua bersifat **tidak langsung tapi nyata**: catatan jadi akurat dan tidak asal ingat, keputusan sekolah punya dasar data, dan tidak ada siswa yang dicatat dua kali untuk kejadian yang sama.
 
@@ -295,10 +295,10 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 
 1. Buka menu **Pelanggaran**.
 2. Cari dan pilih siswanya. Perhatikan keterangan berapa kali siswa itu sudah pernah tercatat.
-3. Pilih **jenis pelanggaran** dan **sanksi** (pakai tombol cepat atau ketik sendiri).
+3. Pilih **jenis pelanggaran** dan **tindakan** (pakai tombol cepat atau ketik sendiri).
 4. Tambahkan catatan bila perlu, lalu **Simpan**.
 
-> *Contoh nyata:* Bu Sari mendapati seorang siswa merokok di belakang kantin. Ia buka **Pelanggaran** → cari nama siswa → pilih **Merokok** → pilih sanksi **Panggil Orang Tua** → tulis catatan "Ditemukan di belakang kantin jam istirahat" → **Simpan**. Guru BK melihat catatan itu di harinya juga.
+> *Contoh nyata:* Bu Sari mendapati seorang siswa merokok di belakang kantin. Ia buka **Pelanggaran** → cari nama siswa → pilih **Merokok** → pilih tindakan **Panggil Orang Tua** → tulis catatan "Ditemukan di belakang kantin jam istirahat" → **Simpan**. Guru BK melihat catatan itu di harinya juga.
 
 ### 5.5 Mencatat Pelanggaran Upacara (OSIS)
 
