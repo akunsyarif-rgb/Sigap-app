@@ -736,7 +736,7 @@
                                            </div>
                                            {item.logged_by && <div className="text-[10px] text-slate-500">Dicatat oleh: {item.logged_by}</div>}
                                            {category === 'pelanggaran' && item.sanksi && (
-                                               <div className="text-[10px] text-slate-500">Sanksi: {item.sanksi}</div>
+                                               <div className="text-[10px] text-slate-500">Tindakan: {item.sanksi}</div>
                                            )}
                                            {category === 'izin' && (
                                                <div className="text-[10px] text-slate-500">
@@ -799,7 +799,7 @@
                                            <input type="text" value={editJenisPelanggaran} onChange={(e) => setEditJenisPelanggaran(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                        </div>
                                        <div>
-                                           <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Sanksi</label>
+                                           <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1 block">Tindakan</label>
                                            <input type="text" value={editSanksi} onChange={(e) => setEditSanksi(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                        </div>
                                        <div>

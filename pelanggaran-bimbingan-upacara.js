@@ -113,7 +113,7 @@
                                                <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{p.jenis_pelanggaran}</span>
                                            </div>
                                            <div className="text-[10px] text-slate-500 flex justify-between gap-2">
-                                               <span>{p.class} • Sanksi: {p.sanksi}</span>
+                                               <span>{p.class} • Tindakan: {p.sanksi}</span>
                                                <span className="flex-shrink-0">{dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
                                            </div>
                                        </RowCard>
@@ -182,7 +182,7 @@
                                </div>
 
                                <div>
-                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Sanksi</label>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Tindakan</label>
                                    <div className="grid grid-cols-3 gap-2">
                                        {sanksiPresets.map(s => (
                                            <button key={s} onClick={() => { setSanksi(s); setSanksiCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${sanksi === s ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{s}</button>

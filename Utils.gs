@@ -465,7 +465,7 @@ var EXPORT_JENIS = {
   pelanggaran: {
     label: 'Pelanggaran', judul: 'LAPORAN PELANGGARAN', sheet: 'Pelanggaran',
     numCols: 8, tsIndex: 0, classIndex: 3, level: 'umum',
-    columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat Oleh'],
+    columns: ['Tanggal', 'Nama', 'Kelas', 'Jenis Pelanggaran', 'Tindakan', 'Catatan', 'Dicatat Oleh'],
     map: function (r) { return [formatExportDate(r[0]), asText(r[2]), asText(r[3]), asText(r[4]), asText(r[5]), asText(r[6]), asText(r[7])]; },
   },
   surat: {
