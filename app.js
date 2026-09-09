@@ -934,6 +934,25 @@
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
            };
 
+           // Fase 2a: kelompok SATU kelas saja (lihat PelanggaranKelompokPanel di
+           // pelanggaran-bimbingan-upacara.js dan addPelanggaranKelompok di Code.gs
+           // untuk validasinya). Beda dari handleAddPelanggaran: server mengisi
+           // nama & kelas tiap baris dari Master_Siswa, bukan dari payload klien —
+           // jadi di sini TARIK ULANG daftarnya (sama seperti handleCreateKelompok
+           // untuk Izin Kelompok di bawah) daripada menebak nilai itu untuk update
+           // optimistik.
+           const handleAddPelanggaranKelompok = (payload, callback) => {
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(d => { if (d.status === 'success') setPelanggaranList(d.pelanggaran); });
+                           callback(true, `✓ ${data.jumlahSiswa} siswa berhasil dicatat.`);
+                       } else callback(false, data.message || 'Gagal mencatat pelanggaran kelompok.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+           };
+
            const handleAddBimbingan = (payload, callback) => {
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
@@ -1262,7 +1281,7 @@
                                    <AuditLogTab auditLog={auditLog} />
                                )}
                                {activeTab === 'pelanggaran' && effectiveMenus.includes('pelanggaran') && (
-                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} waliKelasMap={waliKelasMap} />
+                                   <PelanggaranTab students={students} pelanggaranList={pelanggaranList} onAddPelanggaran={handleAddPelanggaran} onAddPelanggaranKelompok={handleAddPelanggaranKelompok} onAddBimbingan={handleAddBimbingan} canSeeClassDetail={canSeeClassDetail} onGetPelanggaranCount={fetchPelanggaranCount} waliKelasMap={waliKelasMap} />
                                )}
                                {activeTab === 'bimbingan' && effectiveMenus.includes('bimbingan') && (
                                    <BimbinganTab bimbinganList={bimbinganList} />

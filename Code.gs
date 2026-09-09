@@ -709,6 +709,81 @@ function doPost(e) {
       return jsonOut({ status: 'success' });
     }
 
+    // ---- Catat pelanggaran KELOMPOK — Fase 2a: SATU kelas saja (bukan untuk
+    // OSIS). Lintas kelas TIDAK didukung di sini dan DITOLAK di server, bukan
+    // cuma dicegah lewat UI — lihat catatan panjang di Utils.gs dekat
+    // scopePelanggaranForUser soal kenapa. Setiap baris yang ditulis
+    // berstruktur IDENTIK dengan baris addPelanggaran individual di atas
+    // (addPelanggaran sendiri TIDAK diubah), supaya otomatis kebaca oleh
+    // scopePelanggaranForUser yang sudah ada tanpa perubahan apa pun. ----
+    if (action === 'addPelanggaranKelompok') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var pkDaftar = Array.isArray(data.siswa) ? data.siswa : [];
+      if (!pkDaftar.length) {
+        return jsonOut({ status: 'error', message: 'Pilih minimal satu siswa.' });
+      }
+      if (pkDaftar.length > PELANGGARAN_KELOMPOK_MAX_SISWA) {
+        return jsonOut({ status: 'error', message: 'Siswa terlalu banyak (maksimal ' + PELANGGARAN_KELOMPOK_MAX_SISWA + ' siswa per kejadian).' });
+      }
+      // Jenis Pelanggaran & Tindakan wajib terisi PER SISWA (nilai default
+      // dari klien sudah disalin ke tiap baris sebelum dikirim — lihat
+      // pratinjau di pelanggaran-bimbingan-upacara.js) — baris kosong tidak
+      // boleh lolos hanya karena baris lain di kejadian yang sama valid.
+      for (var pkv = 0; pkv < pkDaftar.length; pkv++) {
+        var pkItemCek = pkDaftar[pkv] || {};
+        if (!String(pkItemCek.jenis_pelanggaran || '').trim() || !String(pkItemCek.sanksi || '').trim()) {
+          return jsonOut({ status: 'error', message: 'Jenis Pelanggaran dan Tindakan wajib diisi untuk setiap siswa.' });
+        }
+      }
+      // NISN dobel dalam satu kejadian ditolak (bukan diam-diam dibuang) —
+      // beda dari Izin Kelompok: di sini tiap baris bisa punya jenis/tindakan
+      // BERBEDA, jadi membuang salah satu diam-diam berarti kehilangan data,
+      // bukan sekadar memilih siswa yang sama dua kali di layar.
+      var pkNisnList = pkDaftar.map(function (item) { return String((item && item.nisn) || '').trim(); });
+      var pkTerlihat = {};
+      for (var pkd = 0; pkd < pkNisnList.length; pkd++) {
+        if (!pkNisnList[pkd] || pkTerlihat[pkNisnList[pkd]]) {
+          return jsonOut({ status: 'error', message: 'Ada siswa yang dipilih lebih dari sekali dalam satu kejadian.' });
+        }
+        pkTerlihat[pkNisnList[pkd]] = true;
+      }
+      // Nama & kelas dari Master_Siswa, BUKAN dari klien — sama seperti Izin
+      // Kelompok, supaya kelas yang divalidasi di bawah tidak bisa dikarang.
+      var pkResolved = resolveSiswaListForIzin(ss, pkNisnList);
+      if (pkResolved.tidakDitemukan.length) {
+        return jsonOut({ status: 'error', message: 'Ada siswa yang tidak ditemukan di data induk (NISN: ' + pkResolved.tidakDitemukan.slice(0, 5).join(', ') + ').' });
+      }
+      // ---- VALIDASI INTI Fase 2a: SATU kelas saja, ditegakkan di server. ----
+      var pkKelasAcuan = pkResolved.siswa[0].class;
+      for (var pkc = 1; pkc < pkResolved.siswa.length; pkc++) {
+        if (!sameClass(pkResolved.siswa[pkc].class, pkKelasAcuan)) {
+          return jsonOut({ status: 'error', message: 'Fitur ini hanya untuk siswa satu kelas yang sama. Untuk kejadian yang melibatkan siswa dari kelas berbeda, catat satu per satu melalui menu Individual.' });
+        }
+      }
+
+      var pkNow = new Date();
+      var pkSheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
+      var pkRows = pkResolved.siswa.map(function (siswa, idx) {
+        var pkItem = pkDaftar[idx] || {};
+        return [pkNow, siswa.nisn, siswa.name, siswa.class, pkItem.jenis_pelanggaran, pkItem.sanksi, pkItem.catatan || '', sessionUser.name];
+      });
+      appendRowsBatch(pkSheet, pkRows);
+      CacheService.getScriptCache().remove('pelanggaran_list_raw');
+      CacheService.getScriptCache().remove('today_data');
+      logAudit(sessionUser, 'Pelanggaran Kelompok',
+        'kelas=' + pkKelasAcuan + ' | jumlah=' + pkResolved.siswa.length +
+        ' | siswa=' + pkResolved.siswa.map(function (s) { return s.name; }).join(', '));
+      // Satu notifikasi saja (bukan per siswa) — seluruh peserta kejadian ini
+      // berbagi SATU kelas (itu yang barusan divalidasi di atas), jadi wali
+      // kelasnya sama untuk semua baris. Notifikasi per siswa di sini hanya
+      // akan membanjiri wali kelas yang sama dengan pesan identik berulang —
+      // pola yang sama seperti de-dupe per-kelas di addIzinKelompok.
+      notifyRelevantUsers({ jenis: 'pelanggaran', nisn: pkResolved.siswa[0].nisn, kelas: pkKelasAcuan, needsPiketAction: false });
+      return jsonOut({ status: 'success', jumlahSiswa: pkResolved.siswa.length });
+    }
+
     // ---- Catat perlu bimbingan khusus (bukan untuk OSIS; hanya admin/BK bisa lihat) ----
     if (action === 'addBimbingan') {
       if (isOsisRole(sessionUser.role)) {

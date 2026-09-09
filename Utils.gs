@@ -365,6 +365,33 @@ function scopePelanggaranForUser(list, sessionUser) {
   });
 }
 
+// ===== PELANGGARAN KELOMPOK (Fase 2a — SATU kelas saja) =====
+// "Catat Pelanggaran Kelompok": satu insiden, banyak siswa, tapi HANYA untuk
+// siswa dari SATU kelas yang sama — lintas kelas ditolak DI SERVER
+// (addPelanggaranKelompok, Code.gs), bukan sekadar dicegah di UI. Karena
+// batasan ini, setiap baris yang ditulis berstruktur IDENTIK dengan baris
+// Pelanggaran individual (Timestamp, NISN, Nama, Kelas, Jenis_Pelanggaran,
+// Sanksi, Catatan, Dicatat_Oleh) — TIDAK ADA sheet/kolom kegiatan-induk baru
+// seperti Izin_Kelompok, dan scopePelanggaranForUser() di atas SENGAJA TIDAK
+// DISENTUH sama sekali: karena seluruh baris satu kejadian selalu berbagi
+// satu Kelas yang sama, aturan "sameClass(p.class, kelas) OR ownsRow(p,
+// sessionUser)" yang sudah ada otomatis memberi wali kelas siswa itu (dan
+// pencatatnya sendiri) visibilitas penuh atas SELURUH baris kejadian ini,
+// tanpa perubahan apa pun di sini.
+//
+// Dukungan lintas kelas (satu kejadian melibatkan banyak kelas berbeda, dan
+// SEMUA wali kelas terkait perlu melihat detail lengkap termasuk siswa kelas
+// lain) SENGAJA belum dibangun — itu butuh struktur data baru (kegiatan-induk
+// + baris-per-siswa, seperti Izin_Kelompok) DAN aturan scoping baru yang
+// filosofinya beda dari scopePelanggaranForUser/scopeIzinForUser yang ada
+// (keduanya menyaring PER BARIS berdasarkan kelas barisnya sendiri, bukan
+// "kalau reader wali kelas dari SALAH SATU kelas yang terlibat, tampilkan
+// SEMUA peserta apa adanya") — belum ada contohnya di kodebase ini, bahkan
+// Izin Kelompok yang sudah berstruktur kelompok pun tidak melakukan itu.
+// Ditunda sebagai proyek terpisah (Fase 2b); untuk sementara kasus lintas
+// kelas tetap dicatat manual satu per satu lewat addPelanggaran individual.
+var PELANGGARAN_KELOMPOK_MAX_SISWA = 60;
+
 // ===== PERUBAHAN UTAMA =====
 // Hapus cache list terkait kategori supaya perubahan langsung kelihatan
 // saat data ditarik ulang (getLogs/getPelanggaran/getSurat).

@@ -2,7 +2,7 @@
 // Tab Pelanggaran (catat + tandai Bimbingan Khusus), tab Bimbingan
 // Khusus (khusus Admin/BK), dan tab Upacara (OSIS + BK/Admin).
 
-       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddBimbingan, canSeeClassDetail, onGetPelanggaranCount, waliKelasMap }) {
+       function PelanggaranTab({ students, pelanggaranList, onAddPelanggaran, onAddPelanggaranKelompok, onAddBimbingan, canSeeClassDetail, onGetPelanggaranCount, waliKelasMap }) {
            const [searchQuery, setSearchQuery] = useState('');
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [jenis, setJenis] = useState('');
@@ -18,6 +18,14 @@
            // Cuma dipakai kalau !canSeeClassDetail — total sebenarnya (semua guru),
            // tanpa detail isi (lihat getPelanggaranCountForStudent di Code.gs).
            const [otherTotalCount, setOtherTotalCount] = useState(0);
+           // Sakelar Individual/Kelompok (Fase 2a) — DITAMBAHKAN PALING AKHIR dari
+           // seluruh useState di atas dengan sengaja: tests/custom-input.test.js dan
+           // tests/render-smoke.test.js memaksa nilai useState PelanggaranTab lewat
+           // INDEX urutan panggilan (stateOverrides = [undefined, student], dst — 0 =
+           // searchQuery, 1 = selectedStudent). Menambah hook baru di TENGAH akan
+           // menggeser index itu dan membuat test lama salah sasaran secara diam-diam.
+           // Menaruhnya di paling akhir menjaga semua index lama tetap benar.
+           const [pelMode, setPelMode] = useState('individual');
 
            const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
            const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
@@ -69,6 +77,21 @@
                        <span className="text-[10px] text-slate-500 font-semibold">{todayCount} hari ini</span>
                    </div>
 
+                   {/* Sakelar Individual/Kelompok — mengikuti pola visual toggle
+                       Individual/Kelompok yang sudah ada di Izin Keluar (lihat
+                       IzinKeluarTab di gerbang.js). Mode Kelompok (Fase 2a) SENGAJA
+                       terbatas untuk siswa SATU kelas saja — lintas kelas ditolak di
+                       PelanggaranKelompokPanel maupun di server (addPelanggaranKelompok,
+                       Code.gs), bukan cuma dicegah di sini. */}
+                   <div className="grid grid-cols-2 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
+                       <button onClick={() => setPelMode('individual')} className={`py-2.5 rounded-xl text-xs font-bold transition ${pelMode === 'individual' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Individual</button>
+                       <button onClick={() => setPelMode('kelompok')} className={`py-2.5 rounded-xl text-xs font-bold transition ${pelMode === 'kelompok' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Kelompok</button>
+                   </div>
+
+                   {pelMode === 'kelompok' ? (
+                       <PelanggaranKelompokPanel students={students} waliKelasMap={waliKelasMap} onAddPelanggaranKelompok={onAddPelanggaranKelompok} />
+                   ) : (
+                   <React.Fragment>
                    {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
 
                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky" />
@@ -245,6 +268,229 @@
                            <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />} text={canSeeClassDetail ? 'Belum ada catatan pelanggaran.' : 'Anda belum pernah mencatat pelanggaran.'} />
                        )}
                    </div>
+                   </React.Fragment>
+                   )}
+               </div>
+           );
+       }
+
+       // Panel mode "Kelompok" (Fase 2a) untuk Catat Pelanggaran — SATU insiden,
+       // BANYAK siswa, tapi HANYA untuk siswa dari SATU kelas yang sama. Lintas
+       // kelas ditolak DI SINI (percobaan menambah siswa dari kelas berbeda gagal
+       // dengan pesan, siswa itu tidak pernah masuk daftar terpilih) DAN di server
+       // (addPelanggaranKelompok, Code.gs) — validasi di sini murni UX, bukan
+       // satu-satunya penjaga. Alur: pilih siswa (satu kelas) -> isi Jenis
+       // Pelanggaran & Tindakan DEFAULT sekali -> layar pratinjau (bisa diedit per
+       // siswa tanpa mengubah siswa lain) -> Simpan Semua dalam satu request
+       // ALL-OR-NOTHING (lihat addPelanggaranKelompok).
+       //
+       // TIDAK ADA sheet/kolom kegiatan-induk baru di sini — setiap baris yang
+       // tersimpan berstruktur IDENTIK dengan baris Pelanggaran individual, jadi
+       // visibilitasnya otomatis mengikuti scopePelanggaranForUser yang sudah ada
+       // (lihat catatan panjang di Utils.gs) tanpa kode tambahan apa pun.
+       function PelanggaranKelompokPanel({ students, waliKelasMap, onAddPelanggaranKelompok }) {
+           const [searchQuery, setSearchQuery] = useState('');
+           const [dipilih, setDipilih] = useState([]);
+           const [jenisDefault, setJenisDefault] = useState('');
+           const [jenisDefaultCustom, setJenisDefaultCustom] = useState('');
+           const [sanksiDefault, setSanksiDefault] = useState('');
+           const [sanksiDefaultCustom, setSanksiDefaultCustom] = useState('');
+           const [tahapPratinjau, setTahapPratinjau] = useState(false);
+           // nisn -> { jenis_pelanggaran, sanksi, catatan } — dibuat sekali dari
+           // nilai default saat masuk pratinjau, lalu boleh diedit PER SISWA lewat
+           // tombol Edit tanpa mengubah entri siswa lain.
+           const [entriPerSiswa, setEntriPerSiswa] = useState({});
+           const [editNisn, setEditNisn] = useState(null);
+           const [msg, setMsg] = useState('');
+           const [saving, setSaving] = useState(false);
+
+           const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
+           const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
+
+           const waliByClass = {};
+           (waliKelasMap || []).forEach(w => { waliByClass[normalizeClass(w.class)] = w.waliKelasName; });
+
+           const filtered = filterStudents(students, searchQuery);
+           // Kelas acuan = kelas siswa pertama yang dipilih. Kosong kalau belum ada
+           // siswa terpilih sama sekali (masih boleh pilih kelas apa pun sebagai yang
+           // pertama).
+           const kelasTerpilih = dipilih.length ? dipilih[0].class : '';
+
+           const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 4000); };
+
+           const tambahSiswa = (s) => {
+               if (dipilih.some(d => d.nisn === s.nisn)) { setSearchQuery(''); return; }
+               // ---- VALIDASI WAJIB: tolak percobaan menambah siswa dari kelas
+               // berbeda dengan pesan jelas — siswa itu TIDAK masuk daftar terpilih
+               // sama sekali. Server menegakkan aturan yang SAMA PERSIS di
+               // addPelanggaranKelompok, jadi ini murni UX, bukan satu-satunya
+               // penjaga. ----
+               if (kelasTerpilih && !sameClass(s.class, kelasTerpilih)) {
+                   showMsg('Fitur ini hanya untuk siswa satu kelas yang sama. Untuk kejadian yang melibatkan siswa dari kelas berbeda, catat satu per satu melalui menu Individual.');
+                   return;
+               }
+               setDipilih(prev => [...prev, s]);
+               setSearchQuery('');
+           };
+
+           const hapusSiswa = (nisn) => setDipilih(prev => prev.filter(d => d.nisn !== nisn));
+
+           const lanjutPratinjau = () => {
+               const finalJenis = jenisDefault === 'Custom' ? (jenisDefaultCustom.trim() || 'Lainnya') : jenisDefault;
+               const finalSanksi = sanksiDefault === 'Custom' ? (sanksiDefaultCustom.trim() || 'Lainnya') : sanksiDefault;
+               const entri = {};
+               dipilih.forEach(s => { entri[s.nisn] = { jenis_pelanggaran: finalJenis, sanksi: finalSanksi, catatan: '' }; });
+               setEntriPerSiswa(entri);
+               setTahapPratinjau(true);
+           };
+
+           const submitSemua = () => {
+               setSaving(true);
+               const siswaPayload = dipilih.map(s => Object.assign({ nisn: s.nisn }, entriPerSiswa[s.nisn]));
+               onAddPelanggaranKelompok({ siswa: siswaPayload }, (ok, text) => {
+                   setSaving(false);
+                   showMsg(text);
+                   if (ok) {
+                       setDipilih([]); setEntriPerSiswa({}); setTahapPratinjau(false);
+                       setJenisDefault(''); setJenisDefaultCustom(''); setSanksiDefault(''); setSanksiDefaultCustom('');
+                   }
+               });
+           };
+
+           const editing = editNisn ? dipilih.find(d => d.nisn === editNisn) : null;
+           const editingEntri = editNisn ? (entriPerSiswa[editNisn] || {}) : {};
+           const ubahEntriEdit = (field, value) => setEntriPerSiswa(prev => Object.assign({}, prev, { [editNisn]: Object.assign({}, prev[editNisn], { [field]: value }) }));
+
+           return (
+               <div className="space-y-4">
+                   {msg && <div className="text-xs text-sky-dim font-medium text-center bg-sky-dim/15 border border-sky-dim/40 py-2 rounded-lg">{msg}</div>}
+
+                   {!tahapPratinjau ? (
+                       <React.Fragment>
+                           <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl p-3">
+                               <p className="text-[11px] text-sky-dim leading-relaxed">
+                                   Untuk <strong>satu kejadian yang melibatkan beberapa siswa dari kelas yang sama</strong>. Kalau siswanya dari kelas berbeda, pakai <strong>Individual</strong> satu per satu — jangan digabung.
+                               </p>
+                           </div>
+
+                           <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari nama, kelas, atau NISN..." className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky" />
+
+                           {searchQuery.trim() !== '' && (
+                               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
+                                   <div className="max-h-48 overflow-y-auto">
+                                       {filtered.length > 0 ? filtered.map((s, i) => {
+                                           const bedaKelas = kelasTerpilih && !sameClass(s.class, kelasTerpilih);
+                                           return (
+                                               <div key={`${s.nisn}-${i}`} onClick={() => tambahSiswa(s)} className={`px-4 py-3 border-b border-slate-200/60 flex items-center justify-between gap-2 ${bedaKelas ? 'opacity-50' : 'hover:bg-slate-100 cursor-pointer active:bg-slate-200'}`}>
+                                                   <div>
+                                                       <div className="font-bold text-sm text-slate-900">{s.name}</div>
+                                                       <div className="text-xs text-sky-dim">{s.class}</div>
+                                                   </div>
+                                                   {bedaKelas && <span className="text-[9px] text-crimson font-semibold flex-shrink-0">Beda kelas</span>}
+                                               </div>
+                                           );
+                                       }) : <div className="p-4 text-center text-xs text-slate-500">Tidak ditemukan</div>}
+                                   </div>
+                               </div>
+                           )}
+
+                           <div>
+                               <div className="flex items-center justify-between mb-2">
+                                   <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Siswa Terpilih ({dipilih.length})</h3>
+                                   {kelasTerpilih && <span className="text-[10px] text-sky-dim font-semibold">{kelasTerpilih} • {waliByClass[normalizeClass(kelasTerpilih)] || 'Belum ada wali kelas'}</span>}
+                               </div>
+                               {dipilih.length > 0 ? (
+                                   <div className="space-y-2">
+                                       {dipilih.map(s => (
+                                           <div key={s.nisn} className="bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                                               <div className="font-semibold text-sm text-slate-900">{s.name}</div>
+                                               <button onClick={() => hapusSiswa(s.nisn)} aria-label={`Hapus ${s.name}`} className="text-sky-dim/70 hover:text-sky-dim">×</button>
+                                           </div>
+                                       ))}
+                                   </div>
+                               ) : (
+                                   <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />} text="Belum ada siswa dipilih." />
+                               )}
+                           </div>
+
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran (default untuk semua)</label>
+                               <div className="grid grid-cols-3 gap-2">
+                                   {jenisPresets.map(j => (
+                                       <button key={j} onClick={() => { setJenisDefault(j); setJenisDefaultCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${jenisDefault === j ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{j}</button>
+                                   ))}
+                               </div>
+                               <input type="text" value={jenisDefaultCustom} onChange={(e) => { setJenisDefaultCustom(e.target.value); setJenisDefault('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                           </div>
+
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Tindakan (default untuk semua)</label>
+                               <div className="grid grid-cols-3 gap-2">
+                                   {sanksiPresets.map(sVal => (
+                                       <button key={sVal} onClick={() => { setSanksiDefault(sVal); setSanksiDefaultCustom(''); }} className={`py-2 rounded-xl text-[10px] font-bold ${sanksiDefault === sVal ? 'bg-sky text-white' : 'bg-slate-100 border border-slate-300 text-slate-600'}`}>{sVal}</button>
+                                   ))}
+                               </div>
+                               <input type="text" value={sanksiDefaultCustom} onChange={(e) => { setSanksiDefaultCustom(e.target.value); setSanksiDefault('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                           </div>
+
+                           <Button onClick={lanjutPratinjau} disabled={!dipilih.length || !jenisDefault || !sanksiDefault} className="w-full">Lanjut ke Pratinjau ({dipilih.length} siswa)</Button>
+                       </React.Fragment>
+                   ) : (
+                       <React.Fragment>
+                           <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl p-3">
+                               <p className="text-[11px] text-sky-dim leading-relaxed">
+                                   Periksa Jenis Pelanggaran & Tindakan tiap siswa sebelum menyimpan. Ketuk <strong>Edit</strong> untuk mengubah satu siswa tanpa mengubah yang lain.
+                               </p>
+                           </div>
+                           <div className="space-y-2.5">
+                               {dipilih.map(s => {
+                                   const entri = entriPerSiswa[s.nisn] || {};
+                                   return (
+                                       <RowCard key={s.nisn} className="space-y-1">
+                                           <div className="flex items-center justify-between gap-2">
+                                               <div>
+                                                   <div className="font-semibold text-sm text-slate-900">{s.name}</div>
+                                                   <div className="text-[10px] text-slate-500">{s.class}</div>
+                                               </div>
+                                               <button onClick={() => setEditNisn(s.nisn)} className="text-[10px] font-bold text-sky-dim px-2.5 py-1 rounded-lg border border-sky-dim/40 flex-shrink-0">Edit</button>
+                                           </div>
+                                           <div className="text-[11px] text-slate-600 flex justify-between gap-2">
+                                               <span className="font-semibold">{entri.jenis_pelanggaran}</span>
+                                               <span>{entri.sanksi}</span>
+                                           </div>
+                                           {entri.catatan && <div className="text-[11px] text-slate-500 break-words">{entri.catatan}</div>}
+                                       </RowCard>
+                                   );
+                               })}
+                           </div>
+                           <div className="flex gap-2">
+                               <Button onClick={() => setTahapPratinjau(false)} variant="secondary" className="flex-1">Kembali</Button>
+                               <Button onClick={submitSemua} disabled={saving} className="flex-1">{saving ? 'Menyimpan...' : 'Simpan Semua'}</Button>
+                           </div>
+                       </React.Fragment>
+                   )}
+
+                   {editing && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Edit Siswa</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{editing.name}</div>
+                                   <div className="text-xs text-slate-500">{editing.class}</div>
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Jenis Pelanggaran</label>
+                                   <input type="text" value={editingEntri.jenis_pelanggaran || ''} onChange={(e) => ubahEntriEdit('jenis_pelanggaran', e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 block">Tindakan</label>
+                                   <input type="text" value={editingEntri.sanksi || ''} onChange={(e) => ubahEntriEdit('sanksi', e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               </div>
+                               <input type="text" value={editingEntri.catatan || ''} onChange={(e) => ubahEntriEdit('catatan', e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               <Button onClick={() => setEditNisn(null)} className="w-full">Selesai</Button>
+                           </div>
+                       </div>
+                   )}
                </div>
            );
        }
