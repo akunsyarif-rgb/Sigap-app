@@ -31,7 +31,10 @@
         pengguna yang tidak pernah memakai fitur ini tidak ikut memasang
         service worker tanpa alasan. Lihat CLAUDE.md bagian Push Notification. -->
    <link rel="manifest" href="manifest.json">
-   <link rel="apple-touch-icon" href="icons/icon-192.png">
+   <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+   <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+   <link rel="shortcut icon" href="favicon.ico">
    <meta name="theme-color" content="#1B2A41">
    <meta name="apple-mobile-web-app-capable" content="yes">
    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -130,7 +133,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 66;
+           var BUILD_VERSION = 67;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.
