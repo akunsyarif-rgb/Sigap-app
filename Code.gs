@@ -22,8 +22,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-09-pelanggaran-kelompok';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok'];
+var BACKEND_VERSION = '2026-09-09-ganti-password-invalidasi-sesi';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions'];
 
 // ===== doPost =====
 
@@ -286,18 +286,44 @@ function doPost(e) {
       if (cmpRowIndex === -1) {
         return jsonOut({ status: 'error', message: 'Akun tidak ditemukan.' });
       }
-      // Kolom H (index 7) = Salt, sama seperti pengecekan login di atas.
-      var cmpCheck = verifyPassword(data.oldPassword, String(cmpRows[cmpRowIndex][2]), String(cmpRows[cmpRowIndex][7] || ''));
+      // Kolom C (index 2) = Hash, kolom H (index 7) = Salt, sama seperti
+      // pengecekan login di atas.
+      var cmpStoredHash = String(cmpRows[cmpRowIndex][2]);
+      var cmpStoredSalt = String(cmpRows[cmpRowIndex][7] || '');
+      var cmpCheck = verifyPassword(data.oldPassword, cmpStoredHash, cmpStoredSalt);
       if (!cmpCheck || !cmpCheck.matched) {
         return jsonOut({ status: 'error', message: 'Password lama salah.' });
       }
       if (!data.newPassword || String(data.newPassword).trim().length < 6) {
         return jsonOut({ status: 'error', message: 'Password baru minimal 6 karakter.' });
       }
+      // Password lama & baru harus berbeda — dicek lewat verifyPassword
+      // (bukan cuma String equality) supaya skema legacy yang case-insensitive
+      // juga ikut terdeteksi "sama saja", bukan cuma perbandingan literal
+      // (mis. akun skema lama: "Sigap123" dan "sigap123" dianggap password
+      // yang sama, lihat hashPasswordLegacy di Utils.gs).
+      var cmpSameAsOld = verifyPassword(data.newPassword, cmpStoredHash, cmpStoredSalt);
+      if (cmpSameAsOld && cmpSameAsOld.matched) {
+        return jsonOut({ status: 'error', message: 'Password baru tidak boleh sama dengan password lama.' });
+      }
       var cmpSalt = generateSalt();
       cmpSheet.getRange(cmpRowIndex + 1, 3).setValue(hashPasswordSalted(data.newPassword, cmpSalt));
       cmpSheet.getRange(cmpRowIndex + 1, 8).setValue(cmpSalt);
       logAudit(sessionUser, 'Ganti Password Sendiri', '');
+      // Mencabut SEMUA sesi user ini (device/tab lain sekalipun), termasuk
+      // sesi yang sedang dipakai request ini sendiri — lihat
+      // markPasswordChanged()/getSessionUser() di Auth.gs untuk mekanismenya
+      // (tidak ada indeks token-per-user, jadi ini satu-satunya cara
+      // mencabut tanpa tahu daftar tokennya).
+      markPasswordChanged(sessionUser.id);
+      // Sesi request INI dicabut seketika (sama seperti action 'logout'),
+      // bukan menunggu request berikutnya mengecek loginAt-vs-changedAt —
+      // dan respons sukses ini tidak boleh ikut membawa sessionExpiresAt
+      // untuk sesi yang baru saja dicabut sendiri (jsonOut menempelkannya
+      // otomatis kalau SESSION_RENEWED_UNTIL masih > 0 dari getSessionUser()
+      // di awal doPost tadi).
+      CacheService.getScriptCache().remove('sess_' + data.sessionToken);
+      SESSION_RENEWED_UNTIL = 0;
       return jsonOut({ status: 'success' });
     }
 
