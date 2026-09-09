@@ -714,13 +714,16 @@
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
-                       if (data.status === 'success') setAllLogs(prev => [newEntry, ...prev]);
-                       else setToast('Gagal menyimpan, coba lagi.');
+                       if (data.status === 'success') {
+                           setAllLogs(prev => [newEntry, ...prev]);
+                           setSelectedStudent(null); setCustomReasonInput('');
+                           setToast(`✓ ${newEntry.name} berhasil dicatat`);
+                       } else {
+                           setToast(data.message || 'Gagal menyimpan, coba lagi.');
+                       }
+                       setTimeout(() => setToast(null), 2000);
                    })
-                   .catch(() => setToast('Koneksi gagal, coba lagi.'));
-               setToast(`✓ ${selectedStudent.name} berhasil dicatat`);
-               setSelectedStudent(null); setCustomReasonInput('');
-               setTimeout(() => setToast(null), 2000);
+                   .catch(() => { setToast('Koneksi gagal, coba lagi.'); setTimeout(() => setToast(null), 2000); });
            };
 
            const handleAddTeacher = (payload, callback) => {
