@@ -5,9 +5,10 @@ _Catatan referensi, dibuat 8 September 2026. Update atau hapus file ini setelah 
 ## Versi
 
 - **Live sekarang (Apps Script Web App):** `2026-09-04-logo-surat-base64`
-- **Menunggu deploy (BACKEND_VERSION di Code.gs, branch `main`):** `2026-09-07-hapus-izin-keluar`
-  - Mencakup commit: `175c8a9`, `b2a6704`, `874dbbd`, dan `a00e8fb` (yang terakhir tidak mengubah BACKEND_VERSION, tapi tetap menyentuh `Code.gs` — lihat catatan CLAUDE.md soal drift version).
+- **Menunggu deploy (BACKEND_VERSION di Code.gs, branch `main`):** `2026-09-09-pelanggaran-kelompok`
+  - Mencakup commit: `175c8a9`, `b2a6704`, `874dbbd`, `a00e8fb` (tidak mengubah BACKEND_VERSION, tapi tetap menyentuh `Code.gs` — lihat catatan CLAUDE.md soal drift version), lalu PR #67 (fitur Catat Pelanggaran Kelompok, satu kelas — commit `45cb640`/merge `75c7132`) yang menambah `addPelanggaranKelompok` di `Code.gs` + `PELANGGARAN_KELOMPOK_MAX_SISWA` di `Utils.gs`.
   - Dikonfirmasi via `check-backend-drift.yml` (read-only) pada 8 September 2026, run [#16](https://github.com/akunsyarif-rgb/Sigap-app/actions/runs/34222286189): backend live masih `2026-09-04-logo-surat-base64`.
+  - Dari 4 file yang di-push clasp (`Code.gs`/`Auth.gs`/`Utils.gs`/`Notifikasi.gs`), **hanya `Code.gs` dan `Utils.gs` yang isinya benar-benar beda** dari versi live `2026-09-04-logo-surat-base64` di atas — `Auth.gs`/`Notifikasi.gs` byte-identik, tidak perlu diganti kalau deploy manual (copy-paste editor, bukan `clasp push` penuh).
 
 ## Alasan tertunda
 
@@ -25,9 +26,10 @@ _Catatan referensi, dibuat 8 September 2026. Update atau hapus file ini setelah 
 
 ## Cara verifikasi setelah deploy
 
-1. Cek field `"version"` pada response `API_URL` (status ping, token dari Script Properties/`config.js`) — harus menunjukkan `2026-09-07-hapus-izin-keluar` (atau versi lebih baru bila ada commit tambahan).
+1. Cek field `"version"` pada response `API_URL` (status ping, token dari Script Properties/`config.js`) — harus menunjukkan `2026-09-09-pelanggaran-kelompok` (atau versi lebih baru bila ada commit tambahan).
 2. Bisa juga trigger ulang `check-backend-drift.yml` (workflow_dispatch) — read-only, akan hijau begitu versi live cocok dengan `main`.
 3. Tes manual di aplikasi live:
    - Login (pastikan tidak ada masalah terkait rotasi `API_TOKEN`).
    - Fitur Izin Keluar: approve → verifikasi → tandai kembali/pulang.
    - Fitur hapus per-transaksi Izin Keluar (baru dari commit `874dbbd`) — coba hapus satu transaksi belum-final sebagai guru piket, dan satu transaksi final sebagai admin.
+   - Fitur Catat Pelanggaran Kelompok (baru dari PR #67) — mode Kelompok di tab Pelanggaran: catat untuk beberapa siswa satu kelas sekaligus, dan pastikan mencoba menambah siswa dari kelas lain benar-benar ditolak dengan pesan yang mengarahkan ke menu Individual.
