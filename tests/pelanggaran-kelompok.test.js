@@ -365,3 +365,24 @@ test('getPelanggaran: guru biasa yang mencatat kejadian kelompok tetap melihat c
   assert.equal(res.pelanggaran.length, 4, 'pencatat melihat seluruh baris yang ia tulis sendiri (OWN), termasuk kejadian kelompok');
   res.pelanggaran.forEach((p) => assert.equal(p.logged_by, 'Pak Anwar'));
 });
+
+// ============================================================
+// Frontend: pesan ramah selama backend belum di-deploy
+// ============================================================
+// Frontend (Vercel) live lebih dulu dari backend (Apps Script) untuk fitur
+// ini -- lihat "dua target deploy terpisah" di CLAUDE.md. Selama backend
+// belum di-deploy manual, doPost menjawab pesan generik 'Action tidak
+// dikenali' (Code.gs) untuk action apa pun yang belum ia kenal -- termasuk
+// 'addPelanggaranKelompok'. app.js menerjemahkan pesan mentah itu jadi
+// kalimat yang tidak membingungkan guru, MURNI di sisi tampilan.
+test('app.js: pesan "Action tidak dikenali" dari server diterjemahkan jadi kalimat yang tidak membingungkan guru', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const blok = app.split('const handleAddPelanggaranKelompok = (payload, callback) => {')[1].split('};')[0];
+  assert.match(blok, /data\.message === 'Action tidak dikenali'/,
+    'harus mengenali persis pesan fallback doPost untuk action yang tidak dikenal (Code.gs)');
+  assert.match(blok, /callback\(false, 'Fitur Catat Pelanggaran Kelompok belum aktif di server/,
+    'harus menampilkan pesan yang jelas, bukan meneruskan pesan mentah server');
+  // Pesan mentah server tidak boleh sampai ke callback untuk kasus ini.
+  assert.doesNotMatch(blok.split("data.message === 'Action tidak dikenali'")[1].split('else callback')[0],
+    /callback\(false, data\.message/);
+});
