@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -345,6 +346,120 @@ test('Code.gs: OSIS tetap terkunci dari kategori disiplin lain', () => {
     assert.match(blok, /isOsisRole\(sessionUser\.role\)|!isBkRole\(sessionUser\.role\)/,
       `${action} harus mengunci OSIS`);
   });
+});
+
+// ================= BACKEND SUNGGUHAN: payload getPelanggaranUpacara =================
+// Beda dari kedua test 'Code.gs:' di atas (yang mencocokkan POLA di source
+// Code.gs lewat regex) — blok ini menjalankan doGet() SUNGGUHAN
+// (Utils.gs+Auth.gs+Notifikasi.gs+Code.gs di vm, layanan Apps Script
+// di-stub) supaya bentuk JSON yang BENAR-BENAR dikirim ke klien diperiksa
+// langsung field demi field, bukan diasumsikan dari potongan teks source.
+// Audit RBAC September 2026: OSIS (siswa, bukan staf) sebelumnya menerima
+// nisn + catatan bebas untuk SELURUH sekolah lewat endpoint ini — dipangkas
+// di sini.
+
+function makeUpacaraSheet(header, rows) {
+  const data = [header.slice()].concat(rows.map((r) => r.slice()));
+  return { getDataRange: () => ({ getValues: () => data.map((r) => r.slice()) }) };
+}
+
+const UPACARA_BACKEND_HEADER = ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID'];
+const UPACARA_BACKEND_ROWS = [
+  [new Date(), '1001', 'Ahmad', 'XI TEKNIK', 'Atribut Tidak Lengkap', 'Sepatu tidak hitam -- catatan pribadi soal kondisi kaki', 'OSIS A', 'S01'],
+  [new Date(), '1002', 'Budi', 'XI A', 'Tidak Tertib', '', 'OSIS B', 'S02'],
+];
+
+const UPACARA_BACKEND_USERS = {
+  osis: { id: 'S99', name: 'Ketua OSIS', role: 'osis', jabatan: '', waliKelas: '' },
+  bk: { id: 'G01', name: 'Bu BK', role: 'bk_kesiswaan', jabatan: '', waliKelas: '' },
+  wali: { id: 'G02', name: 'Bu Kartina', role: 'guru', jabatan: '', waliKelas: 'XI TEKNIK' },
+};
+
+function loadUpacaraBackendServer() {
+  const sheets = { Pelanggaran_Upacara: makeUpacaraSheet(UPACARA_BACKEND_HEADER, UPACARA_BACKEND_ROWS) };
+  const cacheStore = {};
+  const backendSandbox = {
+    console,
+    Utilities: {
+      computeDigest: (_a, str) => Array.from(crypto.createHash('sha256').update(String(str)).digest()).map((b) => (b > 127 ? b - 256 : b)),
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      getUuid: () => crypto.randomUUID(),
+    },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === 'API_TOKEN' ? 'TOKEN-OK' : null) }) },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (k) => (Object.prototype.hasOwnProperty.call(cacheStore, k) ? cacheStore[k] : null),
+        put: (k, v) => { cacheStore[k] = String(v); },
+        remove: (k) => { delete cacheStore[k]; },
+      }),
+    },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({
+        getSheetByName: (n) => sheets[n] || null,
+        insertSheet: () => ({ appendRow() {}, getDataRange: () => ({ getValues: () => [['x']] }) }),
+      }),
+    },
+    ContentService: { MimeType: { JSON: 'JSON' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    Logger: { log: () => {} },
+  };
+  vm.createContext(backendSandbox);
+  ['Utils.gs', 'Auth.gs', 'Notifikasi.gs', 'Code.gs'].forEach((f) => {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), backendSandbox, { filename: f });
+  });
+  const tokens = {};
+  Object.keys(UPACARA_BACKEND_USERS).forEach((k) => { tokens[k] = vm.runInContext('createSession', backendSandbox)(UPACARA_BACKEND_USERS[k]); });
+  const doGetReal = vm.runInContext('doGet', backendSandbox);
+  const asUpacara = (who) => JSON.parse(doGetReal({
+    parameter: { token: 'TOKEN-OK', sessionToken: tokens[who], action: 'getPelanggaranUpacara' },
+  }).text);
+  return { asUpacara };
+}
+
+test('Backend: payload getPelanggaranUpacara untuk OSIS TIDAK membawa nisn/catatan', () => {
+  const s = loadUpacaraBackendServer();
+  const osisRes = s.asUpacara('osis');
+  assert.equal(osisRes.status, 'success');
+  assert.equal(osisRes.upacara.length, 2, 'OSIS tetap melihat seluruh sekolah, cuma field-nya yang dipangkas');
+  osisRes.upacara.forEach((u) => {
+    assert.equal(u.nisn, undefined, 'nisn tidak boleh terkirim ke OSIS');
+    assert.equal(u.catatan, undefined, 'catatan tidak boleh terkirim ke OSIS');
+  });
+  // Field yang tetap dibutuhkan tugas OSIS (nama/kelas/jenis/waktu/pencatat).
+  assert.deepEqual(Object.keys(osisRes.upacara[0]).sort(), ['class', 'jenis_pelanggaran', 'logged_by', 'name', 'timestamp'].sort());
+  assert.ok(osisRes.upacara.some((u) => u.name === 'Ahmad' && u.class === 'XI TEKNIK' && u.jenis_pelanggaran === 'Atribut Tidak Lengkap'));
+});
+
+test('Backend: payload getPelanggaranUpacara untuk BK tetap lengkap (nisn+catatan) seperti sebelumnya', () => {
+  const s = loadUpacaraBackendServer();
+  const bkRes = s.asUpacara('bk');
+  assert.equal(bkRes.status, 'success');
+  assert.equal(bkRes.upacara.length, 2);
+  const ahmadRow = bkRes.upacara.find((u) => u.name === 'Ahmad');
+  assert.equal(ahmadRow.nisn, '1001', 'BK tetap menerima nisn');
+  assert.match(ahmadRow.catatan, /catatan pribadi/, 'BK tetap menerima catatan lengkap');
+  assert.deepEqual(Object.keys(ahmadRow).sort(), ['catatan', 'class', 'jenis_pelanggaran', 'logged_by', 'name', 'nisn', 'timestamp'].sort());
+});
+
+test('Backend: wali kelas tetap menerima payload lengkap (nisn+catatan) untuk kelasnya, dibatasi kelasnya sendiri', () => {
+  const s = loadUpacaraBackendServer();
+  const waliRes = s.asUpacara('wali');
+  assert.equal(waliRes.status, 'success');
+  assert.equal(waliRes.upacara.length, 1, 'hanya kelas perwaliannya (XI TEKNIK), bukan seluruh sekolah');
+  assert.equal(waliRes.upacara[0].nisn, '1001');
+  assert.match(waliRes.upacara[0].catatan, /catatan pribadi/);
+});
+
+test('Frontend: hitungan jumlah siswa Rekap tetap benar walau nisn kosong (payload OSIS)', () => {
+  // Baris tanpa nisn (persis payload OSIS setelah dipangkas server) — dua
+  // baris siswa BERBEDA (nama+kelas beda) harus tetap dihitung 2, bukan
+  // jatuh ke kunci `undefined` yang sama untuk semua baris.
+  const upacaraOsis = [
+    { timestamp: ts(2), name: 'Ahmad Fauzan', class: 'XI TEKNIK', jenis_pelanggaran: 'Atribut Tidak Lengkap', logged_by: 'OSIS A' },
+    { timestamp: ts(1), name: 'Budi', class: 'XI TEKNIK', jenis_pelanggaran: 'Tidak Tertib', logged_by: 'OSIS A' },
+  ];
+  const text = allText(render('RekapUpacara', { upacaraList: upacaraOsis }));
+  assert.match(text, /2 Siswa/, 'dua siswa berbeda tanpa nisn tidak boleh dihitung sebagai 1');
 });
 
 // ---- 7A: workflow mencatat tidak bertambah rumit ----

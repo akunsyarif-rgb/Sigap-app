@@ -22,8 +22,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-09-ganti-password-invalidasi-sesi';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions'];
+var BACKEND_VERSION = '2026-09-09-osis-rekap-upacara-privasi';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim'];
 
 // ===== doPost =====
 
@@ -2215,13 +2215,27 @@ function doGet(e) {
     // baca bersama untuk petugas upacara. Yang tidak berubah: OSIS tetap
     // terkunci dari semua kategori disiplin lain.
     var seluruhSekolah = isBkRole(sessionUser.role) || isOsisRole(sessionUser.role);
+    // OSIS adalah SISWA, bukan staf — payload untuk OSIS SENGAJA memangkas
+    // nisn & catatan (audit RBAC, September 2026): nisn tidak dipakai
+    // tampilan Rekap sama sekali, dan catatan adalah teks bebas yang bisa
+    // berisi konteks pribadi siswa lain. Field yang tersisa (name, class,
+    // jenis_pelanggaran, timestamp, logged_by) sudah cukup untuk tugas OSIS
+    // (tahu siapa di kelas mana melanggar apa, kapan). Dipangkas DI SERVER,
+    // bukan disembunyikan di UI, jadi tidak pernah sampai ke browser
+    // petugas OSIS. BK/admin (dan wali kelas untuk kelasnya) tetap menerima
+    // payload lengkap seperti sebelumnya — tidak berubah.
+    var isOsisReader = isOsisRole(sessionUser.role);
     var upacara = [];
     for (var ui = 0; ui < upacaraRaw.length; ui++) {
       var u = upacaraRaw[ui];
       if (!seluruhSekolah && !sameClass(u.class, upacaraWaliKelas)) {
         continue; // wali kelas: hanya kelasnya sendiri
       }
-      upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
+      if (isOsisReader) {
+        upacara.push({ timestamp: u.timestamp, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, logged_by: u.logged_by });
+      } else {
+        upacara.push({ timestamp: u.timestamp, nisn: u.nisn, name: u.name, class: u.class, jenis_pelanggaran: u.jenis_pelanggaran, catatan: u.catatan, logged_by: u.logged_by });
+      }
     }
     return jsonOut({ status: 'success', upacara: upacara });
   }
