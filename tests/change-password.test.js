@@ -117,9 +117,32 @@ function loadServer(sheetsOverride) {
     postData: { contents: JSON.stringify(Object.assign({ token: 'TOKEN-OK', sessionToken: tokens[who] }, body)) },
   }).text);
 
+  // Sama seperti post(), tapi menerima TOKEN literal alih-alih key 'who' --
+  // dibutuhkan untuk menguji sesi "device/tab lain" yang tokennya sengaja
+  // dibuat manual lewat createSession() langsung, bukan lewat tokens[] di atas.
+  const postWithToken = (tok, body) => JSON.parse(doPost({
+    postData: { contents: JSON.stringify(Object.assign({ token: 'TOKEN-OK', sessionToken: tok }, body)) },
+  }).text);
+
+  const login = (teacherId, password) => post('__login__', { action: 'login', teacherId, password });
+
   const changePassword = (who, { oldPassword, newPassword }) => post(who, { action: 'changeMyPassword', oldPassword, newPassword });
 
-  return { sheets, tokens, post, changePassword, audit: () => sheets.Audit_Log._data.slice(1) };
+  return { sandbox, sheets, tokens, post, postWithToken, login, changePassword, audit: () => sheets.Audit_Log._data.slice(1) };
+}
+
+// Auth.gs membandingkan loginAt vs changedAt dengan resolusi milidetik
+// (Date.now()) -- di produksi dua request HTTP berbeda (login lalu ganti
+// password) SELALU terpisah beberapa milidetik oleh latensi jaringan sendiri,
+// jadi tidak pernah benar-benar "tepat sama". Test di sini memanggil doPost()
+// langsung tanpa jaringan sama sekali (berurutan dalam satu tick JS), jadi
+// dua panggilan bisa saja jatuh di milidetik yang SAMA persis -- tickMs()
+// mensimulasikan pemisahan waktu yang di produksi selalu ada secara alami,
+// supaya urutan sebab-akibat (login SEBELUM vs SETELAH perubahan password)
+// tidak ambigu di test.
+function tickMs() {
+  const start = Date.now();
+  while (Date.now() === start) { /* spin sampai milidetik berikutnya */ }
 }
 
 test('Ganti Password: password lama benar & baru valid -> berhasil, hash+salt baru tersimpan', () => {
@@ -177,11 +200,116 @@ test('Ganti Password: setelah berhasil, password lama tidak lagi berlaku dan pas
   const first = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaru1' });
   assert.equal(first.status, 'success');
 
+  // Sesi yang dipakai untuk ganti password ini SENDIRI ikut tercabut
+  // seketika (lihat "sesi lain ikut tercabut" di bawah) -- guru harus login
+  // ulang dengan password BARU sebelum bisa memanggil aksi apa pun lagi,
+  // termasuk mencoba ganti password lagi. tokens.guru diperbarui di sini
+  // supaya s.changePassword('guru', ...) berikutnya otomatis memakai sesi
+  // yang baru, bukan token lama yang sudah mati.
+  const relogin = s.login('G03', 'PasswordBaru1');
+  assert.equal(relogin.status, 'success', 'password baru harus bisa dipakai login ulang setelah sesi lama tercabut');
+  s.tokens.guru = relogin.sessionToken;
+
   const reuseOld = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaru2' });
   assert.equal(reuseOld.status, 'error', 'password lama yang sudah diganti tidak boleh diterima lagi');
 
   const useNew = s.changePassword('guru', { oldPassword: 'PasswordBaru1', newPassword: 'PasswordBaru2' });
   assert.equal(useNew.status, 'success', 'password baru dari langkah sebelumnya sekarang harus diterima');
+});
+
+// ================= PENGAMAN BARU: password baru != password lama =================
+
+test('Ganti Password: password baru sama dengan password lama ditolak, tidak ada yang berubah', () => {
+  const s = loadServer();
+  const before = s.sheets.Master_Guru._data[1].slice(); // baris G03 (guru, skema salted)
+  const res = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'Sigap123' });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /tidak boleh sama/i);
+  assert.deepEqual(s.sheets.Master_Guru._data[1], before, 'tidak boleh ada perubahan sama sekali saat ditolak');
+});
+
+test('Ganti Password: password baru dianggap "sama" walau beda besar/kecil huruf untuk akun skema legacy (case-insensitive)', () => {
+  const s = loadServer();
+  // Baris G02 (wali) memakai legacyHash -- skema lama membandingkan password
+  // yang sudah di-lowercase, jadi "Sigap123" dan "sigap123" adalah password
+  // yang SAMA di skema itu. Perbandingan lewat verifyPassword() (bukan
+  // String equality literal) harus ikut menangkap ini, bukan cuma menolak
+  // kecocokan string persis.
+  const res = s.changePassword('wali', { oldPassword: 'Sigap123', newPassword: 'sigap123' });
+  assert.equal(res.status, 'error');
+  assert.match(res.message, /tidak boleh sama/i);
+});
+
+test('Ganti Password: password baru yang BEDA dari lama tetap diterima seperti biasa (bukan regresi jadi selalu ditolak)', () => {
+  const s = loadServer();
+  const res = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaruBeda1' });
+  assert.equal(res.status, 'success');
+});
+
+// ================= PENGAMAN BARU: sesi lain (device/tab lain) ikut tercabut =================
+
+test('Ganti Password: SEMUA sesi lain milik user yang SAMA (device/tab lain) ikut tercabut, termasuk sesi yang dipakai ganti password itu sendiri', () => {
+  const s = loadServer();
+  // Simulasikan DUA device/tab yang sudah login duluan sebagai akun yang
+  // sama (G03), sebelum salah satunya dipakai mengganti password.
+  const tabSatu = s.tokens.guru;
+  const tabDua = vm.runInContext('createSession', s.sandbox)(USERS.guru);
+  assert.notEqual(tabSatu, tabDua);
+  tickMs(); // pisahkan waktu login dari waktu ganti password (lihat catatan tickMs di atas)
+
+  const res = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaru1' });
+  assert.equal(res.status, 'success');
+
+  // Tab dua (device/tab lain, TIDAK terlibat aksi ganti password) harus
+  // tercabut -- ini "invalidasi seluruh sesi milik user" yang diminta,
+  // dicapai lewat penanda per-user (markPasswordChanged), BUKAN dengan
+  // mencabut token satu-satu (memang tidak ada indeks untuk itu).
+  const cekTabDua = s.postWithToken(tabDua, { action: 'changeMyPassword', oldPassword: 'PasswordBaru1', newPassword: 'PasswordLain1' });
+  assert.equal(cekTabDua.status, 'error');
+  assert.match(cekTabDua.message, /sesi berakhir/i);
+
+  // Tab satu (sesi yang DIPAKAI untuk ganti password) juga ikut tercabut
+  // seketika -- keputusan produk yang disetujui: bukan cuma "sesi lain",
+  // device yang mengganti password sendiri pun harus login ulang.
+  const cekTabSatu = s.postWithToken(tabSatu, { action: 'changeMyPassword', oldPassword: 'PasswordBaru1', newPassword: 'PasswordLain1' });
+  assert.equal(cekTabSatu.status, 'error');
+  assert.match(cekTabSatu.message, /sesi berakhir/i);
+});
+
+test('Ganti Password: TIDAK menyentuh/mencabut sesi milik user LAIN -- bukan solusi global "keluarkan semua orang"', () => {
+  const s = loadServer();
+  const tokenWaliSebelum = s.tokens.wali; // Bu Kartina, tidak terlibat sama sekali
+  const tokenAdminSebelum = s.tokens.admin; // Admin, tidak terlibat sama sekali
+
+  const res = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaru1' });
+  assert.equal(res.status, 'success');
+
+  // Sesi Bu Kartina & Admin tetap sah sepenuhnya -- dibuktikan lewat aksi
+  // yang sama (changeMyPassword) supaya bandingannya adil dengan test di
+  // atas: kalau sesi mereka masih hidup, permintaan ini akan lolos gerbang
+  // sesi dan gagal karena alasan LAIN (password lama salah), bukan "sesi
+  // berakhir".
+  const cekWali = s.postWithToken(tokenWaliSebelum, { action: 'changeMyPassword', oldPassword: 'SALAH_SENGAJA', newPassword: 'x' });
+  assert.doesNotMatch(cekWali.message || '', /sesi berakhir/i);
+  assert.match(cekWali.message || '', /password lama/i);
+
+  const cekAdmin = s.postWithToken(tokenAdminSebelum, { action: 'changeMyPassword', oldPassword: 'SALAH_SENGAJA', newPassword: 'x' });
+  assert.doesNotMatch(cekAdmin.message || '', /sesi berakhir/i);
+  assert.match(cekAdmin.message || '', /password lama/i);
+});
+
+test('Ganti Password: sesi BARU milik user yang sama, dibuat SETELAH ganti password, tetap valid (penanda tidak mengunci user itu selamanya)', () => {
+  const s = loadServer();
+  const res = s.changePassword('guru', { oldPassword: 'Sigap123', newPassword: 'PasswordBaru1' });
+  assert.equal(res.status, 'success');
+
+  const loginUlang = s.login('G03', 'PasswordBaru1');
+  assert.equal(loginUlang.status, 'success');
+  // Sesi baru ini (loginAt setelah perubahan password) tidak boleh ikut
+  // tercabut -- dibuktikan lewat percobaan ganti password lagi yang harus
+  // lolos gerbang sesi (gagal/berhasil tergantung isian, bukan "sesi berakhir").
+  const cek = s.postWithToken(loginUlang.sessionToken, { action: 'changeMyPassword', oldPassword: 'PasswordBaru1', newPassword: 'PasswordBaru2' });
+  assert.equal(cek.status, 'success', 'sesi BARU (loginAt setelah perubahan password) tidak boleh ikut tercabut');
 });
 
 test('Ganti Password: setiap percobaan (berhasil/gagal) tercatat di Audit Log tanpa memuat password', () => {

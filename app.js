@@ -693,16 +693,24 @@
 
            // Ganti password sendiri (semua role) — beda dari handleUpdatePassword
            // di bawah (admin-only, reset password guru LAIN tanpa perlu tahu
-           // password lamanya). Sesi tidak perlu diputus setelah ini: token yang
-           // sedang dipakai tetap sah, cuma login berikutnya yang butuh password baru.
+           // password lamanya). Server mencabut SEMUA sesi user ini begitu
+           // berhasil — device/tab lain sekalipun, TERMASUK sesi request ini
+           // sendiri (lihat markPasswordChanged() di Auth.gs) — jadi di sini
+           // TIDAK cukup menutup modal & lanjut seperti biasa: harus langsung
+           // logout paksa ke layar login lewat clearSession(), sama seperti
+           // sesi kedaluwarsa, supaya guru tidak bingung kenapa aksi
+           // berikutnya tiba-tiba gagal "Sesi berakhir". Pesannya ditaruh di
+           // layar login (bukan toast) karena app langsung berpindah ke sana.
            const handleChangeMyPassword = (payload, callback) => {
                setLoadingChangePassword(true);
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'changeMyPassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        setLoadingChangePassword(false);
-                       if (data.status === 'success') { setToast('✓ Password berhasil diubah'); setTimeout(() => setToast(null), 2000); callback(true); }
-                       else callback(false, data.message || 'Gagal mengubah password.');
+                       if (data.status === 'success') {
+                           callback(true);
+                           clearSession('Password berhasil diubah. Silakan login kembali dengan password baru Anda.');
+                       } else callback(false, data.message || 'Gagal mengubah password.');
                    })
                    .catch(() => { setLoadingChangePassword(false); callback(false, 'Koneksi gagal, coba lagi.'); });
            };
