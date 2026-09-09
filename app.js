@@ -959,6 +959,19 @@
                        if (data.status === 'success') {
                            fetch(`${API_URL}?action=getPelanggaran&token=${API_TOKEN}&sessionToken=${sessionToken}`).then(res => res.json()).then(checkSession).then(d => { if (d.status === 'success') setPelanggaranList(d.pelanggaran); });
                            callback(true, `✓ ${data.jumlahSiswa} siswa berhasil dicatat.`);
+                       } else if (data.message === 'Action tidak dikenali') {
+                           // Frontend (Vercel) sudah live duluan dari backend (Apps
+                           // Script) untuk fitur ini -- lihat catatan "dua target
+                           // deploy terpisah" di CLAUDE.md. Selama backend belum
+                           // di-deploy manual, server menjawab pesan generik "Action
+                           // tidak dikenali" untuk SEMUA action yang tidak ia kenali,
+                           // yang akan membingungkan guru kalau ditampilkan apa
+                           // adanya. Diterjemahkan MURNI di sisi tampilan, tidak
+                           // menyentuh backend sama sekali -- begitu backend sudah
+                           // di-deploy, server tidak akan lagi menjawab pesan ini
+                           // untuk action ini, jadi cabang ini otomatis berhenti
+                           // terpakai tanpa perlu diubah/dihapus lagi nanti.
+                           callback(false, 'Fitur Catat Pelanggaran Kelompok belum aktif di server. Silakan gunakan menu Individual untuk sementara, atau coba lagi nanti.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran kelompok.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
