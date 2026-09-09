@@ -22,8 +22,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-09-ganti-password-invalidasi-sesi';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions'];
+var BACKEND_VERSION = '2026-09-09-scope-pelanggaran-count';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'scopedPelanggaranCount'];
 
 // ===== doPost =====
 
@@ -1960,15 +1960,27 @@ function doGet(e) {
     // Kelas & nama pencatat hanya dipakai untuk menyaring di atas — yang
     // dikirim ke klien tetap dua field seperti sebelumnya.
     var history = historyScoped.map(function (h) { return { timestamp: h.timestamp, type: h.type }; });
-    // `count` = TOTAL keterlambatan siswa ini di seluruh sekolah, ANGKA saja —
-    // tanpa tanggal, alasan, atau nama pencatatnya. Ini yang membuat peringatan
-    // "sudah Nx terlambat" di form Catat Terlambat tetap benar untuk guru piket
-    // setelah riwayat detail dibatasi di atas. Pola & alasannya sama persis
-    // dengan getPelanggaranCountForStudent: guru tetap dapat konteks yang ia
-    // butuhkan saat menangani SATU siswa yang sedang ada di depannya, tanpa
-    // bisa menelusuri catatan siswa/guru lain. Sengaja per-siswa on-demand,
+    // `count` = TOTAL keterlambatan siswa ini DALAM CAKUPAN BACA PEMANGGIL
+    // (audit RBAC September 2026 — sebelumnya total se-sekolah tanpa
+    // pengecualian, angka saja tanpa tanggal/alasan/nama pencatat). Angka
+    // se-sekolah tanpa scope ternyata TETAP membocorkan lebih dari yang
+    // dikira: NISN dikirim mentah dari klien, seluruh daftar NISN sudah
+    // dibagikan lewat getStudents, dan doGet tidak melalui rate limit tulis
+    // — jadi guru biasa bisa memanggil endpoint ini berulang, satu NISN per
+    // panggilan, untuk menyusun peta "siswa mana paling sering terlambat"
+    // se-sekolah tanpa pernah melihat SATU baris detail pun. Itu jalur
+    // enumerasi yang tidak tertutup oleh "sengaja per-siswa on-demand" saja.
+    // Sekarang `count` = historyScoped.length: SAMA PERSIS aturan yang
+    // sudah menyaring `history` di atas (scopeDailyRecordsForUser — wali
+    // kelas = kelasnya + HARI INI se-sekolah, guru biasa = HARI INI
+    // se-sekolah saja, BK/admin = se-sekolah). NISN di luar cakupan
+    // pemanggil (dan bukan kejadian hari ini) selalu menghasilkan hitungan
+    // yang sama seperti baris yang memang terlihat — bukan 0 mutlak, tapi
+    // tidak pernah lebih dari yang pemanggil sudah berhak lihat, jadi
+    // memanggil berulang dengan NISN berbeda tidak lagi bisa menyusun
+    // angka se-sekolah yang akurat. Sengaja tetap per-siswa on-demand,
     // bukan peta semua siswa sekaligus (itu akan jadi bahan ranking).
-    return jsonOut({ status: 'success', history: history, count: historyRaw.length });
+    return jsonOut({ status: 'success', history: history, count: historyScoped.length });
   }
 
   // ---- Data umum (bukan untuk OSIS) — dipakai Riwayat & Statistik, di-fetch
@@ -2092,28 +2104,51 @@ function doGet(e) {
     return jsonOut({ status: 'success', pelanggaran: scopePelanggaranForUser(pelanggaran, sessionUser) });
   }
 
-  // ---- Hitung TOTAL pelanggaran seorang siswa (semua guru, bukan cuma yang
-  // login) — dipakai peringatan "sudah Nx tercatat" saat mencatat pelanggaran
-  // baru. Sengaja cuma kirim ANGKA, bukan daftar isinya (jenis/sanksi/siapa)
-  // — supaya guru biasa tetap dapat konteks penting tanpa bisa mengintip
-  // detail catatan siswa/guru lain lewat celah ini. Dipanggil on-demand per
-  // 1 siswa yang dipilih (pola sama seperti getStudentLateHistory), bukan
-  // agregat semua siswa sekaligus — kalau semua nisn dikirim jadi peta
-  // sekaligus, guru bisa susun ranking siswa paling bermasalah se-sekolah,
-  // justru itu yang mau dicegah. ----
+  // ---- Hitung pelanggaran seorang siswa DALAM CAKUPAN BACA PEMANGGIL —
+  // dipakai peringatan "sudah Nx tercatat" saat mencatat pelanggaran baru.
+  // Tetap cuma kirim ANGKA, bukan daftar isinya (jenis/sanksi/siapa).
+  //
+  // Audit RBAC September 2026: sebelumnya angkanya SELALU total se-sekolah
+  // untuk NISN apa pun, dengan alasan "guru tetap dapat konteks penting
+  // tanpa bisa mengintip detail catatan siswa/guru lain lewat celah ini" —
+  // tapi itu cuma menutup jalur mengintip DETAIL, bukan jalur ENUMERASI:
+  // NISN dikirim mentah dari klien, seluruh daftar NISN sudah dibagikan
+  // getStudents, dan doGet tidak melalui rate limit tulis, jadi guru biasa
+  // tetap bisa memanggil endpoint ini berulang (satu NISN per panggilan)
+  // untuk menyusun peta "NISN -> jumlah pelanggaran" se-sekolah tanpa
+  // pernah melihat satu baris detail pun — persis ranking siswa paling
+  // bermasalah yang komentar lama ini sendiri bilang ingin dicegah.
+  //
+  // Sekarang yang dihitung HANYA baris yang lolos scopePelanggaranForUser()
+  // — fungsi yang SAMA PERSIS dipakai getPelanggaran di atas (admin/BK
+  // seluruh sekolah, wali kelas = kelasnya + catatan sendiri, guru biasa =
+  // catatan sendiri). NISN di luar cakupan pemanggil SELALU menghasilkan
+  // hitungan dari baris yang memang terlihat pemanggil itu saja — bukan 0
+  // mutlak (guru yang pernah mencatat siswa itu sendiri tetap terhitung),
+  // tapi tidak pernah menyertakan catatan guru lain. Memanggil berulang
+  // dengan NISN berbeda-beda tidak lagi bisa menyusun angka se-sekolah yang
+  // akurat. Dipanggil on-demand per 1 siswa yang dipilih (pola sama seperti
+  // getStudentLateHistory), bukan agregat semua siswa sekaligus. ----
   if (action === 'getPelanggaranCountForStudent') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var sheet = ss.getSheetByName('Pelanggaran');
-    var count = 0;
+    var pcMatched = [];
     if (sheet) {
       var lastRow = sheet.getLastRow();
       if (lastRow > 1) {
-        var nisnValues = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
-        for (var i = 0; i < nisnValues.length; i++) {
-          if (String(nisnValues[i][0]) === String(e.parameter.nisn)) count++;
+        // Kolom B..H = NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh
+        // -> index 0 = nisn, index 2 = kelas, index 6 = dicatat_oleh. Tetap
+        // SATU panggilan getRange (biaya Sheets API tidak berubah), kelas &
+        // pencatat sekarang ikut dibaca supaya scopePelanggaranForUser bisa
+        // menegakkan cakupannya di bawah.
+        var pcRows = sheet.getRange(2, 2, lastRow - 1, 7).getValues();
+        for (var i = 0; i < pcRows.length; i++) {
+          if (String(pcRows[i][0]) !== String(e.parameter.nisn)) continue;
+          pcMatched.push({ class: pcRows[i][2], logged_by: pcRows[i][6] });
         }
       }
     }
+    var count = scopePelanggaranForUser(pcMatched, sessionUser).length;
     return jsonOut({ status: 'success', count: count });
   }
 

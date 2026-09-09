@@ -421,18 +421,63 @@ test('getStudentLateHistory: guru tidak bisa menarik riwayat siswa lewat NISN', 
   assert.equal(osis.status, 'error');
 });
 
-test('getStudentLateHistory: `count` mengirim JUMLAH saja (peringatan gerbang tetap benar)', () => {
+// `count` DULU mengirim total se-sekolah apa adanya (angka saja, tanpa
+// detail) — audit RBAC September 2026 menemukan itu sendiri jalur
+// enumerasi: NISN dikirim mentah dari klien, seluruh daftar NISN sudah
+// dibagikan getStudents, dan doGet tidak lewat rate limit tulis, jadi guru
+// biasa bisa memanggil endpoint ini berulang (satu NISN per panggilan)
+// untuk menyusun peta "siswa mana paling sering terlambat" se-sekolah tanpa
+// pernah melihat satu baris detail pun. `count` sekarang = jumlah baris
+// yang lolos scopeDailyRecordsForUser() (fungsi YANG SAMA yang sudah
+// menyaring `history`) — bukan lagi angka independen.
+test('getStudentLateHistory: `count` sekarang DALAM CAKUPAN pemanggil, sama persis dengan history.length', () => {
   const s = loadServer();
-  // NISN 1001 punya 2 baris (Bu Kartina & Pak Anwar) — guru biasa hanya boleh
-  // melihat 1 baris detail, tapi jumlahnya tetap apa adanya supaya peringatan
-  // "sudah Nx terlambat" tidak mengecil diam-diam.
-  const guru = s.as('guru', { action: 'getStudentLateHistory', nisn: '1001' });
-  assert.equal(guru.count, 3, 'jumlah se-sekolah tetap dikirim apa adanya');
-  assert.equal(guru.history.length, 1, 'detailnya tetap dibatasi ke hari ini');
-  // Yang dikirim benar-benar cuma angka: tidak ada nama pencatat/kelas/alasan
-  // milik baris yang tidak boleh dilihat.
-  assert.doesNotMatch(JSON.stringify(guru), /Bu Kartina|Ban bocor/);
-  assert.equal(typeof guru.count, 'number');
+  ['guru', 'wali', 'bk', 'admin'].forEach((who) => {
+    ['1001', '2002', '3003'].forEach((nisn) => {
+      const res = s.as(who, { action: 'getStudentLateHistory', nisn });
+      assert.equal(res.count, res.history.length,
+        `${who}/${nisn}: count harus sama persis dengan jumlah baris yang benar-benar terlihat`);
+    });
+  });
+});
+
+test('getStudentLateHistory: wali kelas & BK/admin TETAP dapat count akurat untuk siswa dalam cakupannya (regresi)', () => {
+  const s = loadServer();
+  // NISN 1001 (Rahma, XI A) total SEBENARNYA 3 baris di seluruh sekolah --
+  // semuanya ada di kelas perwalian Bu Kartina, jadi wali kelas harus tetap
+  // melihat angka akurat 3, PERSIS seperti sebelum perubahan ini.
+  const wali = s.as('wali', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(wali.count, 3, 'wali kelas untuk siswa kelasnya sendiri: count tidak boleh berubah dari sebelumnya');
+
+  // BK/admin (schoolwide reader) juga tidak boleh berubah -- NISN 3003
+  // (Citra, XII C) total sebenarnya 3 baris.
+  const bk = s.as('bk', { action: 'getStudentLateHistory', nisn: '3003' });
+  assert.equal(bk.count, 3, 'BK/admin: count se-sekolah tetap akurat, tidak boleh berubah dari sebelumnya');
+  const admin = s.as('admin', { action: 'getStudentLateHistory', nisn: '3003' });
+  assert.equal(admin.count, 3);
+});
+
+test('getStudentLateHistory: guru biasa TIDAK bisa lagi menyusun angka riwayat historis akurat lewat enumerasi NISN', () => {
+  const s = loadServer();
+  // Total SEBENARNYA (seluruh sekolah, lintas tanggal) untuk tiap NISN:
+  // 1001 -> 3, 2002 -> 3, 3003 -> 3. Guru biasa (bukan wali kelas mana pun)
+  // memanggil satu per satu untuk ketiganya -- persis pola enumerasi loop
+  // yang dikaji (bukan panggilan bulk, itu memang tidak pernah ada).
+  const totalSebenarnya = { '1001': 3, '2002': 3, '3003': 3 };
+  const hasilGuru = {};
+  Object.keys(totalSebenarnya).forEach((nisn) => {
+    hasilGuru[nisn] = s.as('guru', { action: 'getStudentLateHistory', nisn }).count;
+  });
+  // Riwayat HISTORIS (bukan hari ini) tidak lagi bisa direkonstruksi akurat
+  // lewat enumerasi -- setidaknya satu NISN yang total sebenarnya tidak sama
+  // dengan yang terlihat guru biasa.
+  const adaYangTidakAkurat = Object.keys(totalSebenarnya).some((nisn) => hasilGuru[nisn] !== totalSebenarnya[nisn]);
+  assert.ok(adaYangTidakAkurat, 'guru biasa tidak boleh melihat angka historis akurat untuk siswa di luar cakupannya');
+  // Catatan jujur: aturan Keterlambatan (beda dari Pelanggaran) tetap
+  // mengecualikan HARI INI sebagai seluruh sekolah (alur gerbang butuh itu,
+  // lihat scopeDailyRecordsForUser) -- jadi aktivitas HARI INI tetap
+  // terlihat siapa pun, disengaja & tidak berubah oleh perbaikan ini. Yang
+  // ditutup di sini murni jalur enumerasi RIWAYAT/HISTORIS.
 });
 
 test('RecordModal: peringatan memakai jumlah dari server, bukan cuma baris yang terlihat', () => {
@@ -447,6 +492,95 @@ test('RecordModal: peringatan memakai jumlah dari server, bukan cuma baris yang 
   const blok = app.split('const fetchStudentLateCount = (nisn) => {')[1].split('};')[0];
   assert.match(blok, /action=getStudentLateHistory/);
   assert.match(blok, /typeof data\.count === 'number'/);
+});
+
+// ================= getPelanggaranCountForStudent =================
+// Total SEBENARNYA per NISN di PELANGGARAN_ROWS (seluruh sekolah):
+//   1001 (Rahma, XI A)  -> 1 baris (Bu Kartina, kelas perwaliannya sendiri)
+//   2002 (Budi, XI B)   -> 2 baris (Bu BK, dan Bu Kartina menulis untuk XI B)
+//   3003 (Citra, XII C) -> 2 baris (Pak Anwar sendiri, dan Bu BK hari ini)
+//
+// `count` DULU selalu total se-sekolah untuk NISN apa pun (audit RBAC
+// September 2026: itu jalur enumerasi paling murah di seluruh API --
+// getStudents sudah membagikan semua NISN, dan doGet tidak lewat rate
+// limit tulis). Sekarang `count` = jumlah baris yang lolos
+// scopePelanggaranForUser() -- fungsi YANG SAMA yang menyaring getPelanggaran.
+
+test('getPelanggaranCountForStudent: wali kelas & admin/BK TETAP dapat count akurat (regresi, tidak boleh berubah)', () => {
+  const s = loadServer();
+  // Wali kelas untuk siswa KELASNYA SENDIRI -- harus tetap akurat persis
+  // seperti sebelum perubahan ini.
+  const wali = s.as('wali', { action: 'getPelanggaranCountForStudent', nisn: '1001' });
+  assert.equal(wali.status, 'success');
+  assert.equal(wali.count, 1, 'wali kelas untuk siswa kelasnya sendiri: count tidak boleh berubah');
+
+  // Admin/BK (schoolwide reader) untuk NISN mana pun -- tidak boleh berubah.
+  ['admin', 'bk'].forEach((who) => {
+    const r2002 = s.as(who, { action: 'getPelanggaranCountForStudent', nisn: '2002' });
+    assert.equal(r2002.count, 2, `${who}: count se-sekolah untuk 2002 tidak boleh berubah`);
+    const r3003 = s.as(who, { action: 'getPelanggaranCountForStudent', nisn: '3003' });
+    assert.equal(r3003.count, 2, `${who}: count se-sekolah untuk 3003 tidak boleh berubah`);
+  });
+});
+
+test('getPelanggaranCountForStudent: guru biasa dapat count dari CATATANNYA SENDIRI saja, bukan 0 mutlak dan bukan total sebenarnya', () => {
+  const s = loadServer();
+  // Pak Anwar (guru biasa, bukan wali kelas mana pun) punya SATU baris
+  // miliknya sendiri untuk Citra (3003) -- count harus 1 (bukan 0, karena
+  // itu catatannya sendiri; bukan 2, karena baris Bu BK bukan miliknya).
+  const citra = s.as('guru', { action: 'getPelanggaranCountForStudent', nisn: '3003' });
+  assert.equal(citra.status, 'success');
+  assert.equal(citra.count, 1, 'guru melihat catatannya sendiri (1), bukan 0 dan bukan total sebenarnya (2)');
+
+  // Budi (2002): total sebenarnya 2 baris, TIDAK SATU PUN milik Pak Anwar --
+  // count harus 0 mutlak, bukan sebagian dari total.
+  const budi = s.as('guru', { action: 'getPelanggaranCountForStudent', nisn: '2002' });
+  assert.equal(budi.count, 0, 'guru tanpa catatan apa pun untuk siswa ini harus dapat 0');
+
+  // Rahma (1001): milik wali XI A sepenuhnya, Pak Anwar tidak pernah mencatatnya.
+  const rahma = s.as('guru', { action: 'getPelanggaranCountForStudent', nisn: '1001' });
+  assert.equal(rahma.count, 0);
+});
+
+test('getPelanggaranCountForStudent: wali kelas untuk siswa DI LUAR kelasnya -- hanya catatan sendiri, bukan total sebenarnya', () => {
+  const s = loadServer();
+  // Bu Kartina (wali XI A) menulis SATU dari DUA baris Budi (2002, XI B --
+  // bukan kelasnya). Scope CLASS(XI A) ∪ OWN(Bu Kartina) meloloskan baris
+  // miliknya sendiri, TAPI TIDAK baris Bu BK -- count harus 1, bukan 2.
+  const res = s.as('wali', { action: 'getPelanggaranCountForStudent', nisn: '2002' });
+  assert.equal(res.count, 1, 'wali kelas untuk siswa di luar kelasnya: cuma catatan sendiri yang terhitung, bukan total sebenarnya (2)');
+});
+
+test('getPelanggaranCountForStudent: guru biasa TIDAK bisa menyusun angka se-sekolah akurat lewat enumerasi NISN satu per satu', () => {
+  const s = loadServer();
+  const totalSebenarnya = { '1001': 1, '2002': 2, '3003': 2 };
+  const hasilGuru = {};
+  Object.keys(totalSebenarnya).forEach((nisn) => {
+    hasilGuru[nisn] = s.as('guru', { action: 'getPelanggaranCountForStudent', nisn }).count;
+  });
+  assert.deepEqual(hasilGuru, { '1001': 0, '2002': 0, '3003': 1 });
+  const jumlahGuru = Object.values(hasilGuru).reduce((a, b) => a + b, 0);
+  const jumlahSebenarnya = Object.values(totalSebenarnya).reduce((a, b) => a + b, 0);
+  assert.notEqual(jumlahGuru, jumlahSebenarnya,
+    'menjumlahkan hasil enumerasi tidak boleh menghasilkan total se-sekolah yang benar');
+});
+
+test('getPelanggaranCountForStudent: OSIS ditolak (regresi)', () => {
+  const s = loadServer();
+  const res = s.as('osis', { action: 'getPelanggaranCountForStudent', nisn: '1001' });
+  assert.equal(res.status, 'error');
+  assert.equal(res.count, undefined);
+});
+
+test('getPelanggaranCountForStudent: manipulasi parameter tidak memperluas cakupan', () => {
+  const s = loadServer();
+  const jujur = s.as('guru', { action: 'getPelanggaranCountForStudent', nisn: '3003' });
+  const nakal = s.as('guru', {
+    action: 'getPelanggaranCountForStudent', nisn: '3003',
+    role: 'admin', waliKelas: 'XII C', scope: 'school', requester: 'Bu BK',
+  });
+  assert.equal(nakal.count, jujur.count, 'parameter tambahan tidak boleh mengubah hasil');
+  assert.equal(nakal.count, 1);
 });
 
 // ================= getTodayData (paket hari ini + potongan riwayat) =================
