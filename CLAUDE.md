@@ -673,9 +673,8 @@ is never treated as the whole procedure.
 **Jam Perkiraan Kembali (added alongside `verifikasiIzinKeluar`, not a new
 action).** For tujuan `kembali` only, Guru Piket picks an expected return
 time from a dropdown (`buildJamPerkiraanKembaliOptions()`, `helpers.js` —
-30-minute steps, 06:00–17:00: school lets out by 16:00 at the latest, +1h
-margin for a supervised extracurricular running late — confirmed, not
-guessed) as part of the same verification tap; it is
+30-minute steps, 07:00–16:30, adjusted from an earlier 06:00–17:00) as
+part of the same verification tap; it is
 **mandatory** for that tujuan and **rejected server-side** (`izinJamPerkiraanValid()`,
 `Utils.gs`) if missing or not a real `HH:MM` string — the client's own
 validation blocks the request before it's even sent, but the server never
@@ -1120,7 +1119,7 @@ first field test showed the original card/box layout didn't read as a real
 school letter. `renderIzinKeluarSuratHTML` (`Code.gs`) now follows standard
 Indonesian formal-letter convention: a kop surat (school logo + name), the
 opening line "Yang bertanda tangan di bawah ini menerangkan bahwa...", a
-colon-aligned field list (Nama/Kelas/Keperluan/Rencana Kepulangan), a
+colon-aligned field list (Nama/Kelas/Keperluan/Status Izin), a
 separate bordered info box for Disetujui/Diverifikasi/Status (label *above*
 value here, not beside it — those values are long enough with the guru's
 name + konteks + timestamp that a beside-label layout wrapped across 2-3
@@ -1129,7 +1128,9 @@ place/date line, and a two-line "generated electronically, valid without a
 wet signature" note (also trimmed down from an earlier 4-line version that
 duplicated the nomor surat already shown in the header). Times New Roman,
 `@media print` targeting standard A4 margins. The "Tujuan" field is
-deliberately relabeled "Rencana Kepulangan" with a full phrase value
+deliberately relabeled — originally "Rencana Kepulangan", renamed again to
+**"Status Izin"** (label text only, same as the "Sanksi" → "Tindakan" rename
+in the Pelanggaran module: commit `a00e8fb`) — with a full phrase value
 ("Kembali ke sekolah" / "Pulang (tidak kembali ke sekolah)") computed locally
 in the render function — `izinTujuanLabel` itself stays untouched (one-word,
 for narrow Export table columns, see its own comment) so this doesn't widen
@@ -1137,6 +1138,24 @@ those columns. There's no "valid until 16:00" claim anywhere — an earlier
 draft had one and it was removed for asserting a cutoff SIGAP doesn't
 actually enforce, which risked being read as blanket permission to be out
 until end of day.
+
+**Rendering bug fixed (audit, later pass): raw JS Date string leaking into
+"Jam Keluar"/the field formerly "Rencana Kepulangan".** Google Sheets
+auto-detects a plain `"HH:MM"`-shaped string written to a cell as a *time
+value* and silently converts it to a serial time — read back via
+`getValues()`, that cell comes back as a `Date` object dated 30 December
+1899 (Sheets'/Excel's epoch for a time-only value), not the literal string.
+`izinRowToObject()` used to do a bare `String(row[24])` on that cell, so a
+surat could print e.g. `"Sat Dec 30 1899 14:00:00 GMT+0757 (Waktu Indonesia
+Tengah) WITA"` instead of `"14:00 WITA"`. Fixed at both ends: the write side
+(`verifikasiIzinKeluar`, `Code.gs`) now forces that cell's number format to
+Plain Text (`setNumberFormat('@')`) *before* writing, so Sheets never
+auto-converts it going forward; the read side (`izinJamPerkiraanDariSel()`,
+`Utils.gs`) defensively reformats a `Date` back to `HH:MM` if one somehow
+still comes back that way (old rows, a cell someone hand-edited in the
+Sheet). `"Jam Keluar"` itself was never affected the same way — it's always
+a genuine `Date` (`Waktu_Keluar`) rendered through `formatJamWITA()`, which
+already extracts hours/minutes correctly.
 
 **Konteks Wali Kelas/Guru Mapel on the slip is read from `Audit_Log`, not
 recomputed** — `getKonteksApprovalFromAuditLog` (`Utils.gs`) matches on a new

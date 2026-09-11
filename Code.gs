@@ -1007,6 +1007,20 @@ function doPost(e) {
       verValues[15] = verNow;
       verValues[16] = verNow; // Waktu_Keluar
       verValues[24] = verJamPerkiraanKembali; // Jam_Perkiraan_Kembali
+      // Jam_Perkiraan_Kembali HARUS tetap teks "HH:MM" apa adanya. Google
+      // Sheets otomatis MENGENALI teks berformat jam ("14:00") sebagai nilai
+      // waktu dan mengubahnya jadi serial time — getValues() lalu
+      // mengembalikannya sebagai objek Date bertanggal 30 Desember 1899
+      // (epoch Sheets untuk nilai waktu-murni, sama seperti Excel), bukan
+      // string, dan itu tercetak mentah di surat (mis. "Sat Dec 30 1899
+      // 14:00:00 GMT+0757 (Waktu Indonesia Tengah)"). Paksa format sel ini
+      // ke Plain Text SEBELUM menulis nilainya supaya deteksi otomatis itu
+      // tidak pernah terjadi — bug yang sama juga dijaga di sisi baca
+      // (izinJamPerkiraanDariSel, Utils.gs) untuk baris mana pun yang entah
+      // bagaimana tetap kembali sebagai Date.
+      if (verJamPerkiraanKembali) {
+        verSheet.getRange(verFound.rowIndex, IZIN_COL_JAM_PERKIRAAN_KEMBALI).setNumberFormat('@');
+      }
       verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
       clearIzinCache();
       logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas) +
@@ -1783,7 +1797,13 @@ function renderIzinKeluarSuratHTML(suratData) {
     baris('Nama', escapeHtml(d.nama_siswa)) +
     baris('Kelas', escapeHtml(d.kelas)) +
     baris('Keperluan', escapeHtml(d.keperluan)) +
-    baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan));
+    // Label tampilan diganti "Rencana Kepulangan" -> "Status Izin" —
+    // MURNI teks yang dilihat pengguna, sama prinsipnya dengan penggantian
+    // label "Sanksi" -> "Tindakan" di modul Pelanggaran (lihat commit
+    // a00e8fb): variabel `rencanaKepulangan` dan nilainya ("Kembali ke
+    // sekolah" / "Pulang (tidak kembali ke sekolah)") TIDAK diubah, cuma
+    // labelnya.
+    baris('Status Izin', escapeHtml(rencanaKepulangan));
 
   // "Jam Keluar" — timestamp verifikasi (Waktu_Keluar, distempel di saat
   // yang SAMA dengan Waktu_Verifikasi, lihat catatan di CLAUDE.md soal

@@ -883,6 +883,25 @@ function izinJamPerkiraanValid(jam) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(jam || '').trim());
 }
 
+// Google Sheets otomatis MENGENALI teks berformat jam ("14:00") sebagai
+// nilai waktu dan mengubahnya jadi serial time — getValues() lalu
+// mengembalikan sel itu sebagai objek Date bertanggal 30 Desember 1899
+// (epoch Sheets untuk nilai waktu-murni, sama seperti Excel) alih-alih
+// string apa adanya. Penulisannya sendiri sudah dipaksa Plain Text (lihat
+// action 'verifikasiIzinKeluar', Code.gs) supaya ini tidak terjadi untuk
+// baris BARU, tapi fungsi ini tetap menjaga baris mana pun yang entah
+// bagaimana kembali sebagai Date (baris lama, sel yang diedit manual di
+// Sheet, dst.) supaya tidak pernah tercetak mentah — bug yang pernah
+// muncul persis begini di surat: "Sat Dec 30 1899 14:00:00 GMT+0757
+// (Waktu Indonesia Tengah) WITA".
+function izinJamPerkiraanDariSel(v) {
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    return pad2Export(v.getHours()) + ':' + pad2Export(v.getMinutes());
+  }
+  return v ? String(v).trim() : '';
+}
+
 // ===== Konteks persetujuan: Wali Kelas vs Guru Mapel =====
 // MURNI framing tampilan/audit — BUKAN role baru, BUKAN klaim yang diperiksa
 // lewat jadwal mengajar (SIGAP tidak punya data itu, dan tidak akan
@@ -1106,8 +1125,12 @@ function izinRowToObject(row) {
     status_print: row[23] ? String(row[23]) : IZIN_PRINT_BELUM,
     // Kolom ke-25 (Jam Perkiraan Kembali) — baris lama (sebelum kolom ini
     // ada) atau baris bertujuan "pulang" mengembalikan '' di sini, sama
-    // seperti kelompok_id/nomor_surat di atas.
-    jam_perkiraan_kembali: row[24] ? String(row[24]) : '',
+    // seperti kelompok_id/nomor_surat di atas. izinJamPerkiraanDariSel
+    // (bukan String() polos) menjaga sel yang entah bagaimana kembali
+    // sebagai Date (lihat catatan di fungsi itu) tidak pernah tercetak
+    // mentah — normalisasi ke "HH:MM" di SATU tempat ini, bukan di setiap
+    // pemanggil.
+    jam_perkiraan_kembali: izinJamPerkiraanDariSel(row[24]),
     // Kolom "siapa yang mencatat" untuk keperluan pembatasan cakupan baca
     // memakai PEMBERI PERSETUJUAN — mekanisme kepemilikan yang sama (nama
     // pencatat) seperti Dicatat_Oleh di sheet lain.

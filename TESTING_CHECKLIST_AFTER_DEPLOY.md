@@ -56,9 +56,13 @@ dengan transaksi di langkah 1):
 - [ ] Kalimat pembuka "Yang bertanda tangan di bawah ini menerangkan
       bahwa...".
 - [ ] Nama, Kelas, Keperluan sesuai transaksi.
-- [ ] "Rencana Kepulangan" — nilainya "Kembali ke sekolah" (kalau tujuan
+- [ ] "Status Izin" — nilainya "Kembali ke sekolah" (kalau tujuan
       kembali) atau "Pulang (tidak kembali ke sekolah)" (kalau tujuan
       pulang).
+- [ ] "Jam Keluar" tampil format "HH:MM WITA" (mis. "14:00 WITA") —
+      BUKAN string Date mentah seperti "Sat Dec 30 1899 ...".
+- [ ] "Perkiraan Kembali" (khusus tujuan kembali) juga format "HH:MM WITA",
+      bukan string Date mentah.
 - [ ] Kotak info: "Disetujui oleh" (nama guru + label "Wali Kelas"/"Guru
       Mapel" — cek label ini AKURAT: kalau guru yang approve memang wali
       kelas siswa itu, harus "Wali Kelas"), "Diverifikasi oleh" (nama guru
