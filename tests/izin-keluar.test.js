@@ -219,7 +219,7 @@ test('alur normal: persetujuan wali kelas -> verifikasi Piket -> keluar', () => 
   assert.equal(row[13], '', 'belum ada pemberi verifikasi');
   assert.equal(row[16], '', 'waktu keluar belum diisi sebelum verifikasi');
 
-  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.status, 'success');
   assert.equal(ver.izinStatus, 'Sedang di Luar');
   row = s.izinById(buat.id);
@@ -239,7 +239,7 @@ test('alur normal: persetujuan guru NON-wali-kelas -> verifikasi Piket -> keluar
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   assert.equal(s.izinById(buat.id)[10], 'Pak Anwar');
 
-  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
 });
 
 // ============================================================
@@ -249,7 +249,7 @@ test('alur normal: persetujuan guru NON-wali-kelas -> verifikasi Piket -> keluar
 test('tujuan "Pulang": final setelah diverifikasi, tidak perlu ditandai kembali maupun ditutup', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'pulang', 'dijemput orang tua, sakit');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }).izinStatus, 'Pulang');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Pulang');
 
   const kembali = s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(kembali.status, 'error', 'siswa PULANG tidak boleh ditandai kembali');
@@ -260,7 +260,7 @@ test('tujuan "Pulang": final setelah diverifikasi, tidak perlu ditandai kembali 
 test('tujuan "Kembali": Sedang di Luar -> Selesai, satu langkah', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'ambil berkas di rumah');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   const kembali = s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(kembali.izinStatus, 'Selesai');
@@ -273,7 +273,7 @@ test('tujuan "Kembali": Sedang di Luar -> Selesai, satu langkah', () => {
 test('yang menandai kembali TIDAK harus pemberi izin — cukup petugas berwenang', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '2002', 'kembali', 'ke koperasi');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   // Bukan Bu Kartina (pemberi izin), bukan Pak Piket Pagi (yang verifikasi).
   const kembali = s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
@@ -291,9 +291,9 @@ test('pergantian Guru Piket hari yang sama: keduanya berwenang, yang bukan piket
   const b = setujui(s, 'pemberiIzin', '2002', 'kembali', 'urusan keluarga');
 
   // Shift pagi memverifikasi transaksi pertama...
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id }).status, 'success');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
   // ...shift siang memverifikasi transaksi kedua di hari yang sama.
-  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: b.id }).status, 'success');
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: b.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
   // ...dan shift siang boleh menandai kembali transaksi yang diverifikasi shift pagi.
   assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: a.id }).status, 'success');
 
@@ -302,6 +302,83 @@ test('pergantian Guru Piket hari yang sama: keduanya berwenang, yang bukan piket
   assert.equal(tolak.status, 'error');
   assert.match(tolak.message, /Guru Piket/);
   assert.equal(s.izinById(b.id)[7], 'Sedang di Luar', 'status tidak berubah oleh permintaan yang ditolak');
+});
+
+// ============================================================
+// 6b. JAM PERKIRAAN KEMBALI (verifikasi Guru Piket, tujuan "kembali" saja)
+// ============================================================
+
+test('verifikasi DITOLAK kalau tujuan "kembali" tapi jam_perkiraan_kembali kosong', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
+  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(ver.status, 'error');
+  assert.match(ver.message, /jam perkiraan kembali/i);
+  const row = s.izinById(buat.id);
+  assert.equal(row[7], 'Menunggu Verifikasi', 'status tidak berubah oleh permintaan yang ditolak');
+  assert.equal(row[24] || '', '', 'kolom Jam_Perkiraan_Kembali tetap kosong');
+});
+
+test('verifikasi DITOLAK kalau jam_perkiraan_kembali cuma string kosong/spasi', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
+  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '   ' });
+  assert.equal(ver.status, 'error');
+  assert.match(ver.message, /jam perkiraan kembali/i);
+});
+
+test('verifikasi DITOLAK kalau jam_perkiraan_kembali bukan format HH:MM yang valid', () => {
+  const s = loadServer();
+  ['25:00', '10:60', 'pagi', '10.30', '1030', '10:3'].forEach((nilaiSalah) => {
+    const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
+    const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: nilaiSalah });
+    assert.equal(ver.status, 'error', `"${nilaiSalah}" seharusnya ditolak`);
+    assert.match(ver.message, /jam perkiraan kembali/i);
+    // Bersihkan transaksi ini (masih 'Menunggu Verifikasi') supaya loop
+    // berikutnya bisa membuat transaksi baru untuk NISN yang sama (satu
+    // siswa tidak boleh punya dua transaksi terbuka sekaligus).
+    s.post('admin', { action: 'deleteIzinKeluar', id: buat.id });
+  });
+});
+
+test('verifikasi BERHASIL dan Jam_Perkiraan_Kembali tersimpan benar saat tujuan "kembali" & field terisi', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
+  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:30' });
+  assert.equal(ver.status, 'success');
+  assert.equal(ver.izinStatus, 'Sedang di Luar');
+  const row = s.izinById(buat.id);
+  assert.equal(row[24], '10:30', 'Jam_Perkiraan_Kembali tersimpan di kolom ke-25');
+});
+
+test('tujuan "pulang": Jam_Perkiraan_Kembali TIDAK PERNAH wajib, dan TIDAK PERNAH disimpan walau dikirim klien', () => {
+  const s = loadServer();
+  // Tanpa field sama sekali -- harus tetap berhasil (tidak wajib).
+  const a = setujui(s, 'wali', '1001', 'pulang', 'dijemput orang tua');
+  const verA = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id });
+  assert.equal(verA.status, 'success');
+  assert.equal(verA.izinStatus, 'Pulang');
+  assert.equal(s.izinById(a.id)[24] || '', '', 'tujuan pulang tidak pernah punya jam perkiraan kembali');
+
+  // Klien "nakal" mengirim field ini walau tujuannya pulang -- server
+  // TIDAK PERNAH menyimpannya, konsisten dengan alasan_khusus yang dibuang
+  // untuk jalur normal (lihat addIzinKeluar).
+  const b = setujui(s, 'wali', '2002', 'pulang', 'sakit, dijemput');
+  const verB = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: b.id, jam_perkiraan_kembali: '10:30' });
+  assert.equal(verB.status, 'success');
+  assert.equal(s.izinById(b.id)[24] || '', '', 'nilai yang dikirim klien untuk tujuan pulang diabaikan total');
+});
+
+test('Jam Perkiraan Kembali tercatat di Audit Log saat terisi, tidak menambah baris/aksi baru', () => {
+  const s = loadServer();
+  const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol ke puskesmas');
+  const sebelumAudit = s.auditRows().length;
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '14:00' });
+  const audit = s.auditRows();
+  assert.equal(audit.length, sebelumAudit + 1, 'tetap satu baris audit per verifikasi, bukan baris terpisah');
+  const baris = audit[audit.length - 1];
+  assert.equal(baris[3], 'Verifikasi Izin Keluar');
+  assert.match(baris[4], /jam_perkiraan_kembali=14:00/);
 });
 
 // ============================================================
@@ -372,10 +449,10 @@ test('Izin Khusus tertutup untuk yang tidak berwenang, dan alasan tidak menempel
 test('OSIS ditolak di semua aksi Izin Keluar, baca maupun tulis', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   assert.equal(s.post('osis', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'x' }).status, 'error');
-  assert.equal(s.post('osis', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'error');
+  assert.equal(s.post('osis', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).status, 'error');
   assert.equal(s.post('osis', { action: 'tandaiKembaliIzinKeluar', id: buat.id }).status, 'error');
   const baca = s.get('osis', { action: 'getIzinKeluar' });
   assert.equal(baca.status, 'error');
@@ -399,8 +476,8 @@ test('admin & BK selalu berwenang memverifikasi, termasuk saat Jadwal_Piket koso
   const s = loadServer({ tanpaJadwalPiket: true });
   const a = setujui(s, 'wali', '1001');
   const b = setujui(s, 'pemberiIzin', '2002');
-  assert.equal(s.post('admin', { action: 'verifikasiIzinKeluar', id: a.id }).status, 'success');
-  assert.equal(s.post('bk', { action: 'verifikasiIzinKeluar', id: b.id }).status, 'success');
+  assert.equal(s.post('admin', { action: 'verifikasiIzinKeluar', id: a.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
+  assert.equal(s.post('bk', { action: 'verifikasiIzinKeluar', id: b.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
   // Tanpa jadwal piket, guru biasa memang tidak punya kewenangan itu.
   assert.equal(s.get('piketPagi', { action: 'getIzinKeluar' }).canVerify, false);
   assert.equal(s.get('admin', { action: 'getIzinKeluar' }).canVerify, true);
@@ -437,7 +514,7 @@ const jadwalDenganWalasDanBk = [
 test('kapasitas: guru biasa yang piket -> boleh, tercatat Guru Piket', () => {
   const s = loadServer();
   const buat = setujui(s, 'pemberiIzin', '1001');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }); // G10, piket hari ini di fixture default
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }); // G10, piket hari ini di fixture default
   const kembali = s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(kembali.status, 'success');
 
@@ -457,7 +534,7 @@ test('kapasitas: guru biasa yang piket -> boleh, tercatat Guru Piket', () => {
 test('kapasitas: wali kelas yang piket -> boleh, tercatat Guru Piket (bukan role wali kelas yang menentukan)', () => {
   const s = loadServer({ jadwalPiketRows: jadwalDenganWalasDanBk });
   const buat = setujui(s, 'pemberiIzin', '2002');
-  const ver = s.post('wali', { action: 'verifikasiIzinKeluar', id: buat.id }); // Bu Kartina, G02, piket di fixture ini
+  const ver = s.post('wali', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }); // Bu Kartina, G02, piket di fixture ini
   assert.equal(ver.status, 'success');
 
   const izinGet = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === buat.id);
@@ -469,7 +546,7 @@ test('kapasitas: wali kelas yang piket -> boleh, tercatat Guru Piket (bukan role
 test('kapasitas: BK/Kesiswaan yang piket -> boleh, tercatat Guru Piket (bukan role BK yang menentukan)', () => {
   const s = loadServer({ jadwalPiketRows: jadwalDenganWalasDanBk });
   const buat = setujui(s, 'pemberiIzin', '3003');
-  const ver = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id }); // Bu BK, G01, piket di fixture ini
+  const ver = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }); // Bu BK, G01, piket di fixture ini
   assert.equal(ver.status, 'success');
 
   const izinGet = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === buat.id);
@@ -481,7 +558,7 @@ test('kapasitas: BK/Kesiswaan yang piket -> boleh, tercatat Guru Piket (bukan ro
 test('kapasitas: BK/Kesiswaan yang TIDAK piket -> tetap boleh sebagai backup, tercatat BK/Kesiswaan (BUKAN Guru Piket)', () => {
   const s = loadServer(); // fixture default: Bu BK (G01) TIDAK ada di Jadwal_Piket hari ini
   const buat = setujui(s, 'pemberiIzin', '1001');
-  const ver = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.status, 'success', 'BK tetap boleh mengambil alih walau tidak piket');
 
   const izinGet = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === buat.id);
@@ -500,7 +577,7 @@ test('kapasitas: BK/Kesiswaan yang TIDAK piket -> tetap boleh sebagai backup, te
 test('kapasitas: wali kelas yang TIDAK piket -> ditolak sepenuhnya (bukan cuma tidak diberi label Guru Piket)', () => {
   const s = loadServer(); // fixture default: Bu Kartina (G02) TIDAK piket hari ini
   const buat = setujui(s, 'pemberiIzin', '1001');
-  const ver = s.post('wali', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('wali', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.status, 'error');
   assert.equal(s.izinById(buat.id)[7], 'Menunggu Verifikasi', 'tidak ada perubahan status oleh permintaan yang ditolak');
   assert.equal(s.get('wali', { action: 'getIzinKeluar' }).canVerify, false);
@@ -509,7 +586,7 @@ test('kapasitas: wali kelas yang TIDAK piket -> ditolak sepenuhnya (bukan cuma t
 test('kapasitas: guru biasa yang TIDAK piket -> ditolak sepenuhnya', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001');
-  const ver = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id }); // G12, piket HARI_LAIN saja
+  const ver = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }); // G12, piket HARI_LAIN saja
   assert.equal(ver.status, 'error');
   assert.equal(s.izinById(buat.id)[7], 'Menunggu Verifikasi');
 });
@@ -517,7 +594,7 @@ test('kapasitas: guru biasa yang TIDAK piket -> ditolak sepenuhnya', () => {
 test('kapasitas: OSIS ditolak sepenuhnya, bukan diberi kapasitas apa pun', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001');
-  const ver = s.post('osis', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('osis', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.status, 'error');
   assert.equal(s.get('osis', { action: 'getIzinKeluar' }).status, 'error', 'OSIS tetap ditolak baca izin keluar sama sekali');
 });
@@ -528,14 +605,14 @@ test('kapasitas: client mencoba memalsukan kapasitas -> diabaikan total, server 
 
   // Guru yang tidak berwenang mengaku "guru_piket" lewat body request —
   // tetap ditolak, klaim tidak pernah dibaca.
-  const gagal = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id, kapasitas: 'guru_piket', role: 'guru_piket' });
+  const gagal = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id, kapasitas: 'guru_piket', role: 'guru_piket', jam_perkiraan_kembali: '10:00' });
   assert.equal(gagal.status, 'error');
   assert.equal(s.izinById(buat.id)[7], 'Menunggu Verifikasi');
 
   // BK yang tidak piket mengklaim "guru_piket" lewat body request — TETAP
   // diproses (BK memang berwenang lewat jalur backup), tapi label yang
   // TERCATAT adalah yang DIHITUNG SERVER (bk_kesiswaan), bukan klaim klien.
-  const berhasil = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id, kapasitas: 'guru_piket' });
+  const berhasil = s.post('bk', { action: 'verifikasiIzinKeluar', id: buat.id, kapasitas: 'guru_piket', jam_perkiraan_kembali: '10:00' });
   assert.equal(berhasil.status, 'success');
   const izinGet = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === buat.id);
   assert.equal(izinGet.diverifikasi_kapasitas, 'bk_kesiswaan', 'klaim kapasitas dari klien tidak mengubah apa yang tercatat');
@@ -548,8 +625,8 @@ test('kapasitas: beberapa Guru Piket pada hari yang sama -> semuanya valid, masi
   const a = setujui(s, 'pemberiIzin', '1001');
   const b = setujui(s, 'pemberiIzin', '2002');
 
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id }).status, 'success');
-  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: b.id }).status, 'success');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: a.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: b.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
 
   const izinA = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === a.id);
   const izinB = s.get('admin', { action: 'getIzinKeluar' }).izin.find((i) => i.id === b.id);
@@ -581,9 +658,9 @@ test('transisi status tidak valid ditolak server', () => {
   // Belum diverifikasi -> belum bisa ditandai kembali.
   assert.equal(s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id }).status, 'error');
 
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   // Verifikasi kedua ditolak.
-  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'error');
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).status, 'error');
 
   // Tandai Kembali langsung membawa transaksi ini ke status final (Selesai)
   // dalam satu langkah — tidak ada langkah "Tutup transaksi" kedua lagi.
@@ -611,7 +688,7 @@ test('double submit tidak membuat transaksi ganda', () => {
   assert.equal(s.izinRows().length, jumlahAwal + 1);
 
   // Juga saat siswanya sudah di luar (bukan cuma saat menunggu verifikasi).
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: pertama.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: pertama.id, jam_perkiraan_kembali: '10:00' });
   const ketiga = setujui(s, 'pemberiIzin', '1001', 'pulang', 'dijemput');
   assert.equal(ketiga.status, 'error');
   assert.match(ketiga.message, /masih di luar/i);
@@ -664,8 +741,8 @@ test('tujuan & keperluan divalidasi server', () => {
 test('id transaksi yang tidak dikenal ditolak, dan tidak mengenai baris lain', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: 'id-karangan' }).status, 'error');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: '' }).status, 'error');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: 'id-karangan', jam_perkiraan_kembali: '10:00' }).status, 'error');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: '', jam_perkiraan_kembali: '10:00' }).status, 'error');
   assert.equal(s.izinById(buat.id)[7], 'Menunggu Verifikasi', 'baris lain tidak ikut berubah');
 });
 
@@ -676,7 +753,7 @@ test('id transaksi yang tidak dikenal ditolak, dan tidak mengenai baris lain', (
 test('setiap tahap meninggalkan jejak di Audit_Log', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol gigi');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
 
   const aksi = s.auditRows().map((r) => r[3]);
@@ -734,7 +811,7 @@ test('getIzinKeluar: admin & BK melihat seluruh sekolah', () => {
 test('getIzinKeluar: transaksi BERJALAN terlihat semua guru (petugas piket harus bisa menandai kembali)', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '3003', 'kembali', 'lomba'); // siswa XII C
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   // Pak Anwar bukan wali kelas XII C dan bukan yang menyetujui, tapi transaksi
   // ini masih berjalan — sama seperti "hari ini seluruh sekolah" pada alur gerbang.
@@ -919,9 +996,9 @@ test('persetujuan Guru Mapel tetap harus masuk ke Guru Piket — tidak ada jalan
   const buat = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'kembali', keperluan: 'kontrol' });
   assert.equal(buat.izinStatus, 'Menunggu Verifikasi');
   // Guru yang sama (bukan piket) tidak bisa langsung memverifikasi punyanya sendiri.
-  assert.equal(s.post('pemberiIzin', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'error');
+  assert.equal(s.post('pemberiIzin', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).status, 'error');
   // Guru Piket tetap bisa, sama seperti jalur Wali Kelas.
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
 });
 
 test('konteks tidak ikut ke baris Izin Khusus — jalur khusus sudah punya penandanya sendiri', () => {
@@ -946,7 +1023,7 @@ test('Izin Khusus & verifikasi Guru Piket tetap berjalan tanpa perubahan (regres
   assert.equal(khusus.izinStatus, 'Pulang');
 
   const normal = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol' });
-  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: normal.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: normal.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
   assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: normal.id }).izinStatus, 'Selesai');
 });
 
@@ -1117,7 +1194,7 @@ test('alur izin normal tetap berjalan utuh setelah audit Izin Khusus ini (regres
   const s = loadServer();
   const normal = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
   assert.equal(normal.izinStatus, 'Menunggu Verifikasi');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: normal.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: normal.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
   // Tandai Kembali sekarang langsung final — lihat blok audit UX di bawah.
   assert.equal(s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: normal.id }).izinStatus, 'Selesai');
 });
@@ -1149,7 +1226,7 @@ test('alur izin normal tetap berjalan utuh setelah audit Izin Khusus ini (regres
 test('Tandai Kembali langsung SELESAI dalam satu langkah — tidak ada aksi kedua yang menunggu', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'ambil seragam');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(s.izinById(buat.id)[7], 'Sedang di Luar');
 
   const hasil = s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
@@ -1165,7 +1242,7 @@ test('Tandai Kembali langsung SELESAI dalam satu langkah — tidak ada aksi kedu
 test('aksi "selesaikanIzinKeluar" sudah tidak ada — bukan cuma ditolak, tapi tidak dikenali', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol gigi');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   const sebelum = s.izinById(buat.id).slice();
 
@@ -1180,7 +1257,7 @@ test('aksi "selesaikanIzinKeluar" sudah tidak ada — bukan cuma ditolak, tapi t
 test('setelah Tandai Kembali, tidak ada aksi lanjutan yang diterima — status final menolak semuanya', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '2002', 'kembali', 'ambil obat');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(s.izinById(buat.id)[7], 'Selesai');
 
@@ -1194,7 +1271,7 @@ test('setelah Tandai Kembali, tidak ada aksi lanjutan yang diterima — status f
 test('jalur Pulang tidak pernah butuh penutupan terpisah — sudah final sejak diverifikasi', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '3003', 'pulang', 'dijemput orang tua');
-  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.izinStatus, 'Pulang');
   const baris = s.izinById(buat.id);
   assert.equal(baris[7], 'Pulang');
@@ -1210,7 +1287,7 @@ test('jalur Pulang tidak pernah butuh penutupan terpisah — sudah final sejak d
 test('Kewenangan Tandai Kembali = kewenangan verifikasi, BUKAN kepemilikan transaksi', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'urusan keluarga');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   // Pemberi persetujuan awal TIDAK otomatis boleh menandai kembali (dia bukan piket).
   const olehWali = s.post('wali', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
@@ -1225,7 +1302,7 @@ test('Kewenangan Tandai Kembali = kewenangan verifikasi, BUKAN kepemilikan trans
 test('transaksi yang sudah Selesai tetap terbaca di daftar — tidak disembunyikan, tidak dihapus', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'ambil berkas');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
 
   // Admin/BK: seluruh sekolah, termasuk yang sudah Selesai.
@@ -1251,11 +1328,13 @@ test('lima status, tidak ada status baru yang ditambahkan oleh perubahan ini', (
     'IZIN_STATUS_DI_LUAR', 'IZIN_STATUS_KEMBALI', 'IZIN_STATUS_MENUNGGU',
     'IZIN_STATUS_PULANG', 'IZIN_STATUS_SELESAI', 'IZIN_STATUS_TERBUKA',
   ]);
-  // Skema Izin_Keluar tetap 24 kolom (21 dari sebelumnya + Nomor_Surat/
+  // Skema Izin_Keluar sekarang 25 kolom (21 dari sebelumnya + Nomor_Surat/
   // Waktu_Print/Status_Print milik fitur Cetak Surat Izin, audit September
-  // 2026) — audit satu-langkah "Tandai Kembali" yang diuji test ini sendiri
-  // TIDAK menambah kolom apa pun.
-  assert.match(utils, /var IZIN_NUM_COLS = IZIN_HEADERS\.length; \/\/ 24/);
+  // 2026, + Jam_Perkiraan_Kembali milik fitur verifikasi Guru Piket) —
+  // audit satu-langkah "Tandai Kembali" yang diuji test ini sendiri TIDAK
+  // menambah kolom apa pun (kenaikan dari 24 ke 25 di sini murni jejak
+  // fitur Jam Perkiraan Kembali, ditambahkan di file test terpisah).
+  assert.match(utils, /var IZIN_NUM_COLS = IZIN_HEADERS\.length; \/\/ 25/);
 });
 
 test('tidak ada role "Guru Piket" yang dibuat — kewenangannya tetap dari Jadwal_Piket', () => {
@@ -1307,7 +1386,7 @@ test('Guru Piket bertugas hari ini dapat menghapus transaksi "Menunggu Verifikas
 test('Guru Piket bertugas hari ini dapat menghapus transaksi "Sedang di Luar" dalam 5 menit', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(s.izinById(buat.id)[7], 'Sedang di Luar');
   const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
   assert.equal(res.status, 'success');
@@ -1365,7 +1444,7 @@ test('Guru Piket ditolak menghapus transaksi yang sudah lewat 5 menit sejak dica
 test('Guru Piket ditolak menghapus transaksi yang statusnya SUDAH FINAL (Selesai) sekalipun masih dalam 5 menit', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(s.izinById(buat.id)[7], 'Selesai');
   const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
@@ -1377,7 +1456,7 @@ test('Guru Piket ditolak menghapus transaksi yang statusnya SUDAH FINAL (Selesai
 test('Guru Piket ditolak menghapus transaksi berstatus Pulang (final) — sama seperti Selesai', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'pulang', 'testing developer');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(s.izinById(buat.id)[7], 'Pulang');
   const res = s.post('piketPagi', { action: 'deleteIzinKeluar', id: buat.id });
   assert.equal(res.status, 'error');
@@ -1386,7 +1465,7 @@ test('Guru Piket ditolak menghapus transaksi berstatus Pulang (final) — sama s
 test('Admin dapat menghapus transaksi FINAL (Selesai) — pengecualian yang disengaja untuk admin', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'testing developer');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   const res = s.post('admin', { action: 'deleteIzinKeluar', id: buat.id });
   assert.equal(res.status, 'success');

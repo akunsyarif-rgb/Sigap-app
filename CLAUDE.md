@@ -670,6 +670,23 @@ siswa kembali                       |  tandaiKembaliIzinKeluar  -> "Selesai" (fi
 `Waktu_Keluar` is stamped at **verification**, never at approval — one approval
 is never treated as the whole procedure.
 
+**Jam Perkiraan Kembali (added alongside `verifikasiIzinKeluar`, not a new
+action).** For tujuan `kembali` only, Guru Piket picks an expected return
+time from a dropdown (`buildJamPerkiraanKembaliOptions()`, `helpers.js` —
+30-minute steps, 06:00–21:00) as part of the same verification tap; it is
+**mandatory** for that tujuan and **rejected server-side** (`izinJamPerkiraanValid()`,
+`Utils.gs`) if missing or not a real `HH:MM` string — the client's own
+validation blocks the request before it's even sent, but the server never
+trusts that alone. For tujuan `pulang` the field is never shown, never
+required, and never stored even if a client sends one anyway (discarded the
+same way `alasan_khusus` is discarded off the normal jalur). Stored as plain
+text `HH:MM` in `Jam_Perkiraan_Kembali` (`IZIN_HEADERS`, 25th/last column) —
+not a `Date`/timestamp, because it's a human's estimate picked from a fixed
+list, not an event that actually happened. Surfaced on the printed surat
+(`renderIzinKeluarSuratHTML`) alongside a **new "Jam Keluar" row** — that data
+already existed (`Waktu_Keluar`, identical to `Waktu_Verifikasi`) but had
+never actually been rendered on the slip until this.
+
 **UX audit, August 2026: the separate closing step is gone.** It used to be
 `tandaiKembaliIzinKeluar` -> `Kembali`, then a *second* action
 (`selesaikanIzinKeluar`, UI label "Tutup transaksi") to close `Kembali`/`Pulang`

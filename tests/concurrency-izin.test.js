@@ -386,9 +386,9 @@ test('[concurrency nyata] dua Guru Piket memverifikasi transaksi yang sama TEPAT
 
   let hasilB = null;
   lock.setOnFirstAcquire(() => {
-    hasilB = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id });
+    hasilB = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   });
-  const hasilA = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const hasilA = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   const results = [hasilA, hasilB];
   assert.equal(results.filter((r) => r.status === 'success').length, 1);
@@ -417,9 +417,9 @@ test('[concurrency nyata] guru piket vs guru BIASA (non-piket) memverifikasi ber
 
   let hasilBiasa = null;
   lock.setOnFirstAcquire(() => {
-    hasilBiasa = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id });
+    hasilBiasa = s.post('bukanPiket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   });
-  const hasilPiket = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const hasilPiket = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   // Guru biasa TIDAK PERNAH boleh berhasil — terlepas urutan lock, otorisasi
   // dicek server-side sebelum baris disentuh. (piket menang lock di sini
@@ -437,7 +437,7 @@ test('[concurrency nyata] dua petugas menandai kembali TEPAT bersamaan -> hanya 
   const lock = makeRealLock();
   const s = loadServer({ lockApi: lock.api });
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   let hasilB = null;
   lock.setOnFirstAcquire(() => {
@@ -462,7 +462,7 @@ test('[concurrency nyata] "tandai kembali" vs "tandai pulang" diadu bersamaan pa
   const lock = makeRealLock();
   const s = loadServer({ lockApi: lock.api });
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   let hasilPulang = null;
   lock.setOnFirstAcquire(() => {
@@ -606,9 +606,9 @@ test('retry setelah "respons hilang": submit yang diulang identik tidak pernah m
 test('retry setelah "respons hilang": verifikasi yang diulang aman, tidak menimpa Waktu_Keluar', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  const v1 = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const v1 = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const waktuKeluarAwal = s.izinByNisn('1001')[0][16];
-  const v2 = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }); // klien retry
+  const v2 = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }); // klien retry
   assert.equal(v1.status, 'success');
   assert.equal(v2.status, 'error');
   assert.equal(s.izinByNisn('1001')[0][16].getTime ? s.izinByNisn('1001')[0][16].getTime() : s.izinByNisn('1001')[0][16], waktuKeluarAwal.getTime ? waktuKeluarAwal.getTime() : waktuKeluarAwal);
@@ -617,7 +617,7 @@ test('retry setelah "respons hilang": verifikasi yang diulang aman, tidak menimp
 test('triple-click "Tandai Kembali" (3x berturut-turut sangat cepat) hanya menghasilkan satu perubahan', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const hasil = [1, 2, 3].map(() => s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: buat.id }));
   assert.equal(hasil.filter((r) => r.status === 'success').length, 1);
   assert.equal(hasil.filter((r) => r.status === 'error').length, 2);
@@ -643,7 +643,7 @@ test('idempotency audit: addIzinKeluar/verifikasi/tandaiKembali/tandaiPulang sem
 test('pergantian piket: Piket Pagi memverifikasi, siswa masih di luar sampai shift siang, Piket Siang tetap berwenang menandai kembali (tidak bergantung siapa yang membuka Gerbang duluan)', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'success');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
   // Siswa tetap "Sedang di Luar" sampai siang -- tidak ada yang menyentuhnya.
   assert.equal(s.izinByNisn('1001')[0][7], 'Sedang di Luar');
   const hasil = s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
@@ -661,9 +661,9 @@ test('pergantian piket: Piket Pagi & Piket Siang bertindak TEPAT bersamaan pada 
 
   let hasilSiang = null;
   lock.setOnFirstAcquire(() => {
-    hasilSiang = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buatB.id });
+    hasilSiang = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buatB.id, jam_perkiraan_kembali: '10:00' });
   });
-  const hasilPagi = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buatA.id });
+  const hasilPagi = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buatA.id, jam_perkiraan_kembali: '10:00' });
 
   // Keduanya mengenai TRANSAKSI BERBEDA -> siapa pun yang menang lock duluan
   // berhasil; yang kalah cukup ditolak "sibuk" dan boleh (dan harus, secara UX)
@@ -671,7 +671,7 @@ test('pergantian piket: Piket Pagi & Piket Siang bertindak TEPAT bersamaan pada 
   if (hasilSiang.status === 'error') {
     assert.match(hasilSiang.message, /sibuk/i);
     // retry oleh piketSiang setelah lock lepas -> berhasil, tidak kehilangan aksinya.
-    const retry = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buatB.id });
+    const retry = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buatB.id, jam_perkiraan_kembali: '10:00' });
     assert.equal(retry.status, 'success');
   } else {
     assert.equal(hasilSiang.status, 'success');
@@ -692,7 +692,7 @@ test('pergantian hari: transaksi "Sedang di Luar" yang dibuat sebelum tengah mal
   const tengahMalam = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 58, 0, 0);
   const s = loadServer({ initialClock: tengahMalam });
   const buat = setujui(s, 'wali', '1001', 'kembali', 'acara malam');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id }).status, 'success');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' }).status, 'success');
 
   // Hari berganti (Jadwal_Piket hari itu pun berbeda) — pergeseran KECIL (7 menit,
   // jauh di bawah batas mutlak sesi 6 jam) yang melintasi tengah malam sudah
@@ -722,7 +722,7 @@ test('pergantian hari: getIzinKeluar tidak salah menyembunyikan transaksi berjal
   const malamIni = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 50, 0, 0);
   const s = loadServer({ initialClock: malamIni });
   const buat = setujui(s, 'pemberiIzin', '2002', 'kembali', 'kegiatan malam');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
 
   const besok = new Date(malamIni.getTime() + 15 * 60 * 1000);
   s.setClock(besok);
@@ -750,7 +750,7 @@ test('invariant data: status mustahil tidak pernah terjadi di seluruh skenario c
     interloper = setujui(s, 'pemberiIzin', '1001', 'kembali', 'race 1');
   });
   setujui(s, 'wali', '1001', 'kembali', 'race 1 pemenang');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: s.izinByNisn('1001')[0][4] });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: s.izinByNisn('1001')[0][4], jam_perkiraan_kembali: '10:00' });
 
   lock.setOnFirstAcquire(() => {
     interloper = s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: s.izinByNisn('1001')[0][4] });
@@ -794,12 +794,12 @@ test('stale UI: layar Guru Piket A yang belum di-refresh mencoba verifikasi tran
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
   // Guru Piket B memproses duluan (dari perangkat lain) -- layar A tidak tahu.
-  const olehB = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const olehB = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(olehB.status, 'success');
 
   // Layar A (yang masih menampilkan "Menunggu Verifikasi" karena belum refresh)
   // menekan tombol Verifikasi berdasarkan tampilan basi itu.
-  const olehA = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const olehA = s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(olehA.status, 'error');
   assert.match(olehA.message, /sudah (diverifikasi|tidak menunggu)/i, 'pesan harus bisa dipahami guru, bukan error generik');
   assert.equal(s.izinByNisn('1001')[0][13], 'Bu Piket Siang', 'verifikator tetap B, tidak tertimpa/tertukar oleh aksi A yang basi');
@@ -808,7 +808,7 @@ test('stale UI: layar Guru Piket A yang belum di-refresh mencoba verifikasi tran
 test('stale UI: layar guru yang belum refresh mencoba "Tandai Kembali" transaksi yang ternyata sudah "Selesai" oleh petugas lain -> ditolak dengan pesan yang jelas, tidak merusak data', () => {
   const s = loadServer();
   const buat = setujui(s, 'wali', '1001', 'kembali', 'kontrol');
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const selesaiOlehB = s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: buat.id });
   assert.equal(selesaiOlehB.status, 'success');
 

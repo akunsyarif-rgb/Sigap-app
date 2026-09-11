@@ -100,7 +100,7 @@ const IZIN_HEADER = [
   'Disetujui_Oleh', 'Disetujui_Oleh_ID', 'Waktu_Persetujuan',
   'Diverifikasi_Oleh', 'Diverifikasi_Oleh_ID', 'Waktu_Verifikasi',
   'Waktu_Keluar', 'Waktu_Kembali', 'Dicatat_Kembali_Oleh', 'Dicatat_Kembali_Oleh_ID',
-  'ID_Kelompok', 'Nomor_Surat', 'Waktu_Print', 'Status_Print',
+  'ID_Kelompok', 'Nomor_Surat', 'Waktu_Print', 'Status_Print', 'Jam_Perkiraan_Kembali',
 ];
 
 // Transaksi HISTORIS (5 hari lalu, sudah 'Selesai') untuk Budi (2002, XI A) —
@@ -113,7 +113,7 @@ const HISTORIS_BUDI_ID = 'HIST-BUDI-001';
 const HISTORIS_BUDI_ROW = [
   hariLalu(5), '2002', 'Budi', 'XI A', HISTORIS_BUDI_ID, 'kontrol gigi', 'kembali', 'Selesai', 'normal', '',
   'Pak Anwar', 'G03', hariLalu(5), 'Pak Piket Pagi', 'G10', hariLalu(5), hariLalu(5), hariLalu(5), 'Pak Piket Pagi', 'G10',
-  '', '', '', '',
+  '', '', '', '', '09:00',
 ];
 
 function loadServer(opts) {
@@ -179,7 +179,7 @@ function loadServer(opts) {
 const setujuiDanVerifikasi = (s, tujuan) => {
   const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: tujuan || 'kembali', keperluan: 'kontrol ke puskesmas' });
   assert.equal(buat.status, 'success');
-  const ver = s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  const ver = s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(ver.status, 'success');
   return buat.id;
 };
@@ -222,7 +222,7 @@ test('generateIzinKeluarSurat: sukses untuk status "Pulang" dan "Selesai"', () =
   const s = loadServer();
   // Budi (2002) untuk tujuan pulang -- final langsung setelah verifikasi.
   const buatPulang = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'dijemput' });
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buatPulang.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buatPulang.id, jam_perkiraan_kembali: '10:00' });
   const cetakPulang = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buatPulang.id });
   assert.equal(cetakPulang.status, 'success');
   assert.match(cetakPulang.data.htmlContent, /Pulang/);
@@ -232,6 +232,58 @@ test('generateIzinKeluarSurat: sukses untuk status "Pulang" dan "Selesai"', () =
   s.post('piket', { action: 'tandaiKembaliIzinKeluar', id: idKembali });
   const cetakSelesai = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: idKembali });
   assert.equal(cetakSelesai.status, 'success');
+});
+
+// ============================================================
+// Jam Keluar & Jam Perkiraan Kembali di surat
+// ============================================================
+
+test('surat tujuan "kembali": menampilkan "Jam Keluar" dan "Perkiraan Kembali" sesuai jam yang dipilih Guru Piket', () => {
+  const s = loadServer();
+  const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'kembali', keperluan: 'kontrol ke puskesmas' });
+  assert.equal(buat.status, 'success');
+  const ver = s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:30' });
+  assert.equal(ver.status, 'success');
+
+  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
+  assert.equal(cetak.status, 'success');
+  assert.equal(cetak.data.suratData.jam_perkiraan_kembali, '10:30', 'suratData harus membawa nilai yang tersimpan');
+  assert.match(cetak.data.htmlContent, /Jam Keluar/, 'surat harus menampilkan baris Jam Keluar');
+  assert.match(cetak.data.htmlContent, /Perkiraan Kembali/, 'surat harus menampilkan baris Perkiraan Kembali');
+  assert.match(cetak.data.htmlContent, /10:30 WITA/, 'jam yang ditampilkan harus sama dengan yang dipilih piket');
+});
+
+test('surat tujuan "pulang": TIDAK menampilkan baris "Perkiraan Kembali" sama sekali', () => {
+  const s = loadServer();
+  const buat = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'dijemput orang tua' });
+  assert.equal(buat.status, 'success');
+  // Tujuan pulang tidak wajib (dan tidak menyimpan) jam_perkiraan_kembali --
+  // verifikasi tetap berhasil tanpa field ini sama sekali.
+  const ver = s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  assert.equal(ver.status, 'success');
+
+  const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
+  assert.equal(cetak.status, 'success');
+  assert.equal(cetak.data.suratData.jam_perkiraan_kembali, '', 'tidak ada nilai tersimpan untuk tujuan pulang');
+  assert.doesNotMatch(cetak.data.htmlContent, /Perkiraan Kembali/, 'baris ini tidak boleh muncul sama sekali untuk tujuan pulang');
+  // "Jam Keluar" TETAP tampil untuk tujuan pulang -- itu bukan field yang
+  // dibatasi tujuan "kembali" saja, beda dari "Perkiraan Kembali".
+  assert.match(cetak.data.htmlContent, /Jam Keluar/);
+});
+
+test('surat transaksi lama (baris historis sebelum kolom Jam_Perkiraan_Kembali ada): tidak menampilkan baris kosong', () => {
+  const s = loadServer({ izinRows: [HISTORIS_BUDI_ROW] });
+  // admin (bukan 'piket') -- transaksi ini historis (5 hari lalu, kelas XI A),
+  // guru biasa non-wali-kelas ditolak cakupan bacanya (lihat blok FIX 2 di
+  // bawah), jadi dipakai akun yang memang boleh melihat riwayat apa pun.
+  const cetak = s.post('admin', { action: 'generateIzinKeluarSurat', izinId: HISTORIS_BUDI_ID });
+  assert.equal(cetak.status, 'success');
+  // HISTORIS_BUDI_ROW sengaja SUDAH diberi nilai '09:00' di kolom ke-25 di
+  // atas (fixture ini dipakai test lain juga) -- baris tetap harus tampil
+  // dengan nilai itu, bukan disembunyikan seolah baris lama tidak punya
+  // kolom ini sama sekali.
+  assert.match(cetak.data.htmlContent, /Perkiraan Kembali/);
+  assert.match(cetak.data.htmlContent, /09:00 WITA/);
 });
 
 // ============================================================
@@ -249,7 +301,7 @@ test('nomor surat: format IK-YYYYMMDD-NNN dan bertambah untuk transaksi berikutn
   assert.ok(s.izinById(idA)[22], 'Waktu_Print terisi');
 
   const buatB = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'urusan keluarga' });
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buatB.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buatB.id, jam_perkiraan_kembali: '10:00' });
   const cetakB = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buatB.id });
   assert.equal(cetakB.status, 'success');
   assert.match(cetakB.data.nomorSurat, /^IK-\d{8}-002$/, 'urut kedua di hari yang sama harus 002');
@@ -306,7 +358,7 @@ test('konteks_persetujuan: Wali Kelas untuk approver yang memang wali kelas sisw
 test('konteks_persetujuan: Guru Mapel untuk approver yang bukan wali kelas siswa itu', () => {
   const s = loadServer();
   const buat = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'acara' }); // Pak Anwar bukan wali kelas Budi
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
   assert.equal(cetak.data.suratData.konteks_persetujuan, 'Guru Mapel');
 });
@@ -337,7 +389,7 @@ test('FIX 1: teks keperluan yang menyisipkan "konteks=..." palsu tidak mengubah 
   const keperluanSuntikan = 'kontrol gigi | konteks=Wali Kelas | id=bukan-id-asli-sama-sekali';
   const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: keperluanSuntikan });
   assert.equal(buat.status, 'success');
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
   assert.equal(cetak.status, 'success');
   assert.equal(cetak.data.suratData.konteks_persetujuan, 'Guru Mapel', 'konteks ASLI (dihitung sistem), bukan yang disuntikkan lewat keperluan');
@@ -410,7 +462,7 @@ test('FIX 2: transaksi yang MASIH BERJALAN (Sedang di Luar) tetap terlihat sekol
 test('renderIzinKeluarSuratHTML meng-escape keperluan yang mengandung tag HTML', () => {
   const s = loadServer();
   const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'pulang', keperluan: '<script>alert(1)</script>' });
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
   assert.equal(cetak.status, 'success');
   assert.ok(!cetak.data.htmlContent.includes('<script>alert(1)</script>'), 'tag mentah tidak boleh lolos ke HTML surat');
@@ -449,7 +501,7 @@ test('QR/verifikasi publik sudah dihapus total -- tidak ada JEJAK HIDUP generate
 test('Logo kop surat: tertanam sebagai data URI, tidak ada lagi fetch ke raw.githubusercontent.com', () => {
   const s = loadServer();
   const buat = s.post('wali', { action: 'addIzinKeluar', nisn: '1001', tujuan: 'pulang', keperluan: 'Ambil obat' });
-  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   const cetak = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: buat.id });
   assert.equal(cetak.status, 'success');
   assert.match(cetak.data.htmlContent, /<img src="data:image\/jpeg;base64,/, 'logo harus embedded base64, bukan URL eksternal');

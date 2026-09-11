@@ -124,7 +124,7 @@ Sumber: `Code.gs`, action `addPelanggaranUpacara`.
 | 7 | G | `Dicatat_Oleh` | |
 | 8 | H | `Dicatat_Oleh_ID` | |
 
-### `Izin_Keluar` (24 kolom)
+### `Izin_Keluar` (25 kolom)
 Sumber: `IZIN_HEADERS` (`Utils.gs`). Satu baris = satu siswa/satu transaksi
 individual. Kolom 1–4 sengaja sama urutannya dengan sheet lain
 (`Timestamp, NISN, Nama, Kelas`) supaya `getRowsSince()` tetap berlaku.
@@ -132,6 +132,8 @@ Kolom ke-21 (`ID_Kelompok`) ditambahkan belakangan **di ujung** saat fitur
 Izin Kelompok dibuat — tidak ada kolom lama yang bergeser. Kolom 22–24
 ditambahkan **di ujung** juga saat fitur Cetak Surat Izin dibuat (audit
 September 2026) — sama prinsipnya, tidak ada kolom lama yang bergeser.
+Kolom ke-25 (`Jam_Perkiraan_Kembali`) ditambahkan **di ujung** juga saat
+fitur "Jam Perkiraan Kembali" masuk — sama prinsipnya lagi.
 
 | # | Kolom | Header |
 |---|---|---|
@@ -159,6 +161,7 @@ September 2026) — sama prinsipnya, tidak ada kolom lama yang bergeser.
 | 22 | V | `Nomor_Surat` (format `IK-YYYYMMDD-NNN`; kosong sampai surat pertama kali dicetak) |
 | 23 | W | `Waktu_Print` (cetak/unduh TERAKHIR, bukan hanya yang pertama) |
 | 24 | X | `Status_Print` (`Belum` \| `Sudah`) |
+| 25 | Y | `Jam_Perkiraan_Kembali` (teks `HH:MM`, bukan timestamp; diisi Guru Piket saat aksi `verifikasiIzinKeluar`, WAJIB untuk `Tujuan=kembali`, SELALU kosong untuk `Tujuan=pulang`) |
 
 ### `Izin_Kelompok` (15 kolom)
 Sumber: `IZIN_KELOMPOK_HEADERS` (`Utils.gs`). Satu baris = satu **kegiatan**

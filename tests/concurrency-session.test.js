@@ -377,7 +377,7 @@ test('[simulated concurrency] baca (getIzinKeluar) tepat setelah tulis (addIzinK
   assert.equal(bacaSetelahTulis.izin.length, 1);
   assert.equal(bacaSetelahTulis.izin[0].status, 'Menunggu Verifikasi');
 
-  const verifikasi = s.post(piket, { action: 'verifikasiIzinKeluar', id: buat.id });
+  const verifikasi = s.post(piket, { action: 'verifikasiIzinKeluar', id: buat.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(verifikasi.status, 'success');
   const bacaSetelahVerifikasi = s.get(lain, { action: 'getIzinKeluar' });
   assert.equal(bacaSetelahVerifikasi.izin[0].status, 'Sedang di Luar');

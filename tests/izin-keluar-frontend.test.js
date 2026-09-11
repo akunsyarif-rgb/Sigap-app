@@ -225,6 +225,88 @@ test('IzinKeluarPanel: tombol proses hanya muncul untuk yang berwenang', () => {
   assert.ok(!biasa.includes('Izin Khusus'));
 });
 
+// ===== Jam Perkiraan Kembali (verifikasi Guru Piket) =====
+// idx useState IzinKeluarPanel dipakai lewat renderWithState: 0 searchQuery,
+// 1 formStudent, 2 keperluan, 3 tujuan, 4 jalurKhusus, 5 alasanKhusus,
+// 6 saving, 7 msg, 8 msgTone, 9 busyId, 10 suratLoadingId, 11 suratPreview,
+// 12 verifJam (peta { [izin.id]: 'HH:MM' }).
+function izinMenungguFixture(tujuan) {
+  return {
+    id: 'IZ-1', timestamp: new Date().toISOString(), nisn: '111', name: 'Rahma', class: 'XI B',
+    keperluan: 'kontrol', tujuan: tujuan, jalur: 'normal', alasan_khusus: '', status: 'Menunggu Verifikasi',
+    disetujui_oleh: 'Bu Kartina', waktu_persetujuan: new Date().toISOString(),
+    diverifikasi_oleh: '', waktu_verifikasi: '', waktu_keluar: '',
+    waktu_kembali: '', dicatat_kembali_oleh: '', logged_by: 'Bu Kartina',
+  };
+}
+
+function findVerifikasiButton(tree) {
+  return findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) &&
+    n.children.join('').includes('Verifikasi & Siswa Keluar'))[0];
+}
+
+test('IzinKeluarPanel: dropdown Jam Perkiraan Kembali HANYA muncul untuk tujuan "kembali"', () => {
+  const propsDasar = (izin) => ({
+    students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izin], waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, canVerify: true,
+  });
+
+  const kembaliTree = get('IzinKeluarPanel')(propsDasar(izinMenungguFixture('kembali')));
+  const kembaliTeks = JSON.stringify(kembaliTree);
+  assert.ok(kembaliTeks.includes('Jam Perkiraan Kembali'), 'label dropdown harus tampil untuk tujuan kembali');
+  const dropdown = findAll(kembaliTree, (n) => n.type === 'select')[0];
+  assert.ok(dropdown, 'harus ada elemen <select> untuk memilih jam');
+  const opsiJam = findAll(dropdown, (n) => n.type === 'option');
+  assert.ok(opsiJam.length > 1, 'dropdown harus punya beberapa pilihan jam');
+
+  const pulangTree = get('IzinKeluarPanel')(propsDasar(izinMenungguFixture('pulang')));
+  const pulangTeks = JSON.stringify(pulangTree);
+  assert.ok(!pulangTeks.includes('Jam Perkiraan Kembali'), 'dropdown tidak boleh tampil sama sekali untuk tujuan pulang');
+  assert.ok(!findAll(pulangTree, (n) => n.type === 'select').length, 'tidak ada <select> apa pun untuk tujuan pulang');
+});
+
+test('IzinKeluarPanel: verifikasi DITOLAK di layar (tidak memanggil onVerifikasi) kalau tujuan "kembali" & jam belum dipilih', () => {
+  let dipanggil = 0;
+  const props = {
+    students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izinMenungguFixture('kembali')], waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: () => { dipanggil++; }, onTandaiKembali: () => {}, canVerify: true,
+  };
+  // verifJam (idx 12) sengaja TIDAK diisi -- default {}.
+  const tree = renderWithState('IzinKeluarPanel', props, []);
+  const tombol = findVerifikasiButton(tree);
+  assert.ok(tombol, 'tombol verifikasi harus ada');
+  tombol.props.onClick();
+  assert.equal(dipanggil, 0, 'onVerifikasi tidak boleh terpanggil kalau jam belum dipilih');
+});
+
+test('IzinKeluarPanel: verifikasi BERHASIL mengirim jam_perkiraan_kembali saat tujuan "kembali" & jam sudah dipilih', () => {
+  let payloadDikirim = null;
+  const props = {
+    students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izinMenungguFixture('kembali')], waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: (payload) => { payloadDikirim = payload; }, onTandaiKembali: () => {}, canVerify: true,
+  };
+  const overrides = []; overrides[12] = { 'IZ-1': '10:30' };
+  const tree = renderWithState('IzinKeluarPanel', props, overrides);
+  const tombol = findVerifikasiButton(tree);
+  tombol.props.onClick();
+  // JSON.stringify, bukan assert.deepEqual langsung -- payloadDikirim dibuat
+  // di dalam realm vm sandbox (Object.prototype berbeda dari realm test ini),
+  // jadi deepStrictEqual menolaknya walau strukturnya identik.
+  assert.equal(JSON.stringify(payloadDikirim), JSON.stringify({ id: 'IZ-1', jam_perkiraan_kembali: '10:30' }));
+});
+
+test('IzinKeluarPanel: verifikasi tujuan "pulang" TIDAK PERNAH mengirim field jam_perkiraan_kembali sama sekali', () => {
+  let payloadDikirim = null;
+  const props = {
+    students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izinMenungguFixture('pulang')], waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: (payload) => { payloadDikirim = payload; }, onTandaiKembali: () => {}, canVerify: true,
+  };
+  const tree = renderWithState('IzinKeluarPanel', props, []);
+  const tombol = findVerifikasiButton(tree);
+  tombol.props.onClick();
+  assert.equal(JSON.stringify(payloadDikirim), JSON.stringify({ id: 'IZ-1' }), 'tujuan pulang tidak pernah butuh/mengirim jam_perkiraan_kembali');
+});
+
 test('Riwayat: kategori Izin Keluar read-only, tidak lewat editEntry/deleteEntry', () => {
   const src = fs.readFileSync(path.join(ROOT, 'beranda-riwayat.js'), 'utf8');
   // Kategori baru ditandai readOnly, dan tombol kelola mengikuti tanda itu.
