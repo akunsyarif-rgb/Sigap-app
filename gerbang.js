@@ -513,6 +513,15 @@
            // tombol-tombol itu, dan sebaliknya.
            const [suratLoadingId, setSuratLoadingId] = useState('');
            const [suratPreview, setSuratPreview] = useState(null); // { html, nomorSurat } | null
+           // Jam Perkiraan Kembali — dipilih Guru Piket SAAT VERIFIKASI, bukan
+           // saat persetujuan guru (lihat catatan di IZIN_HEADERS, Utils.gs).
+           // Peta { [izin.id]: 'HH:MM' } karena beberapa transaksi bisa
+           // menunggu verifikasi sekaligus, tiap kartu punya pilihannya
+           // sendiri. Ditambahkan di UJUNG daftar useState (bukan disisipkan
+           // di tengah) supaya index posisi useState yang sudah dipakai
+           // tests/izin-keluar-frontend.test.js (renderWithState) tidak
+           // bergeser.
+           const [verifJam, setVerifJam] = useState({});
 
            // Baris peserta kegiatan (punya kelompok_id) SENGAJA tidak ikut di
            // sini: transaksinya diurus di mode Kelompok, lengkap dengan konteks
@@ -579,6 +588,40 @@
                fn({ id: izin.id }, (ok, text) => {
                    setBusyId('');
                    showMsg(ok, text || konfirmasiTeks);
+               });
+           };
+
+           // ===== Verifikasi Guru Piket + Jam Perkiraan Kembali =====
+           // TERPISAH dari runAction() generik di atas (bukan sekadar
+           // dipanggil lewat itu) karena verifikasi bertujuan "kembali" perlu
+           // validasi di LAYAR juga sebelum permintaan dikirim sama sekali —
+           // server tetap menolak ulang kalau field ini kosong/format salah
+           // (lihat action 'verifikasiIzinKeluar', Code.gs), tapi guru piket
+           // seharusnya tidak perlu menunggu round-trip jaringan cuma untuk
+           // tahu ia lupa memilih jam. Tujuan "pulang" TIDAK pernah diminta
+           // mengisi apa pun di sini — field ini bahkan tidak dikirim sama
+           // sekali untuk tujuan itu, konsisten dengan server yang mengabaikan
+           // nilai apa pun yang terlanjur terkirim untuk tujuan "pulang".
+           const handleVerifikasi = (izin) => {
+               if (busyId) return;
+               const jamTerpilih = String(verifJam[izin.id] || '').trim();
+               if (izin.tujuan === 'kembali' && !jamTerpilih) {
+                   showMsg(false, 'Pilih jam perkiraan kembali terlebih dahulu.');
+                   return;
+               }
+               const payload = { id: izin.id };
+               if (izin.tujuan === 'kembali') payload.jam_perkiraan_kembali = jamTerpilih;
+               setBusyId(izin.id);
+               onVerifikasi(payload, (ok, text) => {
+                   setBusyId('');
+                   showMsg(ok, text || 'Terverifikasi.');
+                   if (ok) {
+                       setVerifJam(prev => {
+                           const next = { ...prev };
+                           delete next[izin.id];
+                           return next;
+                       });
+                   }
                });
            };
 
@@ -700,9 +743,30 @@
                        {menunggu.length > 0 ? menunggu.map((izin) => (
                            <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                {canVerify ? (
-                                   <Button onClick={() => runAction(onVerifikasi, izin, 'Terverifikasi.')} disabled={busyId === izin.id} size="compact" className="w-full">
-                                       {busyId === izin.id ? 'Memproses...' : 'Verifikasi & Siswa Keluar'}
-                                   </Button>
+                                   <React.Fragment>
+                                       {/* Jam Perkiraan Kembali — HANYA untuk tujuan "kembali ke
+                                           sekolah". Tujuan "pulang" tidak pernah menampilkan
+                                           dropdown ini sama sekali dan tidak wajib apa pun (lihat
+                                           catatan panjang di handleVerifikasi di atas & di
+                                           IZIN_HEADERS, Utils.gs). */}
+                                       {izin.tujuan === 'kembali' && (
+                                           <div className="mb-1.5">
+                                               <label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Jam Perkiraan Kembali</label>
+                                               <select
+                                                   value={verifJam[izin.id] || ''}
+                                                   onChange={(e) => setVerifJam(prev => ({ ...prev, [izin.id]: e.target.value }))}
+                                                   disabled={busyId === izin.id}
+                                                   className="w-full min-h-[44px] bg-white border border-slate-300 rounded-xl px-3 text-xs text-slate-900 focus:outline-none focus:border-sky"
+                                               >
+                                                   <option value="">Pilih jam...</option>
+                                                   {buildJamPerkiraanKembaliOptions().map(j => <option key={j} value={j}>{j} WITA</option>)}
+                                               </select>
+                                           </div>
+                                       )}
+                                       <Button onClick={() => handleVerifikasi(izin)} disabled={busyId === izin.id} size="compact" className="w-full">
+                                           {busyId === izin.id ? 'Memproses...' : 'Verifikasi & Siswa Keluar'}
+                                       </Button>
+                                   </React.Fragment>
                                ) : (
                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5 text-center">Menunggu diverifikasi Guru Piket yang bertugas.</div>
                                )}

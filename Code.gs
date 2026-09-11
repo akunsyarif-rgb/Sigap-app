@@ -983,15 +983,34 @@ function doPost(e) {
       if (verFound.data.status !== IZIN_STATUS_MENUNGGU) {
         return jsonOut({ status: 'error', message: izinTolakTransisi(verFound.data.status, 'verifikasi') });
       }
+      // ---- Jam Perkiraan Kembali: WAJIB untuk tujuan "kembali", TIDAK
+      // PERNAH diminta/disimpan untuk tujuan "pulang" ----
+      // Divalidasi di server (bukan cuma di form) supaya panggilan API
+      // langsung (tanpa lewat form, mis. lewat curl/Postman) tidak bisa
+      // melewati kewajiban ini. Kosong ATAU format bukan "HH:MM" ditolak
+      // sama-sama — guru piket harus benar-benar MEMILIH dari dropdown,
+      // bukan mengetik teks bebas yang kebetulan lolos regex.
+      var verJamPerkiraanKembali = izinText(data.jam_perkiraan_kembali, 5);
+      if (verFound.data.tujuan === IZIN_TUJUAN_KEMBALI) {
+        if (!izinJamPerkiraanValid(verJamPerkiraanKembali)) {
+          return jsonOut({ status: 'error', message: 'Jam perkiraan kembali wajib diisi untuk siswa yang akan kembali ke sekolah.' });
+        }
+      } else {
+        // Tujuan "pulang" — kolom ini SELALU kosong, apa pun yang dikirim
+        // klien (lihat catatan di IZIN_HEADERS, Utils.gs).
+        verJamPerkiraanKembali = '';
+      }
       var verValues = verFound.values.slice();
       verValues[7] = izinStatusSetelahVerifikasi(verFound.data.tujuan);
       verValues[13] = sessionUser.name;
       verValues[14] = sessionUser.id;
       verValues[15] = verNow;
       verValues[16] = verNow; // Waktu_Keluar
+      verValues[24] = verJamPerkiraanKembali; // Jam_Perkiraan_Kembali
       verSheet.getRange(verFound.rowIndex, 1, 1, IZIN_NUM_COLS).setValues([verValues]);
       clearIzinCache();
-      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas)));
+      logAudit(sessionUser, 'Verifikasi Izin Keluar', buildIzinAuditDetail(verFound.data, 'status=' + verValues[7] + ' | kapasitas=' + izinKapasitasLabel(verKapasitas) +
+        (verJamPerkiraanKembali ? ' | jam_perkiraan_kembali=' + verJamPerkiraanKembali : '')));
       notifyRelevantUsers({ jenis: 'izin_diverifikasi', nisn: verFound.data.nisn, kelas: verFound.data.class, refId: verFound.data.id, needsPiketAction: false });
       return jsonOut({ status: 'success', izinStatus: verValues[7] });
     }
@@ -1661,6 +1680,12 @@ function generateIzinKeluarSuratData(ss, izinId, sessionUser) {
     waktu_verifikasi: izin.waktu_verifikasi,
     waktu_keluar: izin.waktu_keluar,
     waktu_kembali: izin.waktu_kembali,
+    // Jam Perkiraan Kembali — HANYA terisi untuk tujuan "kembali" yang
+    // diverifikasi lewat verifikasiIzinKeluar (lihat catatan di
+    // IZIN_HEADERS, Utils.gs). Kosong untuk tujuan "pulang" dan untuk baris
+    // lama/jalur khusus yang belum punya nilai ini — renderIzinKeluarSuratHTML
+    // hanya menampilkan barisnya kalau field ini benar-benar terisi.
+    jam_perkiraan_kembali: izin.jam_perkiraan_kembali,
     disetujui_oleh: izin.disetujui_oleh,
     konteks_persetujuan: konteksLabel,
     diverifikasi_oleh: izin.diverifikasi_oleh,
@@ -1760,12 +1785,31 @@ function renderIzinKeluarSuratHTML(suratData) {
     baris('Keperluan', escapeHtml(d.keperluan)) +
     baris('Rencana Kepulangan', escapeHtml(rencanaKepulangan));
 
+  // "Jam Keluar" — timestamp verifikasi (Waktu_Keluar, distempel di saat
+  // yang SAMA dengan Waktu_Verifikasi, lihat catatan di CLAUDE.md soal
+  // laporan Export Izin Keluar) SUDAH tersedia di data (izin.waktu_keluar,
+  // Utils.gs izinRowToObject) — cuma belum pernah ditampilkan di surat ini.
+  // Ditampilkan apa adanya kalau ada (transaksi yang belum diverifikasi
+  // tidak bisa dicetak sama sekali, lihat generateIzinKeluarSuratData, jadi
+  // field ini praktis selalu terisi di surat yang benar-benar dicetak).
+  var jamKeluarRow = d.waktu_keluar ? kotakBaris('Jam Keluar', escapeHtml(formatJamWITA(d.waktu_keluar))) : '';
+  // "Perkiraan Kembali" — HANYA untuk tujuan "kembali ke sekolah" yang sudah
+  // diisi Guru Piket saat verifikasi (jam_perkiraan_kembali disimpan sebagai
+  // teks "HH:MM" apa adanya, bukan Date, jadi TIDAK lewat formatJamWITA —
+  // cukup ditambah label " WITA" supaya konsisten dengan baris jam lain).
+  // Baris lama/jalur khusus yang belum punya nilai ini (kosong) tidak
+  // menampilkan barisnya sama sekali, bukan menampilkan baris kosong.
+  var perkiraanKembaliRow = (rencanaKepulangan === 'Kembali ke sekolah' && d.jam_perkiraan_kembali)
+    ? kotakBaris('Perkiraan Kembali', escapeHtml(d.jam_perkiraan_kembali) + ' WITA')
+    : '';
+
   var infoBoxRows =
     (jalurKhusus
       ? kotakBaris('Izin Khusus oleh', escapeHtml(d.disetujui_oleh) + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : '')) +
         (d.alasan_khusus ? kotakBaris('Alasan Pengecualian', escapeHtml(d.alasan_khusus)) : '')
       : kotakBaris('Disetujui oleh', escapeHtml(d.disetujui_oleh) + (d.konteks_persetujuan ? ' — ' + escapeHtml(d.konteks_persetujuan) : '') + (d.waktu_persetujuan ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_persetujuan)) : ''))) +
     (d.diverifikasi_oleh ? kotakBaris('Diverifikasi oleh', escapeHtml(d.diverifikasi_oleh) + (d.waktu_verifikasi ? ', pukul ' + escapeHtml(formatJamWITA(d.waktu_verifikasi)) : '')) : '') +
+    jamKeluarRow + perkiraanKembaliRow +
     kotakBaris('Status Saat Ini', escapeHtml(d.status_izin_label));
 
   return '<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">' +

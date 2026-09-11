@@ -229,7 +229,7 @@ test('setelah izin diverifikasi, tidak ada notifikasi verifikasi-piket kedua unt
   const beforeCount = queueRows(s).filter((r) => r.url === 'izin').length;
   assert.equal(beforeCount, 2); // 2 guru piket hari ini
 
-  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: created.id });
+  s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: created.id, jam_perkiraan_kembali: '10:00' });
   const afterCount = queueRows(s).filter((r) => r.url === 'izin').length;
   assert.equal(afterCount, beforeCount, 'verifikasi TIDAK boleh menambah notifikasi piket baru untuk baris yang sudah diverifikasi');
 
@@ -237,7 +237,7 @@ test('setelah izin diverifikasi, tidak ada notifikasi verifikasi-piket kedua unt
   // sudah ada (status sudah bukan Menunggu Verifikasi lagi) -- otomatis tidak
   // ada notifikasi tambahan sama sekali karena notifyRelevantUsers tidak
   // pernah tercapai (return error lebih dulu).
-  const second = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: created.id });
+  const second = s.post('piketSiang', { action: 'verifikasiIzinKeluar', id: created.id, jam_perkiraan_kembali: '10:00' });
   assert.equal(second.status, 'error');
   assert.equal(queueRows(s).filter((r) => r.url === 'izin').length, afterCount);
 });

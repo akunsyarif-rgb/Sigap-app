@@ -793,8 +793,20 @@ var IZIN_HEADERS = [
   // ditulis untuk baris kelompok (kelompok_id terisi) — cetak kelompok
   // belum didukung, lihat catatan di sana.
   'Nomor_Surat', 'Waktu_Print', 'Status_Print',
+  // Kolom ke-25, DITAMBAHKAN DI UJUNG saat fitur "Jam Perkiraan Kembali"
+  // masuk (verifikasi Guru Piket) — sama prinsipnya dengan kolom-kolom di
+  // atas: ditambahkan di UJUNG, tidak ada kolom lama yang bergeser. Diisi
+  // Guru Piket SAAT VERIFIKASI (bukan saat persetujuan guru), dan HANYA
+  // untuk transaksi bertujuan "kembali" — lihat validasi wajib di action
+  // 'verifikasiIzinKeluar' (Code.gs). Disimpan sebagai teks jam "HH:MM"
+  // apa adanya (bukan Date/Timestamp): ini PERKIRAAN yang dipilih manusia
+  // dari dropdown, bukan kejadian yang benar-benar terjadi, jadi tidak
+  // masuk akal disimpan sebagai timestamp presisi detik. Untuk tujuan
+  // "pulang" kolom ini SELALU kosong — tidak ada rencana kembali yang
+  // perlu diperkirakan.
+  'Jam_Perkiraan_Kembali',
 ];
-var IZIN_NUM_COLS = IZIN_HEADERS.length; // 24
+var IZIN_NUM_COLS = IZIN_HEADERS.length; // 25
 var IZIN_COL_NISN = 2;   // kolom B (1-based) — dipakai cek "masih ada izin terbuka?"
 var IZIN_COL_ID = 5;     // kolom E (1-based) — dipakai cari baris saat ubah status
 var IZIN_COL_STATUS = 8; // kolom H (1-based)
@@ -802,6 +814,7 @@ var IZIN_COL_KELOMPOK = 21; // kolom U (1-based)
 var IZIN_COL_NOMOR_SURAT = 22;  // kolom V (1-based)
 var IZIN_COL_WAKTU_PRINT = 23;  // kolom W (1-based)
 var IZIN_COL_STATUS_PRINT = 24; // kolom X (1-based)
+var IZIN_COL_JAM_PERKIRAAN_KEMBALI = 25; // kolom Y (1-based)
 var IZIN_PRINT_BELUM = 'Belum';
 var IZIN_PRINT_SUDAH = 'Sudah';
 
@@ -859,6 +872,15 @@ function hariPiketServer(d) {
 
 function izinText(v, max) {
   return String(v === undefined || v === null ? '' : v).trim().slice(0, max);
+}
+
+// Format "HH:MM" 24 jam, sama seperti nilai yang dihasilkan dropdown Jam
+// Perkiraan Kembali di klien (buildJamPerkiraanKembaliOptions, helpers.js) —
+// dicek ULANG di server (bukan cuma dipercaya dari klien) supaya isian bebas
+// teks yang lolos lewat panggilan API langsung (bukan lewat form) tidak bisa
+// menyimpan nilai yang bukan jam.
+function izinJamPerkiraanValid(jam) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(jam || '').trim());
 }
 
 // ===== Konteks persetujuan: Wali Kelas vs Guru Mapel =====
@@ -1082,6 +1104,10 @@ function izinRowToObject(row) {
     nomor_surat: row[21] ? String(row[21]) : '',
     waktu_print: row[22] || '',
     status_print: row[23] ? String(row[23]) : IZIN_PRINT_BELUM,
+    // Kolom ke-25 (Jam Perkiraan Kembali) — baris lama (sebelum kolom ini
+    // ada) atau baris bertujuan "pulang" mengembalikan '' di sini, sama
+    // seperti kelompok_id/nomor_surat di atas.
+    jam_perkiraan_kembali: row[24] ? String(row[24]) : '',
     // Kolom "siapa yang mencatat" untuk keperluan pembatasan cakupan baca
     // memakai PEMBERI PERSETUJUAN — mekanisme kepemilikan yang sama (nama
     // pencatat) seperti Dicatat_Oleh di sheet lain.

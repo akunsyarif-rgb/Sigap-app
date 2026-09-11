@@ -689,7 +689,7 @@ test('izin INDIVIDUAL tetap bekerja penuh berdampingan dengan kelompok', () => {
   // Alur individual lengkap: setuju -> verifikasi -> kembali (langsung final).
   const individu = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2001', tujuan: 'kembali', keperluan: 'ke puskesmas' });
   assert.equal(individu.izinStatus, 'Menunggu Verifikasi');
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: individu.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: individu.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
   assert.equal(s.post('piketSiang', { action: 'tandaiKembaliIzinKeluar', id: individu.id }).izinStatus, 'Selesai');
 
   // Baris individual tidak punya kunci kegiatan, dan rombongan tidak tersentuh.
@@ -706,7 +706,7 @@ test('aksi izin individual tidak bisa dipakai menembus penjaga kelompok', () => 
   assert.equal(s.post('piketPagi', { action: 'tandaiKembaliIzinKeluar', id: ahmad.id }).status, 'error');
   // Verifikasi per siswa tetap sah (peserta = baris izin biasa) dan hanya
   // mengubah siswa itu saja.
-  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: ahmad.id }).izinStatus, 'Sedang di Luar');
+  assert.equal(s.post('piketPagi', { action: 'verifikasiIzinKeluar', id: ahmad.id, jam_perkiraan_kembali: '10:00' }).izinStatus, 'Sedang di Luar');
   const status = s.statusPeserta(buat.id);
   assert.equal(status['Ahmad'], 'Sedang di Luar');
   assert.equal(Object.values(status).filter((v) => v === 'Menunggu Verifikasi').length, 7);
@@ -751,8 +751,11 @@ test('kolom Izin_Keluar lama tidak bergeser — ID_Kelompok ditambahkan di ujung
   // UJUNG juga — sama prinsipnya dengan ID_Kelompok, tidak menggeser kolom
   // manapun sebelumnya (termasuk ID_Kelompok itu sendiri, yang tetap di
   // index 20/kolom ke-21).
-  assert.deepEqual(headers.slice(21), ['Nomor_Surat', 'Waktu_Print', 'Status_Print']);
-  assert.equal(headers.length, 24);
+  assert.deepEqual(headers.slice(21, 24), ['Nomor_Surat', 'Waktu_Print', 'Status_Print']);
+  // Kolom ke-25 (Jam Perkiraan Kembali) ditambahkan DI UJUNG juga — sama
+  // prinsipnya, tidak menggeser kolom manapun sebelumnya.
+  assert.equal(headers[24], 'Jam_Perkiraan_Kembali');
+  assert.equal(headers.length, 25);
 });
 
 test('penanda versi backend naik & menyebut fitur kelompok', () => {
