@@ -55,6 +55,8 @@ function makeSheet(header, rows) {
       setValue: () => {}, setValues: () => {}, clearContent: () => {},
     }),
     appendRow(row) { data.push(row.slice()); this.appended.push(row.slice()); },
+    getMaxRows: () => Math.max(data.length, 1000),
+    insertRowsAfter(after, howMany) { for (let i = 0; i < howMany; i++) data.push([]); },
   };
 }
 

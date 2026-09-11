@@ -266,7 +266,7 @@ relay Vercel, di luar `sigapLock`, lihat `api/push-send.js`).
 | # | Kolom | Header | Keterangan |
 |---|---|---|---|
 | 1 | A | `Timestamp` | Waktu diantrekan |
-| 2 | B | `Event_ID` | Kunci idempotency (`jenis|refId|guruId|kind`) — lihat `pushEventAlreadyQueued` |
+| 2 | B | `Event_ID` | Kunci idempotency (`jenis|refId|guruId|kind`) — lihat `pushEventsAlreadyQueued` |
 | 3 | C | `Jenis_Kejadian` | Mis. `keterlambatan`, `izin_dibuat` — lihat `pushSalinan()` |
 | 4 | D | `NISN` | Untuk bookkeeping saja, BUKAN sumber kelas |
 | 5 | E | `Guru_ID` | Penerima baris ini |

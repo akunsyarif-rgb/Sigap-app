@@ -51,9 +51,17 @@ function makeSheet(header, rows) {
         },
         setValue(v) { while (data.length < row) data.push([]); data[row - 1][col - 1] = v; },
         setNumberFormat() { return this; },
+        setValues(vals) {
+          for (let r = 0; r < vals.length; r++) {
+            while (data.length < row + r) data.push([]);
+            for (let c = 0; c < vals[r].length; c++) data[row + r - 1][col + c - 1] = vals[r][c];
+          }
+        },
       };
     },
     appendRow(row) { data.push(row.slice()); },
+    getMaxRows: () => Math.max(data.length, 1000),
+    insertRowsAfter(after, howMany) { for (let i = 0; i < howMany; i++) data.push([]); },
   };
 }
 

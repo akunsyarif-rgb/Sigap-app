@@ -109,29 +109,57 @@ function notifyRelevantUsers(event) {
     var now = event.waktu instanceof Date ? event.waktu : new Date();
     var refId = String(event.refId || event.nisn || '');
 
+    // Event_ID dipakai sebagai kunci idempotency DAN sebagai tag notifikasi
+    // klien (supaya OS mengganti notifikasi lama yang senasib, bukan
+    // menumpuk) — jenis+refId+penerima+kelompok cukup unik per kejadian
+    // nyata, dan STABIL kalau dipanggil ulang untuk kejadian yang sama.
+    var eventIds = recipients.map(function (r) {
+      return String(event.jenis) + '|' + refId + '|' + r.guruId + '|' + r.kind;
+    });
+    // SATU scan tail Push_Queue untuk SEMUA penerima sekaligus (audit
+    // performa September 2026) — sebelumnya pushEventAlreadyQueued() dipanggil
+    // per penerima di dalam loop, jadi N penerima = N pemindaian tail terpisah
+    // untuk kejadian yang sama. pushEventsAlreadyQueued() membaca tail SEKALI
+    // dan mencocokkan semua eventId yang dicari terhadapnya, hasilnya identik
+    // (baris mana pun yang dulu dianggap duplikat tetap dianggap duplikat).
+    var already = pushEventsAlreadyQueued(queueSheet, eventIds, now);
+
+    // Baris yang tidak duplikat dikumpulkan dulu, ditulis lewat SATU
+    // appendRowsBatch() di akhir (audit performa September 2026) —
+    // sebelumnya appendRow() per penerima berarti N penerima = N panggilan
+    // API tulis terpisah, sama seperti alasan writeIzinRowsBatch/
+    // appendRowsBatch dipakai di tempat lain. Urutan & isi tiap baris tidak
+    // berubah, cuma cara menulisnya.
+    var rowsToAppend = [];
     for (var i = 0; i < recipients.length; i++) {
       var r = recipients[i];
-      // Event_ID dipakai sebagai kunci idempotency DAN sebagai tag notifikasi
-      // klien (supaya OS mengganti notifikasi lama yang senasib, bukan
-      // menumpuk) — jenis+refId+penerima+kelompok cukup unik per kejadian
-      // nyata, dan STABIL kalau dipanggil ulang untuk kejadian yang sama.
-      var eventId = String(event.jenis) + '|' + refId + '|' + r.guruId + '|' + r.kind;
-      if (pushEventAlreadyQueued(queueSheet, eventId, now)) continue;
+      var eventId = eventIds[i];
+      if (already[eventId]) continue;
 
       var salinan = pushSalinan(event.jenis, r.kind);
       var url = pushDeepLink(r.kind);
-      queueSheet.appendRow([
+      rowsToAppend.push([
         now, eventId, String(event.jenis || ''), String(event.nisn || ''), r.guruId,
         salinan.title, salinan.body, url, eventId, event.priority || 'normal',
         false, '', 0, '',
       ]);
     }
+    appendRowsBatch(queueSheet, rowsToAppend);
   } catch (err) {
     // Diamkan — lihat catatan "TIDAK PERNAH throw" di atas.
   }
 }
 
 // ===== Penerima: Wali Kelas + Guru Piket, murni dari data server =====
+//
+// Master_Guru dibaca PALING BANYAK SEKALI per panggilan, lewat getGuruRows()
+// di bawah (audit performa September 2026) — sebelumnya dibaca dua kali
+// terpisah dalam satu request yang sama: sekali di sini (untuk cari wali
+// kelas), sekali lagi di dalam getPiketAktifHariIni (untuk cari guru aktif).
+// getGuruRows() bersifat malas (baru benar-benar getRange() saat pertama kali
+// dipanggil) dan hasilnya dibagikan ke getPiketAktifHariIni lewat parameter —
+// jadi kejadian yang tidak sekelas ATAU tidak butuh notifikasi piket tetap
+// tidak membaca Master_Guru sama sekali, persis seperti sebelumnya.
 function resolvePushRecipients(ss, event) {
   var recipients = [];
   var seen = {};
@@ -144,25 +172,29 @@ function resolvePushRecipients(ss, event) {
     recipients.push({ guruId: id, kind: kind });
   }
 
+  var guruRowsCache = null;
+  function getGuruRows() {
+    if (guruRowsCache === null) {
+      var guruSheet = ss.getSheetByName('Master_Guru');
+      var lastRow = guruSheet ? guruSheet.getLastRow() : 0;
+      guruRowsCache = lastRow > 1 ? guruSheet.getRange(2, 1, lastRow - 1, 8).getValues() : [];
+    }
+    return guruRowsCache;
+  }
+
   var kelas = String(event.kelas || '').trim();
   if (kelas) {
-    var guruSheet = ss.getSheetByName('Master_Guru');
-    if (guruSheet) {
-      var lastRow = guruSheet.getLastRow();
-      if (lastRow > 1) {
-        var rows = guruSheet.getRange(2, 1, lastRow - 1, 8).getValues();
-        for (var i = 0; i < rows.length; i++) {
-          var status = String(rows[i][5] || '').toLowerCase().trim();
-          var kelasWali = String(rows[i][6] || '').trim();
-          if (status === 'nonaktif' || !kelasWali) continue;
-          if (sameClass(kelasWali, kelas)) add(rows[i][0], PUSH_KIND_WALI);
-        }
-      }
+    var rows = getGuruRows();
+    for (var i = 0; i < rows.length; i++) {
+      var status = String(rows[i][5] || '').toLowerCase().trim();
+      var kelasWali = String(rows[i][6] || '').trim();
+      if (status === 'nonaktif' || !kelasWali) continue;
+      if (sameClass(kelasWali, kelas)) add(rows[i][0], PUSH_KIND_WALI);
     }
   }
 
   if (event.needsPiketAction) {
-    var piketIds = getPiketAktifHariIni(ss, event.waktu instanceof Date ? event.waktu : new Date());
+    var piketIds = getPiketAktifHariIni(ss, event.waktu instanceof Date ? event.waktu : new Date(), getGuruRows());
     for (var p = 0; p < piketIds.length; p++) add(piketIds[p], PUSH_KIND_PIKET);
   }
 
@@ -175,7 +207,13 @@ function resolvePushRecipients(ss, event) {
 // sesungguhnya) DAN masih berstatus aktif di Master_Guru. Jadwal_Piket yang
 // berubah SEBELUM baris ini dipanggil langsung mengubah siapa yang dicari —
 // tidak ada cache terpisah untuk daftar piket di sini.
-function getPiketAktifHariIni(ss, now) {
+//
+// guruRows diterima lewat PARAMETER, bukan dibaca ulang di sini (lihat
+// getGuruRows() di resolvePushRecipients) — kolom yang dipakai (ID di indeks
+// 0, Status di indeks 5) tetap ada di 8 kolom yang dibaca di sana, jadi tidak
+// ada data yang hilang dibanding pembacaan 6-kolom yang dulu dilakukan
+// terpisah di sini.
+function getPiketAktifHariIni(ss, now, guruRows) {
   var sheet = ss.getSheetByName('Jadwal_Piket');
   if (!sheet) return [];
   var lastRow = sheet.getLastRow();
@@ -184,16 +222,10 @@ function getPiketAktifHariIni(ss, now) {
   var rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
 
   var activeIds = {};
-  var guruSheet = ss.getSheetByName('Master_Guru');
-  if (guruSheet) {
-    var gLastRow = guruSheet.getLastRow();
-    if (gLastRow > 1) {
-      var gRows = guruSheet.getRange(2, 1, gLastRow - 1, 6).getValues();
-      for (var g = 0; g < gRows.length; g++) {
-        if (String(gRows[g][5] || '').toLowerCase().trim() !== 'nonaktif') {
-          activeIds[String(gRows[g][0]).trim()] = true;
-        }
-      }
+  var gRows = guruRows || [];
+  for (var g = 0; g < gRows.length; g++) {
+    if (String(gRows[g][5] || '').toLowerCase().trim() !== 'nonaktif') {
+      activeIds[String(gRows[g][0]).trim()] = true;
     }
   }
 
@@ -252,19 +284,33 @@ function pushDeepLink(kind) {
 }
 
 // ===== Idempotency: cegah baris antrean ganda untuk kejadian yang sama =====
-function pushEventAlreadyQueued(queueSheet, eventId, now) {
+// Memeriksa BANYAK eventId sekaligus lewat SATU pemindaian tail Push_Queue
+// (audit performa September 2026) — sebelumnya ini dipanggil satu-per-satu di
+// dalam loop penerima (pushEventAlreadyQueued(queueSheet, eventId, now)),
+// jadi N penerima = N pemindaian tail terpisah untuk kejadian yang sama.
+// Hasilnya identik: sebuah eventId dianggap "sudah diantrekan" kalau ada
+// baris dengan Event_ID yang sama dalam jendela dedup PUSH_QUEUE_DEDUPE_WINDOW_MS
+// terakhir — logika itu tidak berubah, cuma dijalankan sekali untuk semua
+// eventId yang dicari, bukan diulang per eventId.
+// Return: objek { eventId: true, ... } berisi eventId yang sudah diantrekan.
+function pushEventsAlreadyQueued(queueSheet, eventIds, now) {
+  var result = {};
+  if (!eventIds || !eventIds.length) return result;
   var lastRow = queueSheet.getLastRow();
-  if (lastRow <= 1) return false;
+  if (lastRow <= 1) return result;
   var scanRows = Math.min(lastRow - 1, PUSH_QUEUE_DEDUPE_SCAN_ROWS);
   var startRow = lastRow - scanRows + 1;
   var values = queueSheet.getRange(startRow, 1, scanRows, 2).getValues(); // Timestamp, Event_ID
   var nowMs = now.getTime();
-  for (var i = 0; i < values.length; i++) {
-    if (String(values[i][1]) !== eventId) continue;
-    var ts = values[i][0] instanceof Date ? values[i][0].getTime() : new Date(values[i][0]).getTime();
-    if (nowMs - ts < PUSH_QUEUE_DEDUPE_WINDOW_MS) return true;
+  var wanted = {};
+  for (var i = 0; i < eventIds.length; i++) wanted[eventIds[i]] = true;
+  for (var j = 0; j < values.length; j++) {
+    var eid = String(values[j][1]);
+    if (!wanted[eid] || result[eid]) continue;
+    var ts = values[j][0] instanceof Date ? values[j][0].getTime() : new Date(values[j][0]).getTime();
+    if (nowMs - ts < PUSH_QUEUE_DEDUPE_WINDOW_MS) result[eid] = true;
   }
-  return false;
+  return result;
 }
 
 // ================= SUBSCRIPTION (device) =================

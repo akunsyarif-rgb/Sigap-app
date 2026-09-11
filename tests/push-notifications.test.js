@@ -53,6 +53,8 @@ function makeSheet(header, rows) {
     },
     deleteRow(i) { data.splice(i - 1, 1); },
     appendRow(row) { data.push(row.slice()); },
+    getMaxRows: () => Math.max(data.length, 1000),
+    insertRowsAfter(after, howMany) { for (let i = 0; i < howMany; i++) data.push([]); },
   };
 }
 
