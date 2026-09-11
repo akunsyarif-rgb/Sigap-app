@@ -673,7 +673,9 @@ is never treated as the whole procedure.
 **Jam Perkiraan Kembali (added alongside `verifikasiIzinKeluar`, not a new
 action).** For tujuan `kembali` only, Guru Piket picks an expected return
 time from a dropdown (`buildJamPerkiraanKembaliOptions()`, `helpers.js` —
-30-minute steps, 06:00–21:00) as part of the same verification tap; it is
+30-minute steps, 06:00–17:00: school lets out by 16:00 at the latest, +1h
+margin for a supervised extracurricular running late — confirmed, not
+guessed) as part of the same verification tap; it is
 **mandatory** for that tujuan and **rejected server-side** (`izinJamPerkiraanValid()`,
 `Utils.gs`) if missing or not a real `HH:MM` string — the client's own
 validation blocks the request before it's even sent, but the server never

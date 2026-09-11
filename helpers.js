@@ -574,15 +574,17 @@
        // WAJIB diisi untuk transaksi bertujuan "kembali", tidak pernah
        // ditampilkan untuk tujuan "pulang" (lihat catatan panjang di
        // IZIN_HEADERS, Utils.gs, soal kenapa nilainya teks "HH:MM" apa
-       // adanya, bukan Date). Interval 30 menit, 06:00–21:00 — mencakup jam
-       // sekolah penuh plus kegiatan sore (ekstrakurikuler/Izin Kelompok
-       // yang pulang lebih sore) tanpa daftar yang tidak berujung. Fungsi
-       // murni (tidak baca jam sekarang) supaya hasilnya predictable & mudah
-       // ditest — bukan berarti guru piket dibatasi memilih jam yang sudah
-       // lewat, itu cuma daftar pilihan, bukan validasi rentang waktu.
+       // adanya, bukan Date). Interval 30 menit, 06:00–17:00 — jam pulang
+       // sekolah paling lama 16:00, +1 jam margin untuk kasus ekskul dengan
+       // pengawasan guru (dikonfirmasi langsung, bukan tebakan — beda dari
+       // draf pertama fungsi ini yang salah mengira tidak ada jam operasional
+       // tercatat di repo ini). Fungsi murni (tidak baca jam sekarang) supaya
+       // hasilnya predictable & mudah ditest — bukan berarti guru piket
+       // dibatasi memilih jam yang sudah lewat, itu cuma daftar pilihan,
+       // bukan validasi rentang waktu.
        function buildJamPerkiraanKembaliOptions() {
            const opsi = [];
-           for (let menit = 6 * 60; menit <= 21 * 60; menit += 30) {
+           for (let menit = 6 * 60; menit <= 17 * 60; menit += 30) {
                const jam = Math.floor(menit / 60);
                const sisaMenit = menit % 60;
                opsi.push(String(jam).padStart(2, '0') + ':' + String(sisaMenit).padStart(2, '0'));
