@@ -245,6 +245,24 @@ function findVerifikasiButton(tree) {
     n.children.join('').includes('Verifikasi & Siswa Keluar'))[0];
 }
 
+test('buildJamPerkiraanKembaliOptions: rentang 07:00-16:30 per 30 menit, tepat sesuai rentang yang dikonfirmasi', () => {
+  const opsi = get('buildJamPerkiraanKembaliOptions')();
+  assert.equal(opsi[0], '07:00', 'harus mulai jam 07:00');
+  assert.equal(opsi[opsi.length - 1], '16:30', 'harus berakhir jam 16:30');
+  assert.equal(opsi.length, 20, '07:00 sampai 16:30 per 30 menit = 20 pilihan');
+  // Rentang lama (06:00/17:00) tidak boleh tersisa.
+  assert.ok(!opsi.includes('06:00'), 'rentang lama 06:00 tidak boleh tersisa');
+  assert.ok(!opsi.includes('06:30'), 'rentang lama 06:30 tidak boleh tersisa');
+  assert.ok(!opsi.includes('17:00'), 'rentang lama 17:00 tidak boleh tersisa');
+  // Interval harus konsisten 30 menit sepanjang daftar.
+  for (let i = 1; i < opsi.length; i++) {
+    const [jPrev, mPrev] = opsi[i - 1].split(':').map(Number);
+    const [jSkrg, mSkrg] = opsi[i].split(':').map(Number);
+    const selisihMenit = (jSkrg * 60 + mSkrg) - (jPrev * 60 + mPrev);
+    assert.equal(selisihMenit, 30, `interval antara ${opsi[i - 1]} dan ${opsi[i]} harus 30 menit`);
+  }
+});
+
 test('IzinKeluarPanel: dropdown Jam Perkiraan Kembali HANYA muncul untuk tujuan "kembali"', () => {
   const propsDasar = (izin) => ({
     students: [{ nisn: '111', name: 'Rahma', class: 'XI B' }], izinList: [izin], waliKelasMap: [],
@@ -305,6 +323,51 @@ test('IzinKeluarPanel: verifikasi tujuan "pulang" TIDAK PERNAH mengirim field ja
   const tombol = findVerifikasiButton(tree);
   tombol.props.onClick();
   assert.equal(JSON.stringify(payloadDikirim), JSON.stringify({ id: 'IZ-1' }), 'tujuan pulang tidak pernah butuh/mengirim jam_perkiraan_kembali');
+});
+
+// ===== FIX navigasi print di mode PWA/standalone (audit lanjutan) =====
+// window.open('', '_blank') + document.write dulu membuka jendela/tab BARU
+// untuk print -- di mode PWA standalone (app di-add ke Home Screen, tidak
+// ada address bar/tab UI) jendela baru itu tidak punya cara untuk kembali
+// ke app. Sekarang printSuratFromContent() tidak pernah membuka window/tab
+// apa pun -- ia mencetak iframe preview yang SUDAH ada di modal (SPA, tanpa
+// navigasi) lewat iframe.contentWindow.print().
+test('printSuratFromContent: TIDAK PERNAH membuka window/tab baru (tidak ada window.open/document.write di gerbang.js)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
+  assert.doesNotMatch(src, /window\.open\s*\(/, 'window.open tidak boleh dipanggil lagi untuk print surat');
+  assert.doesNotMatch(src, /document\.write\s*\(/, 'document.write tidak boleh dipakai lagi untuk print surat');
+  // Teknik pengganti: mencetak iframe yang sudah ada di DOM langsung.
+  assert.match(src, /contentWindow\.print\s*\(\s*\)/, 'harus mencetak lewat iframe.contentWindow.print()');
+});
+
+test('IzinKeluarPanel: modal preview surat me-render iframe dengan ref (bukan window baru), dan tombol print tidak melempar error walau ref belum siap', () => {
+  const props = {
+    students: [], izinList: [], waliKelasMap: [],
+    onCreateIzin: () => {}, onVerifikasi: () => {}, onTandaiKembali: () => {}, canVerify: true,
+  };
+  // idx 11 = suratPreview -- lihat catatan indeks useState di atas.
+  const overrides = []; overrides[11] = { html: '<html><body>Surat</body></html>', nomorSurat: 'IK-20260911-001' };
+  const tree = renderWithState('IzinKeluarPanel', props, overrides);
+
+  const iframe = findAll(tree, (n) => n.type === 'iframe')[0];
+  assert.ok(iframe, 'modal preview harus me-render iframe');
+  assert.equal(iframe.props.srcDoc, '<html><body>Surat</body></html>');
+  assert.ok(iframe.props.ref, 'iframe harus punya ref (dipakai printSuratFromContent untuk contentWindow.print())');
+
+  const tombolPrint = findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) &&
+    n.children.join('').includes('Print / Simpan sebagai PDF'))[0];
+  assert.ok(tombolPrint, 'tombol print harus ada di modal');
+  // Di harness test ini iframe TIDAK benar-benar dipasang ke DOM (tidak ada
+  // jsdom), jadi ref.current tetap null persis seperti kondisi race sesaat
+  // sebelum iframe siap. Mengklik tombol dalam kondisi itu TIDAK BOLEH
+  // melempar error (crash) -- ia harus berhenti dengan aman lewat showMsg,
+  // bukan lewat window.open yang tidak pernah dipanggil sama sekali di sini.
+  assert.doesNotThrow(() => tombolPrint.props.onClick(), 'klik print tidak boleh crash walau iframe ref belum siap');
+
+  const tombolTutup = findAll(tree, (n) => n.type === get('Button') && Array.isArray(n.children) &&
+    n.children.join('').includes('Tutup'))[0];
+  assert.ok(tombolTutup, 'tombol Tutup harus tetap ada (satu-satunya cara menutup modal, tanpa navigasi)');
+  assert.equal(typeof tombolTutup.props.onClick, 'function');
 });
 
 test('Riwayat: kategori Izin Keluar read-only, tidak lewat editEntry/deleteEntry', () => {
@@ -666,11 +729,21 @@ test('kelompok: panel individual tidak ikut menampilkan peserta kegiatan', () =>
   assert.ok(panelKelompok.includes('Seminar Bank Indonesia'));
 });
 
-test('kelompok: tidak ada menu/nav baru dan tidak ada asumsi printer', () => {
+test('kelompok: tidak ada menu/nav baru dan tidak ada asumsi PERANGKAT/PROTOKOL/UKURAN KERTAS printer', () => {
   const config = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
   assert.doesNotMatch(config, /kelompok/i, 'Izin Kelompok tidak boleh jadi entri NAV_ITEMS/ROLES baru');
   const gerbang = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
-  [/bluetooth/i, /esc\/?pos/i, /airprint/i, /window\.print/i, /\b(58|80)\s?mm\b/i, /\b(A4|A5|F4)\b/].forEach((pola) => {
+  // `window.print` SENGAJA DIKELUARKAN dari daftar ini (audit lanjutan): itu
+  // dialog print BAWAAN BROWSER, dipakai dengan sengaja oleh alur cetak surat
+  // Izin Keluar individual (lihat test "BETA pencetakan" di atas, dan
+  // printSuratFromContent/suratIframeRef di gerbang.js -- fungsinya sekarang
+  // memanggil iframe.contentWindow.print(), yang secara tekstual mengandung
+  // substring "Window.print" dan dulu KEBETULAN tidak pernah cocok regex ini
+  // karena variabelnya masih bernama `win`, bukan berarti sengaja dihindari).
+  // Yang TETAP dilarang di sini murni PROTOKOL/PERANGKAT/UKURAN KERTAS
+  // spesifik (thermal/ESC-POS/Bluetooth/AirPrint/A4 dst.) -- Izin Kelompok
+  // sendiri memang belum punya fitur cetak sama sekali (lihat CLAUDE.md).
+  [/bluetooth/i, /esc\/?pos/i, /airprint/i, /\b(58|80)\s?mm\b/i, /\b(A4|A5|F4)\b/].forEach((pola) => {
     assert.doesNotMatch(gerbang, pola, 'tidak boleh ada asumsi perangkat/media cetak: ' + pola);
   });
 });

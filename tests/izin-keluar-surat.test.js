@@ -53,6 +53,7 @@ function makeSheet(header, rows) {
           return out;
         },
         setValue(v) { while (data.length < row) data.push([]); data[row - 1][col - 1] = v; },
+        setNumberFormat() { return this; },
         setValues(vals) {
           for (let r = 0; r < vals.length; r++) {
             while (data.length < row + r) data.push([]);
@@ -284,6 +285,98 @@ test('surat transaksi lama (baris historis sebelum kolom Jam_Perkiraan_Kembali a
   // kolom ini sama sekali.
   assert.match(cetak.data.htmlContent, /Perkiraan Kembali/);
   assert.match(cetak.data.htmlContent, /09:00 WITA/);
+});
+
+// ============================================================
+// BUG (audit lanjutan): Google Sheets otomatis mengenali "HH:MM" sebagai
+// nilai waktu dan mengembalikannya sebagai objek Date (epoch 30 Desember
+// 1899) lewat getValues() -- baris yang kena ini dulu tercetak mentah,
+// mis. "Sat Dec 30 1899 14:00:00 GMT+0757 (Waktu Indonesia Tengah) WITA".
+// izinJamPerkiraanDariSel() (Utils.gs) menjaga sisi baca; setNumberFormat('@')
+// di verifikasiIzinKeluar (Code.gs) menjaga sisi tulis supaya ini tidak
+// terjadi lagi untuk baris BARU.
+// ============================================================
+
+test('izinJamPerkiraanDariSel: string "HH:MM" apa adanya tetap dikembalikan apa adanya', () => {
+  const s = loadServer();
+  const izinJamPerkiraanDariSel = vm.runInContext('izinJamPerkiraanDariSel', s.sandbox);
+  assert.equal(izinJamPerkiraanDariSel('14:00'), '14:00');
+  assert.equal(izinJamPerkiraanDariSel('  09:30  '), '09:30');
+  assert.equal(izinJamPerkiraanDariSel(''), '');
+  assert.equal(izinJamPerkiraanDariSel(undefined), '');
+  assert.equal(izinJamPerkiraanDariSel(null), '');
+});
+
+test('izinJamPerkiraanDariSel: sel yang KEMBALI sebagai Date (auto-konversi Sheets) dinormalisasi jadi "HH:MM", bukan toString() mentah', () => {
+  const s = loadServer();
+  const izinJamPerkiraanDariSel = vm.runInContext('izinJamPerkiraanDariSel', s.sandbox);
+  // Date HARUS dibuat lewat konstruktor Date milik sandbox vm ini, bukan
+  // Date milik Node.js di luar -- keduanya realm JS yang berbeda, jadi
+  // `instanceof Date` di dalam sandbox gagal mengenali sebuah Date yang
+  // dibuat di luar sandbox (persis kelas masalah yang sama dengan
+  // assert.deepEqual lintas-realm di tests/izin-keluar-frontend.test.js).
+  const SandboxDate = vm.runInContext('Date', s.sandbox);
+  // Persis skenario bug: Sheets mengembalikan waktu-murni sebagai Date
+  // bertanggal 30 Desember 1899 (epoch waktu-murni ala Excel/Sheets).
+  const selWaktuMurni = new SandboxDate(1899, 11, 30, 14, 0, 0);
+  const hasil = izinJamPerkiraanDariSel(selWaktuMurni);
+  assert.equal(hasil, '14:00');
+  assert.doesNotMatch(hasil, /1899|GMT|Sat|Dec/, 'tidak boleh ada sisa toString() Date mentah');
+  // Date TIDAK valid (mis. hasil parse gagal) -> string kosong, bukan "Invalid Date".
+  assert.equal(izinJamPerkiraanDariSel(new SandboxDate('bukan tanggal valid')), '');
+});
+
+test('surat: baris "Perkiraan Kembali" tetap format "HH:MM WITA" bersih walau sel sheet-nya kembali sebagai Date (bukan string)', () => {
+  const s = loadServer();
+  // Buat transaksi lewat alur normal dulu (menulis '14:00' sebagai string,
+  // seperti yang sungguhan terjadi lewat verifikasiIzinKeluar + setNumberFormat).
+  const id = setujuiDanVerifikasi(s, 'kembali');
+  const rows = s.sheets.Izin_Keluar._data;
+  const idxBaris = rows.findIndex((r) => String(r[4]) === String(id));
+  assert.ok(idxBaris > 0, 'baris transaksi harus ketemu di sheet');
+  // Sekarang simulasikan PERSIS gejala bug: sel Jam_Perkiraan_Kembali (kolom
+  // ke-25, index 24) entah bagaimana kembali sebagai objek Date (auto-konversi
+  // Sheets / diedit manual di Sheet) alih-alih string "14:00". Date HARUS
+  // dibuat lewat konstruktor Date milik sandbox INI (lihat catatan realm di
+  // test sebelumnya) -- diambil sesudah loadServer() supaya sandboxnya sudah
+  // benar-benar ada.
+  const SandboxDate = vm.runInContext('Date', s.sandbox);
+  rows[idxBaris][24] = new SandboxDate(1899, 11, 30, 14, 0, 0);
+
+  const cetak = s.post('admin', { action: 'generateIzinKeluarSurat', izinId: id });
+  assert.equal(cetak.status, 'success');
+  assert.equal(cetak.data.suratData.jam_perkiraan_kembali, '14:00', 'suratData harus sudah dinormalisasi, bukan objek Date mentah');
+  assert.match(cetak.data.htmlContent, /Perkiraan Kembali/);
+  assert.match(cetak.data.htmlContent, /14:00 WITA/);
+  // Jaminan negatif eksplisit -- ini persis gejala bug yang dilaporkan.
+  assert.doesNotMatch(cetak.data.htmlContent, /1899/, 'tidak boleh ada tahun epoch Sheets/Excel yang bocor ke surat');
+  assert.doesNotMatch(cetak.data.htmlContent, /GMT/, 'tidak boleh ada offset timezone mentah yang bocor ke surat');
+  assert.doesNotMatch(cetak.data.htmlContent, /\bSat\b|\bDec\b/, 'tidak boleh ada nama hari/bulan dari toString() Date mentah');
+});
+
+// ============================================================
+// Label tampilan "Status Izin" (dulu "Rencana Kepulangan") -- MURNI
+// perubahan teks, sama prinsipnya dengan "Sanksi" -> "Tindakan" di modul
+// Pelanggaran (commit a00e8fb). Nilainya ("Kembali ke sekolah"/"Pulang
+// (tidak kembali ke sekolah)") TIDAK berubah, cuma labelnya.
+// ============================================================
+
+test('surat: label field sekarang "Status Izin", bukan lagi "Rencana Kepulangan"', () => {
+  const s = loadServer();
+  const idKembali = setujuiDanVerifikasi(s, 'kembali');
+  const cetakKembali = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: idKembali });
+  assert.equal(cetakKembali.status, 'success');
+  assert.match(cetakKembali.data.htmlContent, /Status Izin/, 'label baru harus muncul');
+  assert.doesNotMatch(cetakKembali.data.htmlContent, /Rencana Kepulangan/, 'label lama tidak boleh tersisa');
+  assert.match(cetakKembali.data.htmlContent, /Kembali ke sekolah/, 'nilai field TIDAK ikut berubah, cuma labelnya');
+
+  const idPulang = s.post('pemberiIzin', { action: 'addIzinKeluar', nisn: '2002', tujuan: 'pulang', keperluan: 'dijemput' });
+  s.post('piket', { action: 'verifikasiIzinKeluar', id: idPulang.id });
+  const cetakPulang = s.post('piket', { action: 'generateIzinKeluarSurat', izinId: idPulang.id });
+  assert.equal(cetakPulang.status, 'success');
+  assert.match(cetakPulang.data.htmlContent, /Status Izin/);
+  assert.doesNotMatch(cetakPulang.data.htmlContent, /Rencana Kepulangan/);
+  assert.match(cetakPulang.data.htmlContent, /Pulang \(tidak kembali ke sekolah\)/, 'nilai field TIDAK ikut berubah, cuma labelnya');
 });
 
 // ============================================================

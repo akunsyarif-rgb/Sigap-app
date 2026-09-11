@@ -50,6 +50,7 @@ function makeSheet(header, rows) {
           return out;
         },
         setValue(v) { while (data.length < row) data.push([]); data[row - 1][col - 1] = v; },
+        setNumberFormat() { return this; },
       };
     },
     appendRow(row) { data.push(row.slice()); },

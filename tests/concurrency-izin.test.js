@@ -80,6 +80,7 @@ function makeSheet(header, rows) {
           return out;
         },
         setValue(v) { while (data.length < row) data.push([]); data[row - 1][col - 1] = v; },
+        setNumberFormat() { return this; },
         setValues(vals) {
           for (let r = 0; r < vals.length; r++) {
             while (data.length < row + r) data.push([]);

@@ -513,6 +513,11 @@
            // tombol-tombol itu, dan sebaliknya.
            const [suratLoadingId, setSuratLoadingId] = useState('');
            const [suratPreview, setSuratPreview] = useState(null); // { html, nomorSurat } | null
+           // Ref ke iframe preview surat — dipakai printSuratFromContent()
+           // untuk mencetak iframe ini LANGSUNG (contentWindow.print()),
+           // bukan membuka window/tab baru (lihat catatan panjang di
+           // printSuratFromContent, penting khusus untuk mode PWA standalone).
+           const suratIframeRef = useRef(null);
            // Jam Perkiraan Kembali — dipilih Guru Piket SAAT VERIFIKASI, bukan
            // saat persetujuan guru (lihat catatan di IZIN_HEADERS, Utils.gs).
            // Peta { [izin.id]: 'HH:MM' } karena beberapa transaksi bisa
@@ -678,23 +683,31 @@
            // rusak. Jadi sekarang cukup SATU tombol Print, dan labelnya
            // eksplisit menyebut PDF supaya jelas caranya.
            //
-           // Jendela baru + document.write, lalu trigger dialog print browser
-           // — pengguna sendiri yang memilih print ke printer fisik atau
-           // "Simpan sebagai PDF" dari dialog itu. Tidak ada asumsi perangkat
-           // cetak apa pun di sini (lihat catatan lama soal BETA pencetakan
-           // yang sekarang berakhir: printer/media/ukuran kertas tetap urusan
-           // dialog print bawaan browser, bukan sesuatu yang SIGAP putuskan
-           // sendiri). Popup yang diblokir browser TIDAK diam-diam gagal lagi
-           // — showMsg memberi tahu penggunanya, bukan sekadar tidak terjadi
-           // apa-apa.
-           const printSuratFromContent = (html) => {
-               const win = window.open('', '_blank');
+           // FIX navigasi PWA/standalone (audit lanjutan): dulu fungsi ini
+           // memanggil window's open method untuk membuka jendela kosong
+           // BARU, lalu menulis HTML surat ke situ lewat document's write
+           // method. Di mode PWA standalone (app di-add ke Home
+           // Screen, tidak ada address bar/tab UI sama sekali), jendela baru
+           // itu TIDAK punya cara untuk kembali ke app — guru piket terjebak,
+           // satu-satunya jalan keluar adalah menutup app-nya total. Sekarang
+           // TIDAK PERNAH membuka window/tab apa pun: iframe preview yang
+           // SUDAH ada di modal ini (lihat suratIframeRef di bawah) dicetak
+           // langsung lewat `iframe.contentWindow.print()` — teknik standar
+           // lintas-browser untuk mencetak isi satu iframe tanpa popup sama
+           // sekali. Modal (SPA, tanpa navigasi apa pun) tetap terbuka persis
+           // seperti sebelum print dipanggil; tombol "Tutup" yang sudah ada
+           // di modal ini tetap satu-satunya cara menutupnya, dan tetap tidak
+           // pernah berpindah halaman. `@media print` di dalam HTML surat itu
+           // sendiri (renderIzinKeluarSuratHTML, Code.gs) sudah menata ukuran
+           // kertas/margin cetak — tidak perlu CSS tambahan di sisi klien,
+           // karena yang dicetak murni isi iframe itu sendiri (dokumen
+           // TERPISAH dari halaman app), bukan seluruh halaman.
+           const printSuratFromContent = () => {
+               var win = suratIframeRef.current && suratIframeRef.current.contentWindow;
                if (!win) {
-                   showMsg(false, 'Jendela print diblokir browser. Izinkan pop-up untuk situs ini, lalu coba lagi.');
+                   showMsg(false, 'Surat belum siap dicetak, coba lagi sesaat lagi.');
                    return;
                }
-               win.document.write(html);
-               win.document.close();
                win.focus();
                win.print();
            };
@@ -935,12 +948,13 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{suratPreview.nomorSurat}</div>
                                </div>
                                <iframe
+                                   ref={suratIframeRef}
                                    srcDoc={suratPreview.html}
                                    title="Preview Surat Izin Keluar"
                                    className="w-full flex-1 min-h-[50vh] border border-slate-200 rounded-xl bg-white"
                                />
                                <div className="flex-shrink-0 space-y-2">
-                                   <Button onClick={() => printSuratFromContent(suratPreview.html)} className="w-full">🖨️ Print / Simpan sebagai PDF</Button>
+                                   <Button onClick={printSuratFromContent} className="w-full">🖨️ Print / Simpan sebagai PDF</Button>
                                    <p className="text-[10px] text-slate-500 text-center -mt-0.5">Di dialog print, pilih "Save as PDF" (atau "Microsoft Print to PDF") untuk menyimpan sebagai file PDF.</p>
                                    <Button onClick={() => setSuratPreview(null)} variant="secondary" className="w-full">Tutup</Button>
                                </div>
