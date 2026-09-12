@@ -1455,11 +1455,14 @@ proof of anything.
 
 #### Idempotency & concurrency
 
-`pushEventAlreadyQueued()` de-dupes on `Event_ID` (`jenis|refId|guruId|kind`)
+`pushEventsAlreadyQueued()` de-dupes on `Event_ID` (`jenis|refId|guruId|kind`)
 within a rolling 2-minute window (`PUSH_QUEUE_DEDUPE_WINDOW_MS`), scanning
 only the most recent `PUSH_QUEUE_DEDUPE_SCAN_ROWS` queue rows (the queue is
 drained every minute, so it never grows large enough for a full scan to
-matter). For the Izin Keluar/Kelompok family, this rides on top of guards
+matter) — **once per `notifyRelevantUsers()` call for every recipient's
+`Event_ID` together** (perf audit September 2026; it used to be called once
+per recipient inside a loop, each doing its own separate tail scan). For the
+Izin Keluar/Kelompok family, this rides on top of guards
 that already exist for other reasons: a double-submit of `addIzinKeluar` is
 rejected by the existing open-transaction check (`findIzinTerbukaForNisn`)
 *before* `notifyRelevantUsers()` is ever reached, and a retried
