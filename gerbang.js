@@ -69,7 +69,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onDeleteIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onDeleteIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat, onRefresh, loadingActivity }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
@@ -255,14 +255,23 @@
 
                    {searchQuery.trim() === '' && (
                        <div className="space-y-2.5">
-                           <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                               Aktivitas Hari Ini
-                               <span className="flex h-2 w-2 relative">
-                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky opacity-60"></span>
-                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-sky"></span>
-                               </span>
-                           </h3>
-                           {todayActivity.length > 0 ? (
+                           <div className="flex items-center justify-between gap-2">
+                               <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                   Aktivitas Hari Ini
+                                   <span className="flex h-2 w-2 relative">
+                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky opacity-60"></span>
+                                       <span className="relative inline-flex rounded-full h-2 w-2 bg-sky"></span>
+                                   </span>
+                               </h3>
+                               {onRefresh && (
+                                   <button onClick={onRefresh} disabled={loadingActivity} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md disabled:opacity-50">
+                                       {loadingActivity ? 'Memuat...' : 'Refresh'}
+                                   </button>
+                               )}
+                           </div>
+                           {loadingActivity ? (
+                               <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
+                           ) : todayActivity.length > 0 ? (
                                <div className="space-y-2">
                                    {todayActivity.map((item, idx) => (
                                        <div key={idx} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center gap-3">
