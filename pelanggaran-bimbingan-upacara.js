@@ -690,6 +690,7 @@
            const [catatan, setCatatan] = useState('');
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
+           const [submitting, setSubmitting] = useState(false);
 
            const jenisPresets = ['Atribut Tidak Lengkap', 'Tidak Tertib', 'Terlambat Baris'];
 
@@ -699,10 +700,24 @@
 
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
+           // Proteksi tap-ganda: modal ini dulu menutup diri sendiri SEKETIKA
+           // saat Simpan ditekan, tanpa menunggu respons server -- jadi petugas
+           // OSIS yang ragu tersimpan atau tidak (koneksi lambat, tidak ada
+           // indikator apa pun) cenderung mengulang dari awal, dan menghasilkan
+           // 2 baris pelanggaran yang identik. `submitting` mengunci tombol
+           // sampai respons server benar-benar datang, dan modal baru ditutup
+           // setelah SUKSES -- kalau gagal (termasuk ditolak server karena
+           // duplikat, lihat addPelanggaranUpacara di Code.gs), modal tetap
+           // terbuka dengan pesan errornya supaya jelas tidak perlu diulang.
            const submitUpacara = () => {
+               if (submitting) return;
                const finalJenis = jenis === 'Custom' ? (jenisCustom.trim() || 'Lainnya') : jenis;
-               onAddUpacara({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, catatan }, (ok, text) => showMsg(ok, text));
-               setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setCatatan('');
+               setSubmitting(true);
+               onAddUpacara({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, catatan }, (ok, text) => {
+                   setSubmitting(false);
+                   showMsg(ok, text);
+                   if (ok) { setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setCatatan(''); }
+               });
            };
 
            // Rekap dibuka lewat sakelar di dalam menu Upacara, BUKAN menu baru
@@ -780,7 +795,12 @@
                                    <input type="text" value={jenisCustom} onChange={(e) => { setJenisCustom(e.target.value); setJenis('Custom'); }} placeholder="Atau ketik manual..." className="w-full mt-2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                </div>
                                <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitUpacara} disabled={!jenis} className="w-full">Simpan</Button>
+                               {/* Modal ini tidak lagi menutup diri seketika (lihat
+                                   submitUpacara) -- kalau gagal/ditolak server, pesannya
+                                   harus terlihat DI SINI, karena banner di luar modal
+                                   tertutup backdrop selama modal masih terbuka. */}
+                               {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
+                               <Button onClick={submitUpacara} disabled={!jenis || submitting} className="w-full">{submitting ? 'Menyimpan...' : 'Simpan'}</Button>
                                <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
