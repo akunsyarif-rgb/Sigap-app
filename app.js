@@ -1267,6 +1267,7 @@
                                        onTandaiKembaliKelompok={handleTandaiKembaliKelompok}
                                        initialMode={gerbangMode}
                                        onGenerateSurat={handleGenerateIzinSurat}
+                                       onRefresh={fetchData} loadingActivity={loadingLogs}
                                    />
                                )}
                                {activeTab === 'dashboard' && (
