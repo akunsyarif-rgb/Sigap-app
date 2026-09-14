@@ -22,8 +22,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-13-scope-pelanggaran-count';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount'];
+var BACKEND_VERSION = '2026-09-14-dedup-pelanggaran-upacara';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
 
 // ===== doPost =====
 
@@ -826,6 +826,23 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses mencatat pelanggaran upacara.' });
       }
       var sheet = getOrCreateSheet(ss, 'Pelanggaran_Upacara', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Catatan', 'Dicatat_Oleh', 'Dicatat_Oleh_ID']);
+      // Cegah duplikat: siswa yang sama + JENIS pelanggaran yang sama di hari
+      // yang sama ditolak -- ini biasanya bukan pelanggaran kedua, tapi
+      // submit ulang karena petugas OSIS tidak yakin tersimpan (modal
+      // menutup sendiri begitu Simpan ditekan, tanpa konfirmasi visual apa
+      // pun -- lihat proteksi tap-ganda di client, pelanggaran-bimbingan-upacara.js).
+      // Siswa yang sama TETAP boleh dicatat lagi kalau jenisnya beda (mis.
+      // "Terlambat Baris" dan "Atribut Tidak Lengkap" di hari yang sama
+      // adalah dua pelanggaran nyata, bukan duplikat) -- jadi kunci
+      // pembandingnya NISN+jenis, bukan NISN saja.
+      var todayUpacara = new Date();
+      var todayStartUpacara = new Date(todayUpacara.getFullYear(), todayUpacara.getMonth(), todayUpacara.getDate(), 0, 0, 0, 0);
+      var upacaraRows = getRowsSince(sheet, todayStartUpacara, 5);
+      for (var iu = 0; iu < upacaraRows.length; iu++) {
+        if (String(upacaraRows[iu][1]) === String(data.nisn) && String(upacaraRows[iu][4]) === String(data.jenis_pelanggaran) && isSameDayServer(new Date(upacaraRows[iu][0]), todayUpacara)) {
+          return jsonOut({ status: 'error', message: data.name + ' sudah tercatat "' + data.jenis_pelanggaran + '" hari ini.' });
+        }
+      }
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
       CacheService.getScriptCache().remove('pelanggaran_upacara_raw');
       var upacaraSiswa = resolveSiswaForIzin(ss, data.nisn);
