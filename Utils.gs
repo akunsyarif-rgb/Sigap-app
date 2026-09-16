@@ -30,6 +30,24 @@ function checkToken(token) {
   return token && validToken && token === validToken;
 }
 
+// ===== Anti Formula/CSV Injection =====
+// Teks bebas dari pengguna (keperluan, catatan, sanksi, dst.) ditulis
+// mentah ke sel Sheet. Kalau karakter pertamanya =, +, -, atau @, Google
+// Sheets (dan Excel saat sheet diexport/dibuka offline) membacanya sebagai
+// AWAL FORMULA, bukan teks — contoh: "=HYPERLINK(...)" ketik bebas di
+// field Keperluan Izin Keluar akan dieksekusi begitu admin buka sheet-nya.
+// Tempel tanda kutip satu di depan memaksa Sheets membaca sel itu sebagai
+// teks murni; tanda kutip itu sendiri tidak ikut tampil di sel maupun
+// terbaca balik lewat getValues() — jadi aman dipakai di semua field yang
+// nanti dibaca lagi oleh kode lain (izin.keperluan, dsb).
+function sanitizeSheetValue(v) {
+  var s = String(v === undefined || v === null ? '' : v);
+  if (/^[=+\-@]/.test(s)) {
+    return "'" + s;
+  }
+  return s;
+}
+
 // ===== Hash password =====
 // Skema LAMA (hashPasswordLegacy): SHA-256 tanpa salt, DAN password
 // di-lowercase paksa sebelum di-hash — jadi "Sigap123" & "sigap123" dianggap
@@ -871,7 +889,7 @@ function hariPiketServer(d) {
 }
 
 function izinText(v, max) {
-  return String(v === undefined || v === null ? '' : v).trim().slice(0, max);
+  return sanitizeSheetValue(String(v === undefined || v === null ? '' : v).trim().slice(0, max));
 }
 
 // Format "HH:MM" 24 jam, sama seperti nilai yang dihasilkan dropdown Jam
