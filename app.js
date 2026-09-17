@@ -198,6 +198,7 @@
            const pendingPushGoto = useRef(null);
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
+           const [savingRecord, setSavingRecord] = useState(false);
            const [toast, setToast] = useState(null);
            const [showChangePassword, setShowChangePassword] = useState(false);
            const [loadingChangePassword, setLoadingChangePassword] = useState(false);
@@ -715,11 +716,26 @@
                    .catch(() => { setLoadingChangePassword(false); callback(false, 'Koneksi gagal, coba lagi.'); });
            };
 
+           // Tombol preset/Simpan di RecordModal sebelumnya tidak punya status
+           // "sedang menyimpan" maupun batas waktu tunggu sama sekali — kalau
+           // Apps Script lambat/macet (kuota harian, script lock antre saat jam
+           // piket pagi ramai), klik tombol terlihat TIDAK MELAKUKAN APA-APA
+           // sampai fetch akhirnya selesai (atau tidak pernah selesai), karena
+           // tidak ada spinner/disable/toast yang muncul untuk memberi tahu
+           // guru bahwa permintaan sedang diproses. AbortController membatasi
+           // waktu tunggu supaya kegagalan selalu terlihat dalam waktu wajar,
+           // bukan diam selamanya — dan savingRecord mencegah klik ganda pas
+           // request pertama masih berjalan.
+           const RECORD_TIMEOUT_MS = 15000;
            const handleRecord = (type) => {
+               if (savingRecord) return;
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
                const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
-               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+               setSavingRecord(true);
+               const controller = new AbortController();
+               const timeoutId = setTimeout(() => controller.abort(), RECORD_TIMEOUT_MS);
+               fetch(API_URL, { method: 'POST', body: JSON.stringify(payload), signal: controller.signal })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
@@ -731,7 +747,11 @@
                        }
                        setTimeout(() => setToast(null), 2000);
                    })
-                   .catch(() => { setToast('Koneksi gagal, coba lagi.'); setTimeout(() => setToast(null), 2000); });
+                   .catch((err) => {
+                       setToast(err && err.name === 'AbortError' ? 'Server tidak merespons, coba lagi.' : 'Koneksi gagal, coba lagi.');
+                       setTimeout(() => setToast(null), 2000);
+                   })
+                   .finally(() => { clearTimeout(timeoutId); setSavingRecord(false); });
            };
 
            const handleAddTeacher = (payload, callback) => {
@@ -1328,7 +1348,7 @@
                            </div>
 
                            {selectedStudent && (
-                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} />
+                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} saving={savingRecord} />
                            )}
 
                            <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={navigateTab} />
