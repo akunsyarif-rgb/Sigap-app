@@ -3,7 +3,7 @@
 // (Catat Terlambat / Catat Surat). Surat cuma laporan tertulis (jenis +
 // keterangan) — TIDAK ada lampiran foto (dihapus, lihat catatan di Utils.gs).
 
-       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount }) {
+       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount, saving }) {
            const presets = [
                { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
                { type: 'Hujan', emoji: '🌧️', label: 'Hujan' },
@@ -49,9 +49,12 @@
                            </div>
                        )}
 
+                       {saving && (
+                           <div className="text-center text-xs text-sky-dim font-bold">Menyimpan...</div>
+                       )}
                        <div className="grid grid-cols-2 gap-2.5">
                            {presets.map(p => (
-                               <button key={p.type} onClick={() => onRecord(p.type)} className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                               <button key={p.type} onClick={() => onRecord(p.type)} disabled={saving} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 border border-slate-300 text-slate-800 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
                                    <span className="text-lg">{p.emoji}</span><span>{p.label}</span>
                                </button>
                            ))}
@@ -59,11 +62,11 @@
                        <div className="pt-2">
                            <label className="text-[10px] text-slate-500 font-bold mb-1.5 block uppercase tracking-wider">Atau Alasan Lainnya</label>
                            <div className="flex gap-2">
-                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Ketik spesifik..." className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
+                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} disabled={saving} placeholder="Ketik spesifik..." className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky disabled:opacity-60" />
+                               <button onClick={() => onRecord('Custom')} disabled={saving || !customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
                            </div>
                        </div>
-                       <Button onClick={onClose} variant="secondary" className="w-full">Batal</Button>
+                       <Button onClick={onClose} variant="secondary" className="w-full" disabled={saving}>Batal</Button>
                    </div>
                </div>
            );
