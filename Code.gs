@@ -203,7 +203,7 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
         }
       }
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.type, sessionUser.name]);
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
       // Notifikasi Wali Kelas — kelas diambil ULANG dari Master_Siswa (BUKAN
@@ -500,7 +500,7 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Hanya admin/BK atau wali kelas terkait yang bisa mengajukan tindak lanjut.' });
       }
       var sheet = getOrCreateSheet(ss, 'Tindak_Lanjut', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Diajukan_Oleh', 'Status', 'Disetujui_Oleh', 'Tanggal_Disetujui']);
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.catatan || ''), sessionUser.name, 'menunggu', '', '']);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.catatan || '', sessionUser.name, 'menunggu', '', '']);
       CacheService.getScriptCache().remove('tindak_lanjut_list_raw');
       logAudit(sessionUser, 'Ajukan Tindak Lanjut', data.name + ' (' + data.nisn + ')');
       return jsonOut({ status: 'success' });
@@ -624,7 +624,7 @@ function doPost(e) {
       // index di getSurat/getTodayData), menghapusnya akan menggeser
       // Dicatat_Oleh ke posisi Foto_URL dan mematahkan baris-baris lama
       // yang sudah terlanjur punya URL foto tersimpan.
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis), sanitizeSheetValue(data.keterangan || ''), '', sessionUser.name]);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis, data.keterangan || '', '', sessionUser.name]);
       CacheService.getScriptCache().remove('surat_list');
       CacheService.getScriptCache().remove('today_data');
       var suratSiswa = resolveSiswaForIzin(ss, data.nisn);
@@ -725,7 +725,7 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis_pelanggaran), sanitizeSheetValue(data.sanksi), sanitizeSheetValue(data.catatan || ''), sessionUser.name]);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.sanksi, data.catatan || '', sessionUser.name]);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
       var pelanggaranSiswa = resolveSiswaForIzin(ss, data.nisn);
@@ -793,7 +793,7 @@ function doPost(e) {
       var pkSheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
       var pkRows = pkResolved.siswa.map(function (siswa, idx) {
         var pkItem = pkDaftar[idx] || {};
-        return [pkNow, siswa.nisn, siswa.name, siswa.class, sanitizeSheetValue(pkItem.jenis_pelanggaran), sanitizeSheetValue(pkItem.sanksi), sanitizeSheetValue(pkItem.catatan || ''), sessionUser.name];
+        return [pkNow, siswa.nisn, siswa.name, siswa.class, pkItem.jenis_pelanggaran, pkItem.sanksi, pkItem.catatan || '', sessionUser.name];
       });
       appendRowsBatch(pkSheet, pkRows);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
@@ -816,7 +816,7 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getOrCreateSheet(ss, 'Bimbingan_Khusus', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Dicatat_Oleh']);
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.catatan), sessionUser.name]);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.catatan, sessionUser.name]);
       return jsonOut({ status: 'success' });
     }
 
@@ -843,7 +843,7 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah tercatat "' + data.jenis_pelanggaran + '" hari ini.' });
         }
       }
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis_pelanggaran), sanitizeSheetValue(data.catatan || ''), sessionUser.name, sessionUser.id]);
+      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, data.jenis_pelanggaran, data.catatan || '', sessionUser.name, sessionUser.id]);
       CacheService.getScriptCache().remove('pelanggaran_upacara_raw');
       var upacaraSiswa = resolveSiswaForIzin(ss, data.nisn);
       if (upacaraSiswa) {
