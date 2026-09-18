@@ -160,7 +160,7 @@ function queueRows(s) {
   if (!sheet) return [];
   return sheet._data.slice(1).map((r) => ({
     eventId: r[1], jenis: r[2], nisn: r[3], guruId: r[4], title: r[5], body: r[6], url: r[7], tag: r[8],
-    priority: r[9], processed: r[10], attempts: r[12],
+    priority: r[9], processed: r[10], attempts: r[12], claimUntil: r[14],
   }));
 }
 
@@ -318,6 +318,61 @@ test('subscription yang dilaporkan relay sudah tidak berlaku (gone) dibersihkan 
   assert.equal(subRows(s).length, 1);
   s.processPushQueue();
   assert.equal(subRows(s).length, 0, 'endpoint yang dilaporkan gone harus dihapus');
+});
+
+// ---- lock scope: fetch ke relay TIDAK di dalam lock yang sama dengan sigapLock,
+// tick lain yang overlap tidak boleh ikut mengirim baris yang masih diklaim,
+// dan gagal dapat lock penulisan hasil TIDAK BOLEH menghilangkan baris atau
+// membuatnya nyangkut "diklaim" selamanya (audit lock scope, September 2026) ----
+test('processPushQueue: baris yang sedang diklaim (Claim_Until belum lewat) tidak ikut dipilih tick lain', () => {
+  const s = loadServer({ properties: { PUSH_RELAY_URL: 'https://relay.example/push-send', PUSH_RELAY_SECRET: 'relay-secret' } });
+  s.post('wali', { action: 'savePushSubscription', subscription: { endpoint: 'https://push/a', keys: { p256dh: 'p1', auth: 'a1' } } });
+  s.post('wali', { action: 'record', nisn: '1001', name: 'Rahma', class_name: 'XI B', type: 'Terlambat' });
+
+  // Simulasikan baris yang sudah diklaim tick lain (Claim_Until di masa
+  // depan) SEBELUM processPushQueue sungguhan berjalan.
+  const row = s.sheets.Push_Queue._data[1];
+  row[14] = new Date(Date.now() + 60000);
+  s.processPushQueue();
+  assert.equal(s.fetchCalls.length, 0, 'baris yang masih diklaim tidak boleh ikut dikirim ulang oleh tick ini');
+  assert.equal(queueRows(s)[0].processed, false, 'belum final -- masih menunggu klaim yang berjalan itu lewat');
+});
+
+test('processPushQueue: setelah klaim kedaluwarsa, baris otomatis dicoba lagi dan berhasil final', () => {
+  const s = loadServer({ properties: { PUSH_RELAY_URL: 'https://relay.example/push-send', PUSH_RELAY_SECRET: 'relay-secret' } });
+  s.post('wali', { action: 'savePushSubscription', subscription: { endpoint: 'https://push/a', keys: { p256dh: 'p1', auth: 'a1' } } });
+  s.post('wali', { action: 'record', nisn: '1001', name: 'Rahma', class_name: 'XI B', type: 'Terlambat' });
+
+  const row = s.sheets.Push_Queue._data[1];
+  row[14] = new Date(Date.now() - 1000); // klaim tick sebelumnya sudah kedaluwarsa (mis. eksekusi mati di tengah jalan)
+  s.processPushQueue();
+  assert.equal(s.fetchCalls.length, 1, 'klaim yang sudah kedaluwarsa harus dicoba ulang');
+  const after = queueRows(s)[0];
+  assert.equal(after.processed, true);
+  assert.equal(after.claimUntil, '', 'Claim_Until harus dibersihkan setelah baris final, tidak boleh nyangkut "diklaim"');
+});
+
+test('processPushQueue: gagal dapat lock penulisan hasil (lock2) tidak menghilangkan data -- baris tetap diklaim, bukan hilang atau salah tercatat sukses', () => {
+  const s = loadServer({
+    properties: { PUSH_RELAY_URL: 'https://relay.example/push-send', PUSH_RELAY_SECRET: 'relay-secret' },
+  });
+  s.post('wali', { action: 'savePushSubscription', subscription: { endpoint: 'https://push/a', keys: { p256dh: 'p1', auth: 'a1' } } });
+  s.post('wali', { action: 'record', nisn: '1001', name: 'Rahma', class_name: 'XI B', type: 'Terlambat' });
+
+  // Lock yang sukses untuk fase 1 (klaim), tapi gagal untuk fase 3 (tulis
+  // hasil) -- meniru rebutan lock dengan doPost lain persis di antara fetch
+  // relay selesai dan penulisan hasil.
+  let calls = 0;
+  s.sandbox.LockService = {
+    getScriptLock: () => ({
+      waitLock() { calls += 1; if (calls === 2) throw new Error('locked'); },
+      releaseLock() {},
+    }),
+  };
+  assert.doesNotThrow(() => s.processPushQueue());
+  const row = queueRows(s)[0];
+  assert.equal(row.processed, false, 'tidak boleh tercatat selesai -- hasil fetch tidak sempat ditulis');
+  assert.notEqual(row.claimUntil, '', 'baris tetap berstatus diklaim, BUKAN hilang -- kedaluwarsa sendiri lalu dicoba ulang tick berikutnya');
 });
 
 // ---- 17: aksi subscription tetap butuh sesi valid (menekan notifikasi bukan jalan pintas otorisasi) ----

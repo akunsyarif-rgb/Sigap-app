@@ -48,6 +48,7 @@ var PUSH_QUEUE_HEADERS = [
   'Timestamp', 'Event_ID', 'Jenis_Kejadian', 'NISN', 'Guru_ID',
   'Title', 'Body', 'Url', 'Tag', 'Priority',
   'Processed', 'Processed_At', 'Attempts', 'Last_Error',
+  'Claim_Until', // kolom ke-15, lihat processPushQueue — klaim sementara saat fetch ke relay berjalan DI LUAR lock
 ];
 
 // ===== Kelompok penerima =====
@@ -67,6 +68,12 @@ var PUSH_QUEUE_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 var PUSH_QUEUE_DEDUPE_SCAN_ROWS = 300;
 var PUSH_QUEUE_BATCH_SIZE = 30; // maks baris diproses per tick trigger
 var PUSH_QUEUE_MAX_ATTEMPTS = 6; // ~6 menit percobaan sebelum menyerah
+// Klaim "sedang diproses" dipegang lebih lama dari interval trigger (1 menit)
+// supaya fetch relay yang masih berjalan tidak direbut tick berikutnya, tapi
+// cukup pendek supaya eksekusi yang mati di tengah jalan (crash/timeout GAS)
+// pulih sendiri paling lambat 2 tick kemudian — tidak ada baris yang nyangkut
+// "diklaim" selamanya, lihat processPushQueue.
+var PUSH_QUEUE_CLAIM_TTL_MS = 90 * 1000;
 
 // ================= EVENT NOTIFICATION ENGINE =================
 // notifyRelevantUsers(event): SATU pintu masuk untuk semua titik pemicu di
@@ -378,30 +385,61 @@ function removePushSubscriptionsByEndpoint(sheet, endpoints) {
 // di notifyRelevantUsers() di atas murni tulis sheet lokal (cepat, sudah di
 // dalam lock yang sama dengan aksi utamanya), pengiriman sungguhan terjadi
 // terpisah di sini.
+//
+// TIGA fase, DUA lock terpisah — bukan satu lock yang dipegang dari awal
+// sampai akhir (audit lock scope, September 2026: sebelumnya UrlFetchApp.fetch
+// ke relay Vercel ada DI DALAM lock yang sama dengan sigapLock di doPost —
+// kalau relay lambat/hang, satu tick bisa menahan lock+slot eksekusi jauh
+// lebih lama dari 6-20 detik biasa, menyaingi record/addTerlambat/deleteRecord
+// dkk. yang semuanya lewat sigapLock yang SAMA. Pola ini SUDAH dipakai di
+// tempat lain di project — lihat catatan pelepasan lock awal QR yang dihapus
+// di CLAUDE.md — cuma belum pernah diterapkan di sini):
+//   1) DI DALAM lock (singkat): baca antrean, KLAIM kandidat (Claim_Until =
+//      sekarang + PUSH_QUEUE_CLAIM_TTL_MS) supaya tick lain yang mungkin
+//      overlap tidak ikut mengirim baris yang sama, lalu lepas lock.
+//   2) DI LUAR lock: UrlFetchApp.fetch() ke relay — jaringan boleh lambat
+//      tanpa menahan aksi tulis lain (record/addTerlambat/deleteRecord/dst.)
+//      yang berebut sigapLock yang sama.
+//   3) DI DALAM lock lagi (singkat): tulis hasil akhir (Processed/Attempts/
+//      Last_Error) + bersihkan Claim_Until.
+// Kalau lock ke-3 gagal didapat (waitLock timeout), TIDAK ada data hilang:
+// baris tetap berstatus "diklaim" apa adanya (fetch sudah terlanjur jalan,
+// hasilnya cuma tidak sempat dicatat) dan klaim itu KEDALUWARSA sendiri
+// setelah PUSH_QUEUE_CLAIM_TTL_MS — tick berikutnya otomatis mencoba lagi,
+// tidak pernah nyangkut selamanya. Kemungkinan kirim dobel akibat retry ini
+// aman: klien memakai Event_ID yang sama sebagai `tag` notifikasi, jadi OS
+// mengganti notifikasi lama yang senasib, bukan menumpuk (lihat komentar
+// eventIds di notifyRelevantUsers di atas).
 function processPushQueue() {
-  var lock = LockService.getScriptLock();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var queueSheet = ss.getSheetByName(PUSH_QUEUE_SHEET_NAME);
+  if (!queueSheet) return;
+  var subSheet = ss.getSheetByName(PUSH_SUBSCRIPTIONS_SHEET_NAME);
+
+  // ---- Fase 1: klaim kandidat, di dalam lock singkat ----
+  var candidates = [];
+  var lock1 = LockService.getScriptLock();
   try {
-    lock.waitLock(5000);
+    lock1.waitLock(5000);
   } catch (lockErr) {
     return; // sedang dipakai (mis. tick sebelumnya belum selesai) — coba lagi tick berikutnya
   }
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var queueSheet = ss.getSheetByName(PUSH_QUEUE_SHEET_NAME);
-    if (!queueSheet) return;
     var lastRow = queueSheet.getLastRow();
     if (lastRow <= 1) return;
-
     var numRows = lastRow - 1;
     var data = queueSheet.getRange(2, 1, numRows, PUSH_QUEUE_HEADERS.length).getValues();
-    var subSheet = ss.getSheetByName(PUSH_SUBSCRIPTIONS_SHEET_NAME);
     var subLastRow = subSheet ? subSheet.getLastRow() : 0;
     var subs = subLastRow > 1 ? subSheet.getRange(2, 1, subLastRow - 1, 6).getValues() : [];
+    var nowMs = new Date().getTime();
 
-    var candidates = [];
     for (var i = 0; i < data.length && candidates.length < PUSH_QUEUE_BATCH_SIZE; i++) {
       var row = data[i];
       if (row[10] === true) continue; // Processed
+      var claimUntilRaw = row[14];
+      var claimUntilMs = claimUntilRaw instanceof Date ? claimUntilRaw.getTime()
+        : (claimUntilRaw ? new Date(claimUntilRaw).getTime() : 0);
+      if (claimUntilMs && claimUntilMs > nowMs) continue; // masih diklaim tick lain yang belum kedaluwarsa
       var sheetRow = i + 2;
       var guruId = String(row[4]);
       var matchSubs = [];
@@ -413,94 +451,136 @@ function processPushQueue() {
       if (!matchSubs.length) {
         // Guru ini belum/tidak lagi punya perangkat terdaftar — tidak ada
         // yang bisa dikirimi, tandai selesai supaya tidak diperiksa ulang
-        // tiap tick selamanya.
-        queueSheet.getRange(sheetRow, 11, 1, 4).setValues([[true, new Date(), row[12], 'no_subscription']]);
+        // tiap tick selamanya. Ini penulisan FINAL (tidak butuh fase 3),
+        // tidak ada fetch jaringan yang terlibat sama sekali.
+        queueSheet.getRange(sheetRow, 11, 1, 5).setValues([[true, new Date(), row[12], 'no_subscription', '']]);
         continue;
       }
       candidates.push({ sheetRow: sheetRow, subs: matchSubs, payload: { title: row[5], body: row[6], url: row[7], tag: row[8] } });
     }
     if (!candidates.length) return;
 
-    var relayUrl = PropertiesService.getScriptProperties().getProperty('PUSH_RELAY_URL');
-    var relaySecret = PropertiesService.getScriptProperties().getProperty('PUSH_RELAY_SECRET');
-    if (!relayUrl || !relaySecret) {
-      // Relay belum dikonfigurasi (lihat CLAUDE.md, langkah setup Vercel) —
-      // tambah percobaan, JANGAN ditandai selesai, supaya begitu env var-nya
-      // diisi, antrean yang masih dalam batas percobaan otomatis terkirim
-      // tanpa perlu menulis ulang.
-      pushIncrementAttempts(queueSheet, candidates, 'relay_not_configured');
-      return;
-    }
-
-    var items = [];
-    for (var c = 0; c < candidates.length; c++) {
-      for (var d = 0; d < candidates[c].subs.length; d++) {
-        items.push({
-          candidateIndex: c,
-          endpoint: candidates[c].subs[d].endpoint,
-          subscription: { endpoint: candidates[c].subs[d].endpoint, keys: { p256dh: candidates[c].subs[d].p256dh, auth: candidates[c].subs[d].auth } },
-          payload: candidates[c].payload,
-        });
-      }
-    }
-
-    var response;
-    try {
-      response = UrlFetchApp.fetch(relayUrl, {
-        method: 'post',
-        contentType: 'application/json',
-        headers: { Authorization: 'Bearer ' + relaySecret },
-        payload: JSON.stringify({ items: items.map(function (it) { return { endpoint: it.endpoint, subscription: it.subscription, payload: it.payload }; }) }),
-        muteHttpExceptions: true,
-      });
-    } catch (fetchErr) {
-      pushIncrementAttempts(queueSheet, candidates, 'relay_unreachable');
-      return;
-    }
-
-    var results = [];
-    try {
-      var parsed = JSON.parse(response.getContentText());
-      results = parsed && parsed.results ? parsed.results : [];
-    } catch (parseErr) {
-      results = [];
-    }
-
-    var candidateOk = {};
-    var goneEndpoints = [];
-    for (var r = 0; r < results.length; r++) {
-      var item = items[r];
-      if (!item) continue;
-      if (results[r] && results[r].ok) candidateOk[item.candidateIndex] = true;
-      else if (results[r] && results[r].gone) goneEndpoints.push(item.endpoint);
-    }
-
-    for (var ci = 0; ci < candidates.length; ci++) {
-      var cand = candidates[ci];
-      if (candidateOk[ci]) {
-        queueSheet.getRange(cand.sheetRow, 11, 1, 2).setValues([[true, new Date()]]);
-      } else {
-        var attempts = (Number(queueSheet.getRange(cand.sheetRow, 13).getValue()) || 0) + 1;
-        if (attempts >= PUSH_QUEUE_MAX_ATTEMPTS) {
-          queueSheet.getRange(cand.sheetRow, 11, 1, 4).setValues([[true, new Date(), attempts, 'max_attempts']]);
-        } else {
-          queueSheet.getRange(cand.sheetRow, 13, 1, 2).setValues([[attempts, 'send_failed']]);
-        }
-      }
-    }
-
-    if (goneEndpoints.length && subSheet) {
-      removePushSubscriptionsByEndpoint(subSheet, goneEndpoints);
+    // Tandai KLAIM (belum final) — supaya tick lain yang overlap tidak ikut
+    // memilih baris yang sama selagi fetch di fase 2 berjalan di luar lock.
+    var claimUntil = new Date(nowMs + PUSH_QUEUE_CLAIM_TTL_MS);
+    for (var k = 0; k < candidates.length; k++) {
+      queueSheet.getRange(candidates[k].sheetRow, 15).setValue(claimUntil);
     }
   } finally {
-    lock.releaseLock();
+    lock1.releaseLock();
+  }
+
+  // ---- Fase 2: fetch ke relay Vercel, DI LUAR lock ----
+  var relayUrl = PropertiesService.getScriptProperties().getProperty('PUSH_RELAY_URL');
+  var relaySecret = PropertiesService.getScriptProperties().getProperty('PUSH_RELAY_SECRET');
+  if (!relayUrl || !relaySecret) {
+    // Relay belum dikonfigurasi (lihat CLAUDE.md, langkah setup Vercel) —
+    // tambah percobaan, JANGAN ditandai selesai, supaya begitu env var-nya
+    // diisi, antrean yang masih dalam batas percobaan otomatis terkirim
+    // tanpa perlu menulis ulang. Tidak ada fetch di jalur ini, tapi
+    // penulisannya TETAP lewat lock (fase 3) — bukan pengecualian.
+    pushFinalizeUnderLock(queueSheet, candidates, null, 'relay_not_configured', null);
+    return;
+  }
+
+  var items = [];
+  for (var c = 0; c < candidates.length; c++) {
+    for (var d = 0; d < candidates[c].subs.length; d++) {
+      items.push({
+        candidateIndex: c,
+        endpoint: candidates[c].subs[d].endpoint,
+        subscription: { endpoint: candidates[c].subs[d].endpoint, keys: { p256dh: candidates[c].subs[d].p256dh, auth: candidates[c].subs[d].auth } },
+        payload: candidates[c].payload,
+      });
+    }
+  }
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(relayUrl, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + relaySecret },
+      payload: JSON.stringify({ items: items.map(function (it) { return { endpoint: it.endpoint, subscription: it.subscription, payload: it.payload }; }) }),
+      muteHttpExceptions: true,
+    });
+  } catch (fetchErr) {
+    pushFinalizeUnderLock(queueSheet, candidates, null, 'relay_unreachable', null);
+    return;
+  }
+
+  var results = [];
+  try {
+    var parsed = JSON.parse(response.getContentText());
+    results = parsed && parsed.results ? parsed.results : [];
+  } catch (parseErr) {
+    results = [];
+  }
+
+  var candidateOk = {};
+  var goneEndpoints = [];
+  for (var r = 0; r < results.length; r++) {
+    var item = items[r];
+    if (!item) continue;
+    if (results[r] && results[r].ok) candidateOk[item.candidateIndex] = true;
+    else if (results[r] && results[r].gone) goneEndpoints.push(item.endpoint);
+  }
+
+  // ---- Fase 3: tulis hasil akhir, di dalam lock singkat lagi ----
+  pushFinalizeUnderLock(queueSheet, candidates, candidateOk, null, { subSheet: subSheet, goneEndpoints: goneEndpoints });
+}
+
+// Membungkus fase 3 (lock2 + tulis hasil akhir) — dipakai dari SEMUA jalur
+// keluar fase 2 (relay tidak dikonfigurasi, relay tak terjangkau, atau respons
+// relay sungguhan), supaya tidak ada satu pun jalur yang menulis ke sheet
+// tanpa lock. Kalau lock2 gagal didapat, TIDAK ada data hilang: klaim fase 1
+// kedaluwarsa sendiri (PUSH_QUEUE_CLAIM_TTL_MS), baris ini otomatis dicoba
+// lagi tick berikutnya begitu klaim itu lewat — aman untuk dikirim dobel
+// (lihat catatan Event_ID/tag di atas processPushQueue).
+function pushFinalizeUnderLock(queueSheet, candidates, candidateOk, errorLabelForAll, goneInfo) {
+  var lock2 = LockService.getScriptLock();
+  try {
+    lock2.waitLock(5000);
+  } catch (lockErr) {
+    return;
+  }
+  try {
+    pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll);
+    if (goneInfo && goneInfo.goneEndpoints && goneInfo.goneEndpoints.length && goneInfo.subSheet) {
+      removePushSubscriptionsByEndpoint(goneInfo.subSheet, goneInfo.goneEndpoints);
+    }
+  } finally {
+    lock2.releaseLock();
   }
 }
 
-function pushIncrementAttempts(queueSheet, candidates, errorLabel) {
+// Menulis hasil akhir untuk satu batch kandidat SEKALIGUS membersihkan
+// Claim_Until (kolom 15) supaya tidak ada baris yang nyangkut berstatus
+// "diklaim" walau sebenarnya sudah beres (atau sudah gagal permanen).
+// SELALU dipanggil dari dalam lock2 (lewat pushFinalizeUnderLock) — tidak
+// ada jalur langsung ke sheet di luar lock mana pun.
+//   - candidateOk === null → semua kandidat gagal karena SATU errorLabel yang
+//     sama (relay belum dikonfigurasi / relay tidak terjangkau) — dipakai
+//     untuk pengganti pushIncrementAttempts() yang lama.
+//   - candidateOk !== null → hasil per kandidat dari respons relay (indeks
+//     kandidat yang ok dikirim, sisanya dianggap gagal kirim).
+function pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll) {
   for (var i = 0; i < candidates.length; i++) {
-    var attempts = (Number(queueSheet.getRange(candidates[i].sheetRow, 13).getValue()) || 0) + 1;
-    queueSheet.getRange(candidates[i].sheetRow, 13, 1, 2).setValues([[attempts, errorLabel]]);
+    var cand = candidates[i];
+    var ok = candidateOk ? candidateOk[i] : false;
+    if (ok) {
+      queueSheet.getRange(cand.sheetRow, 11, 1, 2).setValues([[true, new Date()]]);
+      queueSheet.getRange(cand.sheetRow, 15).setValue('');
+      continue;
+    }
+    var errorLabel = errorLabelForAll || 'send_failed';
+    var attempts = (Number(queueSheet.getRange(cand.sheetRow, 13).getValue()) || 0) + 1;
+    if (attempts >= PUSH_QUEUE_MAX_ATTEMPTS) {
+      queueSheet.getRange(cand.sheetRow, 11, 1, 5).setValues([[true, new Date(), attempts, 'max_attempts', '']]);
+    } else {
+      queueSheet.getRange(cand.sheetRow, 13, 1, 2).setValues([[attempts, errorLabel]]);
+      queueSheet.getRange(cand.sheetRow, 15).setValue('');
+    }
   }
 }
 

@@ -258,10 +258,28 @@ CLAUDE.md bagian Push Notification untuk kenapa.
 Sumber: `Notifikasi.gs`, fungsi `notifyRelevantUsers()` (tulis) dan
 `processPushQueue()` (baca+proses, dipanggil trigger waktu tiap 1 menit —
 lihat `installPushQueueTrigger()`). Satu baris = satu notifikasi yang HARUS
-dikirim ke SATU guru untuk SATU kejadian. Antrean ini yang memisahkan
-"kejadian ditulis" (cepat, sheet lokal, di dalam `sigapLock` yang sama dengan
-aksi utama) dari "notifikasi benar-benar dikirim" (panggilan jaringan ke
-relay Vercel, di luar `sigapLock`, lihat `api/push-send.js`).
+dikirim ke SATU guru untuk SATU kejadian.
+
+**Lock scope (diperbaiki September 2026 — audit lock scope):** `processPushQueue`
+memakai **dua lock terpisah, bukan satu lock yang dipegang dari awal sampai
+akhir**. Sebelumnya `UrlFetchApp.fetch()` ke relay Vercel ada DI DALAM lock
+yang sama dengan `sigapLock` (aksi tulis lain di `doPost` — `record`,
+`addTerlambat`, `deleteRecord`, dst. — semuanya berebut lock level-skrip yang
+identik, `LockService.getScriptLock()` selalu merujuk mutex yang sama siapa
+pun pemanggilnya). Kalau relay lambat/hang, itu menahan lock+slot eksekusi
+jauh lebih lama dari waktu proses sheet biasa, menyaingi aksi tulis lain.
+Polanya sekarang:
+1. Lock singkat: baca antrean, **klaim** kandidat (kolom `Claim_Until`) —
+   lepas lock.
+2. **Di luar lock**: `UrlFetchApp.fetch()` ke relay.
+3. Lock singkat lagi: tulis hasil akhir (`Processed`/`Attempts`/`Last_Error`)
+   + bersihkan `Claim_Until` — lepas lock.
+
+Kalau lock ke-3 gagal didapat, baris tetap berstatus "diklaim" apa adanya —
+klaim itu kedaluwarsa sendiri (`PUSH_QUEUE_CLAIM_TTL_MS`, 90 detik) dan tick
+berikutnya otomatis mencoba lagi; tidak ada baris yang nyangkut selamanya.
+Kemungkinan kirim dobel akibat retry ini aman karena `Tag` (= `Event_ID`)
+membuat OS mengganti notifikasi lama yang senasib, bukan menumpuk.
 
 | # | Kolom | Header | Keterangan |
 |---|---|---|---|
@@ -279,3 +297,4 @@ relay Vercel, di luar `sigapLock`, lihat `api/push-send.js`).
 | 12 | L | `Processed_At` | |
 | 13 | M | `Attempts` | Maks `PUSH_QUEUE_MAX_ATTEMPTS` (6) sebelum menyerah |
 | 14 | N | `Last_Error` | `no_subscription` \| `relay_not_configured` \| `relay_unreachable` \| `send_failed` \| `max_attempts` |
+| 15 | O | `Claim_Until` | Klaim sementara selagi fase fetch (di luar lock) berjalan — kosong kalau baris tidak sedang diproses tick manapun; kedaluwarsa otomatis setelah `PUSH_QUEUE_CLAIM_TTL_MS` |
