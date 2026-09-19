@@ -58,7 +58,12 @@
            return (
                <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center" role="alert" aria-live="assertive" aria-busy="true">
                    <div className="flex flex-col items-center gap-3">
-                       <img src="IMG_1966.jpeg" alt="" className="w-16 h-16 object-contain rounded-2xl bg-white p-2 shadow-xl animate-spin-slow" />
+                       {/* [perspective:400px] di wrapper -- supaya rotateY di
+                           bawah kelihatan sebagai putaran 3D (koin diputar),
+                           bukan gepeng jadi garis lurus di tengah putaran. */}
+                       <div className="[perspective:400px]">
+                           <img src="IMG_1966.jpeg" alt="" className="w-16 h-16 object-contain rounded-2xl bg-white p-2 shadow-xl animate-spin-slow" />
+                       </div>
                        <div className="text-xs font-bold text-white drop-shadow">Menyimpan...</div>
                    </div>
                </div>

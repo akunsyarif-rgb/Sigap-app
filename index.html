@@ -116,8 +116,11 @@
        @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
        .animate-pop { animation: popIn .18s ease-out; }
        /* Overlay "Menyimpan..." global (SavingOverlay, ui-common.js) -- logo
-          berputar pelan lewat CSS transform murni, bukan GIF. */
-       @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          berputar pelan lewat CSS transform murni, bukan GIF. rotateY (poros
+          vertikal, kiri-kanan, kayak koin diputar) -- BUKAN rotate/rotateX
+          (poros depan-belakang/atas-bawah, kayak ngangguk). Logo tetap
+          berdiri tegak sepanjang putaran. */
+       @keyframes spinSlow { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
        .animate-spin-slow { animation: spinSlow 2s linear infinite; }
    </style>
 </head>

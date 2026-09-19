@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-19-cache-skip-empty-nisn';
+var BACKEND_VERSION = '2026-09-19-record-timestamp-echo';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
 
 // ===== doPost =====
@@ -203,7 +203,17 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
         }
       }
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
+      // Timestamp ditangkap SATU KALI di sini (bukan new Date() literal di
+      // appendRow) supaya nilai PERSIS yang ditulis ke baris bisa dikirim
+      // balik ke klien di respons (lihat timestamp di jsonOut bawah) —
+      // klien butuh nilai ini APA ADANYA untuk findRowByNisnTimestamp saat
+      // edit/hapus nanti (lihat catatan bug di sekitar deleteEntry/Utils.gs:
+      // timestamp yang klien generate sendiri sebelum fetch dikirim SELALU
+      // beda ms dari yang server tulis di sini, gara-gara latensi jaringan +
+      // antre sigapLock — dulu ini bikin hapus tepat-setelah-simpan gagal
+      // dengan "Data tidak ditemukan").
+      var recordTimestamp = new Date();
+      sheet.appendRow([recordTimestamp, data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
       // Siswa ini baru dapat catatan keterlambatan -- buang cache riwayatnya
@@ -221,7 +231,7 @@ function doPost(e) {
       if (recordSiswa) {
         notifyRelevantUsers({ jenis: 'keterlambatan', nisn: recordSiswa.nisn, kelas: recordSiswa.class, needsPiketAction: false });
       }
-      return jsonOut({ status: 'success' });
+      return jsonOut({ status: 'success', timestamp: recordTimestamp });
     }
 
     // ---- Tambah guru baru (admin only) ----
@@ -629,14 +639,18 @@ function doPost(e) {
       // index di getSurat/getTodayData), menghapusnya akan menggeser
       // Dicatat_Oleh ke posisi Foto_URL dan mematahkan baris-baris lama
       // yang sudah terlanjur punya URL foto tersimpan.
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis), sanitizeSheetValue(data.keterangan || ''), '', sessionUser.name]);
+      // Timestamp ditangkap sekali, sama alasan seperti action 'record' di
+      // atas — dikirim balik ke klien supaya edit/hapus berikutnya pakai
+      // nilai server yang sebenarnya, bukan Date() client yang beda ms.
+      var suratTimestamp = new Date();
+      sheet.appendRow([suratTimestamp, data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis), sanitizeSheetValue(data.keterangan || ''), '', sessionUser.name]);
       CacheService.getScriptCache().remove('surat_list');
       CacheService.getScriptCache().remove('today_data');
       var suratSiswa = resolveSiswaForIzin(ss, data.nisn);
       if (suratSiswa) {
         notifyRelevantUsers({ jenis: 'surat', nisn: suratSiswa.nisn, kelas: suratSiswa.class, needsPiketAction: false });
       }
-      return jsonOut({ status: 'success' });
+      return jsonOut({ status: 'success', timestamp: suratTimestamp });
     }
 
     // ---- Hapus Data (Pemeliharaan Data, admin only) — menggantikan aksi
@@ -730,7 +744,11 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getOrCreateSheet(ss, 'Pelanggaran', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Jenis_Pelanggaran', 'Sanksi', 'Catatan', 'Dicatat_Oleh']);
-      sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis_pelanggaran), sanitizeSheetValue(data.sanksi), sanitizeSheetValue(data.catatan || ''), sessionUser.name]);
+      // Timestamp ditangkap sekali, sama alasan seperti action 'record' di
+      // atas — dikirim balik ke klien supaya edit/hapus berikutnya pakai
+      // nilai server yang sebenarnya, bukan Date() client yang beda ms.
+      var pelanggaranTimestamp = new Date();
+      sheet.appendRow([pelanggaranTimestamp, data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis_pelanggaran), sanitizeSheetValue(data.sanksi), sanitizeSheetValue(data.catatan || ''), sessionUser.name]);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
       // Siswa ini baru dapat catatan pelanggaran -- buang cache count-nya
@@ -741,7 +759,7 @@ function doPost(e) {
       if (pelanggaranSiswa) {
         notifyRelevantUsers({ jenis: 'pelanggaran', nisn: pelanggaranSiswa.nisn, kelas: pelanggaranSiswa.class, needsPiketAction: false });
       }
-      return jsonOut({ status: 'success' });
+      return jsonOut({ status: 'success', timestamp: pelanggaranTimestamp });
     }
 
     // ---- Catat pelanggaran KELOMPOK — Fase 2a: SATU kelas saja (bukan untuk

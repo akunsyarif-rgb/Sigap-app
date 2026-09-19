@@ -608,12 +608,13 @@
                if (!confirmDeleteTarget || isSavingOverlayActive()) return;
                const payload = { category, nisn: confirmDeleteTarget.nisn, name: confirmDeleteTarget.name, timestamp: confirmDeleteTarget.timestamp };
                onDeleteEntry(payload, (ok, text) => {
-                   if (ok) {
-                       setConfirmDeleteTarget(null);
-                       closeManage();
-                   } else {
-                       showManageMsg(ok, text);
-                   }
+                   // Sama pola dengan submitEdit di atas: tampilkan dulu
+                   // keterangannya (dulu di sini modal langsung tertutup TANPA
+                   // keterangan apa-apa saat berhasil — "Berhasil dihapus."
+                   // dari onDeleteEntry cuma dibuang begitu saja), baru tutup
+                   // modal sesudah sempat kebaca, bukan seketika.
+                   showManageMsg(ok, text);
+                   if (ok) setTimeout(() => { setConfirmDeleteTarget(null); closeManage(); }, 900);
                });
            };
 
