@@ -109,12 +109,16 @@
        ::-webkit-scrollbar-track { background: transparent; }
        :focus-visible { outline: 2px solid #1F5278; outline-offset: 2px; }
        @media (prefers-reduced-motion: reduce) {
-           .animate-rise, .animate-pop, .animate-ping { animation: none !important; }
+           .animate-rise, .animate-pop, .animate-ping, .animate-spin-slow { animation: none !important; }
        }
        @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
        .animate-rise { animation: riseIn .28s ease-out; }
        @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
        .animate-pop { animation: popIn .18s ease-out; }
+       /* Overlay "Menyimpan..." global (SavingOverlay, ui-common.js) -- logo
+          berputar pelan lewat CSS transform murni, bukan GIF. */
+       @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+       .animate-spin-slow { animation: spinSlow 2s linear infinite; }
    </style>
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen m-0">
@@ -133,7 +137,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 72;
+           var BUILD_VERSION = 73;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.

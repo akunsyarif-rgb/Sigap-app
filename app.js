@@ -198,10 +198,8 @@
            const pendingPushGoto = useRef(null);
            const [selectedStudent, setSelectedStudent] = useState(null);
            const [customReasonInput, setCustomReasonInput] = useState('');
-           const [savingRecord, setSavingRecord] = useState(false);
            const [toast, setToast] = useState(null);
            const [showChangePassword, setShowChangePassword] = useState(false);
-           const [loadingChangePassword, setLoadingChangePassword] = useState(false);
            // Nilai awal diambil dari cache klien kalau ada (lihat bootCache di
            // atas) — inilah yang membuat refresh langsung menampilkan layar
            // terakhir alih-alih layar kosong sambil menunggu Apps Script.
@@ -215,7 +213,6 @@
            const [cacheTruncated] = useState(!!(bootCache && bootCache.truncated));
 
            const [teachers, setTeachers] = useState([]);
-           const [loadingTeacherAction, setLoadingTeacherAction] = useState(false);
            const [suratList, setSuratList] = useState(bootData.suratList || []);
            const [pelanggaranList, setPelanggaranList] = useState(bootData.pelanggaranList || []);
            const [bimbinganList, setBimbinganList] = useState([]);
@@ -703,17 +700,18 @@
            // berikutnya tiba-tiba gagal "Sesi berakhir". Pesannya ditaruh di
            // layar login (bukan toast) karena app langsung berpindah ke sana.
            const handleChangeMyPassword = (payload, callback) => {
-               setLoadingChangePassword(true);
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'changeMyPassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
-                       setLoadingChangePassword(false);
                        if (data.status === 'success') {
                            callback(true);
                            clearSession('Password berhasil diubah. Silakan login kembali dengan password baru Anda.');
                        } else callback(false, data.message || 'Gagal mengubah password.');
                    })
-                   .catch(() => { setLoadingChangePassword(false); callback(false, 'Koneksi gagal, coba lagi.'); });
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // Tombol preset/Simpan di RecordModal sebelumnya tidak punya status
@@ -724,15 +722,15 @@
            // tidak ada spinner/disable/toast yang muncul untuk memberi tahu
            // guru bahwa permintaan sedang diproses. AbortController membatasi
            // waktu tunggu supaya kegagalan selalu terlihat dalam waktu wajar,
-           // bukan diam selamanya — dan savingRecord mencegah klik ganda pas
-           // request pertama masih berjalan.
+           // bukan diam selamanya — dan isSavingOverlayActive() (overlay global,
+           // ui-common.js) mencegah klik ganda pas request pertama masih berjalan.
            const RECORD_TIMEOUT_MS = 15000;
            const handleRecord = (type) => {
-               if (savingRecord) return;
+               if (isSavingOverlayActive()) return;
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
                const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
-               setSavingRecord(true);
+               showSavingOverlay();
                const controller = new AbortController();
                const timeoutId = setTimeout(() => controller.abort(), RECORD_TIMEOUT_MS);
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload), signal: controller.signal })
@@ -751,15 +749,15 @@
                        setToast(err && err.name === 'AbortError' ? 'Server tidak merespons, coba lagi.' : 'Koneksi gagal, coba lagi.');
                        setTimeout(() => setToast(null), 2000);
                    })
-                   .finally(() => { clearTimeout(timeoutId); setSavingRecord(false); });
+                   .finally(() => { clearTimeout(timeoutId); hideSavingOverlay(); });
            };
 
            const handleAddTeacher = (payload, callback) => {
-               setLoadingTeacherAction(true);
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacher', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
-                       setLoadingTeacherAction(false);
                        if (data.status === 'success') {
                            // Server (getTeachers) sudah urut abjad — susun ulang di sini
                            // juga supaya guru baru langsung muncul di posisi yang benar,
@@ -768,20 +766,26 @@
                            callback(true, '✓ Guru berhasil ditambahkan.');
                        } else callback(false, data.message || 'Gagal menambah guru.');
                    })
-                   .catch(() => { setLoadingTeacherAction(false); callback(false, 'Koneksi gagal, coba lagi.'); });
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleUpdatePassword = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') callback(true, 'Password berhasil diubah.');
                        else callback(false, data.message || 'Gagal mengubah password.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleUpdateJabatan = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateJabatan', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -790,10 +794,13 @@
                            callback(true, '✓ Jabatan berhasil diubah.');
                        } else callback(false, data.message || 'Gagal mengubah jabatan.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleToggleStatus = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'toggleTeacherStatus', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -802,10 +809,13 @@
                            callback(true, data.newStatus === 'nonaktif' ? '✓ Akun dinonaktifkan.' : '✓ Akun diaktifkan kembali.');
                        } else callback(false, data.message || 'Gagal mengubah status akun.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleUpdateRole = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateRole', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -814,10 +824,13 @@
                            callback(true, '✓ Role berhasil diubah.');
                        } else callback(false, data.message || 'Gagal mengubah role.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleUpdateWaliKelas = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateWaliKelas', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -827,10 +840,13 @@
                            callback(true, '✓ Kelas wali berhasil diubah.');
                        } else callback(false, data.message || 'Gagal mengubah kelas wali.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleUpdateTeacherName = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateTeacherName', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -839,13 +855,16 @@
                            callback(true, '✓ Nama berhasil diubah.');
                        } else callback(false, data.message || 'Gagal mengubah nama.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // Hapus permanen — beda dari handleToggleStatus (nonaktifkan). Server
            // yang menolak kalau target masih wali kelas aktif / akun sendiri,
            // lihat komentar action 'deleteTeacher' di Code.gs.
            const handleDeleteTeacher = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteTeacher', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -854,13 +873,16 @@
                            callback(true, '✓ Guru berhasil dihapus.');
                        } else callback(false, data.message || 'Gagal menghapus guru.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // payload.schedule = [{ hari, guruId }, ...] — kirim seluruh jadwal
            // seminggu sekaligus (bukan per-baris), lalu tarik ulang biar nama
            // guru & urutan selalu sinkron dengan yang tersimpan di server.
            const handleSetJadwalPiket = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'setJadwalPiket', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -869,10 +891,13 @@
                            callback(true, '✓ Jadwal piket berhasil disimpan.');
                        } else callback(false, data.message || 'Gagal menyimpan jadwal piket.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleAjukanTindakLanjut = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ajukanTindakLanjut', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -881,10 +906,13 @@
                            callback(true, '✓ Diajukan, menunggu persetujuan admin.');
                        } else callback(false, data.message || 'Gagal mengajukan tindak lanjut.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleApproveTindakLanjut = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'approveTindakLanjut', sessionToken: sessionToken, token: API_TOKEN, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -893,10 +921,13 @@
                            callback(true, '✓ Disetujui, dihapus dari peringatan.');
                        } else callback(false, data.message || 'Gagal menyetujui tindak lanjut.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleAddSurat = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -906,7 +937,8 @@
                            callback(true, 'Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // ---- Pemeliharaan Data > Hapus Data: pratinjau (baca-saja) lalu
@@ -933,6 +965,8 @@
            };
 
            const handleHapusData = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'hapusDataPeriode', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -949,10 +983,13 @@
                            callback(true, data);
                        } else callback(false, data.message || 'Gagal menghapus data.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleAddPelanggaran = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaran', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -962,7 +999,8 @@
                            callback(true, 'Pelanggaran berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // Fase 2a: kelompok SATU kelas saja (lihat PelanggaranKelompokPanel di
@@ -973,6 +1011,8 @@
            // untuk Izin Kelompok di bawah) daripada menebak nilai itu untuk update
            // optimistik.
            const handleAddPelanggaranKelompok = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -994,10 +1034,13 @@
                            callback(false, 'Fitur Catat Pelanggaran Kelompok belum aktif di server. Silakan gunakan menu Individual untuk sementara, atau coba lagi nanti.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran kelompok.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleAddBimbingan = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addBimbingan', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1009,7 +1052,8 @@
                            callback(true, 'Berhasil dicatat (hanya Admin/BK bisa lihat).');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // Cocokkan baris lokal lewat NISN + Timestamp (sama seperti server),
@@ -1017,6 +1061,8 @@
            const sameEntry = (item, payload) => item.nisn === payload.nisn && parseTimestamp(item.timestamp).getTime() === parseTimestamp(payload.timestamp).getTime();
 
            const handleEditEntry = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'editEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json())
                    .then(checkSession)
@@ -1032,10 +1078,13 @@
                            callback(true, 'Berhasil diperbarui.');
                        } else callback(false, data.message || 'Gagal memperbarui data.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleDeleteEntry = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteEntry', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json())
                    .then(checkSession)
@@ -1047,7 +1096,8 @@
                            callback(true, 'Berhasil dihapus.');
                        } else callback(false, data.message || 'Gagal menghapus data.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // ---- Export Data (laporan PDF/Excel) ----
@@ -1093,6 +1143,8 @@
            };
 
            const handleAddUpacara = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addPelanggaranUpacara', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1102,7 +1154,8 @@
                            callback(true, 'Pelanggaran upacara berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // ---- Izin Keluar / Pulang (BETA) ----
@@ -1112,6 +1165,8 @@
            // klien berisiko menampilkan status yang tidak sama dengan yang
            // tersimpan. Server tetap satu-satunya sumber kebenaran transaksi.
            const handleCreateIzin = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addIzinKeluar', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1122,10 +1177,16 @@
                                : '✓ Izin Khusus tercatat sebagai pengecualian, siswa tercatat keluar.');
                        } else callback(false, data.message || 'Gagal membuat izin keluar.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
+           // handleIzinAction adalah jalur bersama untuk verifikasi/tandai
+           // kembali/tandai pulang/hapus (lihat 4 wrapper tipis di bawahnya) --
+           // satu overlay guard di sini otomatis melindungi keempatnya.
            const handleIzinAction = (action, payload, callback, suksesText) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: action, token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1134,7 +1195,8 @@
                            callback(true, suksesText);
                        } else callback(false, data.message || 'Gagal memproses izin keluar.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            // Cetak Surat Izin Keluar (audit September 2026) — beda pola dari
@@ -1144,6 +1206,8 @@
            // Nomor_Surat/Status_Print yang baru saja tersimpan ikut sinkron
            // (mis. kalau guru membuka lagi transaksi yang sama).
            const handleGenerateIzinSurat = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'generateIzinKeluarSurat', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1152,7 +1216,8 @@
                            callback(true, data.data);
                        } else callback(false, data.message || 'Gagal membuat surat izin.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleVerifikasiIzin = (payload, callback) => handleIzinAction('verifikasiIzinKeluar', payload, callback, '✓ Terverifikasi — siswa tercatat keluar.');
@@ -1173,6 +1238,8 @@
            // lagi — satu aksi bisa mengubah status banyak siswa sekaligus, dan
            // server yang memutuskan siapa saja yang benar-benar berubah.
            const handleCreateKelompok = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1183,10 +1250,13 @@
                                : `✓ Kegiatan tercatat sebagai Izin Khusus untuk ${data.jumlahPeserta} siswa.`);
                        } else callback(false, data.message || 'Gagal membuat izin kelompok.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleVerifikasiKelompok = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'verifikasiIzinKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1195,10 +1265,13 @@
                            callback(true, `✓ ${data.jumlahDiverifikasi} siswa terverifikasi & tercatat keluar.`);
                        } else callback(false, data.message || 'Gagal memverifikasi kegiatan.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            const handleTandaiKembaliKelompok = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
                fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'tandaiKembaliKelompok', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
@@ -1211,11 +1284,20 @@
                                : `✓ ${data.jumlahKembali} siswa ditandai sudah kembali.`);
                        } else callback(false, data.message || 'Gagal menandai rombongan kembali.');
                    })
-                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'));
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
            };
 
            return (
                <div style={{ zoom: fontScale }}>
+                   {/* Overlay "Menyimpan..." global (ui-common.js) — SATU-SATUNYA
+                       indikator loading untuk semua aksi tulis (Catat Terlambat/
+                       Surat/Pelanggaran, Izin Keluar tiap tahap, Hapus di semua
+                       tab, Kelola Guru, dst). Dipasang sekali di sini, dikontrol
+                       lewat showSavingOverlay()/hideSavingOverlay() dari tiap
+                       handler fetch di bawah — bukan lewat props, jadi tidak
+                       perlu diteruskan ke tiap komponen anak. */}
+                   <SavingOverlay />
                    {updateAvailable && (
                        // top-16 -- SAMA seperti banner fromCache di bawah (bukan
                        // top-0), supaya tidak menumpuk di atas Header yang juga
@@ -1245,7 +1327,7 @@
                            <Header user={user} roleLabel={user.jabatan || roleConfig.label} onLogout={handleLogout} onOpenChangePassword={() => setShowChangePassword(true)} fontScale={fontScale} onFontScaleChange={changeFontScale} activeTab={activeTab} />
 
                            {showChangePassword && (
-                               <ChangePasswordModal onSubmit={handleChangeMyPassword} onClose={() => setShowChangePassword(false)} loading={loadingChangePassword} />
+                               <ChangePasswordModal onSubmit={handleChangeMyPassword} onClose={() => setShowChangePassword(false)} />
                            )}
 
                            {toast && (
@@ -1320,7 +1402,7 @@
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onPreviewHapusData={handlePreviewHapusData} onHapusData={handleHapusData} onGoToExportData={goToExportData} loading={loadingTeacherAction} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onPreviewHapusData={handlePreviewHapusData} onHapusData={handleHapusData} onGoToExportData={goToExportData} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
@@ -1348,7 +1430,7 @@
                            </div>
 
                            {selectedStudent && (
-                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} saving={savingRecord} />
+                               <RecordModal student={selectedStudent} customReason={customReasonInput} setCustomReason={setCustomReasonInput} onRecord={handleRecord} onClose={() => setSelectedStudent(null)} allLogs={allLogs} onGetLateCount={fetchStudentLateCount} />
                            )}
 
                            <BottomNav menus={effectiveMenus} primaryMenus={roleConfig.primaryMenus} activeTab={activeTab} setActiveTab={navigateTab} />

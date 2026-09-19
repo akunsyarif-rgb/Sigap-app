@@ -26,15 +26,6 @@
            // menggeser index itu dan membuat test lama salah sasaran secara diam-diam.
            // Menaruhnya di paling akhir menjaga semua index lama tetap benar.
            const [pelMode, setPelMode] = useState('individual');
-           // Audit UX September 2026: submitPelanggaran/submitBimbingan tidak
-           // punya state "sedang menyimpan" sama sekali sebelumnya -- tombol
-           // Simpan tetap aktif dan tidak menampilkan spinner selama fetch
-           // berjalan, jadi tap ganda (koneksi Apps Script lambat/lock antre
-           // saat jam piket ramai) bisa mengirim dua permintaan. Pola sama
-           // seperti savingSurat di gerbang.js. DITAMBAHKAN PALING AKHIR,
-           // sama alasannya dengan pelMode di atas (index useState dipakai test).
-           const [savingPelanggaran, setSavingPelanggaran] = useState(false);
-           const [savingBimbingan, setSavingBimbingan] = useState(false);
 
            const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
            const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
@@ -67,12 +58,10 @@
            const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
            const submitPelanggaran = () => {
-               if (savingPelanggaran) return;
+               if (isSavingOverlayActive()) return;
                const finalJenis = jenis === 'Custom' ? (jenisCustom.trim() || 'Lainnya') : jenis;
                const finalSanksi = sanksi === 'Custom' ? (sanksiCustom.trim() || 'Lainnya') : sanksi;
-               setSavingPelanggaran(true);
                onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, sanksi: finalSanksi, catatan }, (ok, text) => {
-                   setSavingPelanggaran(false);
                    showMsg(text);
                    if (ok) {
                        setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setSanksi(''); setSanksiCustom(''); setCatatan('');
@@ -81,10 +70,8 @@
            };
 
            const submitBimbingan = () => {
-               if (savingBimbingan || !bimbinganCatatan.trim()) return;
-               setSavingBimbingan(true);
+               if (!bimbinganCatatan.trim() || isSavingOverlayActive()) return;
                onAddBimbingan({ nisn: bimbinganTarget.nisn, name: bimbinganTarget.name, class_name: bimbinganTarget.class, catatan: bimbinganCatatan.trim() }, (ok, text) => {
-                   setSavingBimbingan(false);
                    showMsg(text);
                    if (ok) {
                        setBimbinganTarget(null); setBimbinganCatatan('');
@@ -238,9 +225,9 @@
 
                                <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
-                               <Button onClick={submitPelanggaran} disabled={!jenis || !sanksi || savingPelanggaran} className="w-full">{savingPelanggaran ? 'Menyimpan...' : 'Simpan'}</Button>
-                               <Button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} variant="ghost" disabled={savingPelanggaran} className="w-full">Tandai Perlu Bimbingan Khusus</Button>
-                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" disabled={savingPelanggaran} className="w-full">Batal</Button>
+                               <Button onClick={submitPelanggaran} disabled={!jenis || !sanksi} className="w-full">Simpan</Button>
+                               <Button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} variant="ghost" className="w-full">Tandai Perlu Bimbingan Khusus</Button>
+                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -253,8 +240,8 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{bimbinganTarget.name}</div>
                                </div>
                                <textarea value={bimbinganCatatan} onChange={(e) => setBimbinganCatatan(e.target.value)} placeholder="Catatan untuk Admin..." rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitBimbingan} disabled={savingBimbingan || !bimbinganCatatan.trim()} className="w-full">{savingBimbingan ? 'Menyimpan...' : 'Simpan (hanya Admin bisa lihat)'}</Button>
-                               <Button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} variant="secondary" disabled={savingBimbingan} className="w-full">Batal</Button>
+                               <Button onClick={submitBimbingan} disabled={!bimbinganCatatan.trim()} className="w-full">Simpan (hanya Admin bisa lihat)</Button>
+                               <Button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -324,7 +311,6 @@
            const [entriPerSiswa, setEntriPerSiswa] = useState({});
            const [editNisn, setEditNisn] = useState(null);
            const [msg, setMsg] = useState('');
-           const [saving, setSaving] = useState(false);
 
            const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
            const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
@@ -367,10 +353,9 @@
            };
 
            const submitSemua = () => {
-               setSaving(true);
+               if (isSavingOverlayActive()) return;
                const siswaPayload = dipilih.map(s => Object.assign({ nisn: s.nisn }, entriPerSiswa[s.nisn]));
                onAddPelanggaranKelompok({ siswa: siswaPayload }, (ok, text) => {
-                   setSaving(false);
                    showMsg(text);
                    if (ok) {
                        setDipilih([]); setEntriPerSiswa({}); setTahapPratinjau(false);
@@ -487,7 +472,7 @@
                            </div>
                            <div className="flex gap-2">
                                <Button onClick={() => setTahapPratinjau(false)} variant="secondary" className="flex-1">Kembali</Button>
-                               <Button onClick={submitSemua} disabled={saving} className="flex-1">{saving ? 'Menyimpan...' : 'Simpan Semua'}</Button>
+                               <Button onClick={submitSemua} className="flex-1">Simpan Semua</Button>
                            </div>
                        </React.Fragment>
                    )}
@@ -712,7 +697,6 @@
            const [catatan, setCatatan] = useState('');
            const [msg, setMsg] = useState('');
            const [msgTone, setMsgTone] = useState('sky');
-           const [submitting, setSubmitting] = useState(false);
 
            const jenisPresets = ['Atribut Tidak Lengkap', 'Tidak Tertib', 'Terlambat Baris'];
 
@@ -726,17 +710,16 @@
            // saat Simpan ditekan, tanpa menunggu respons server -- jadi petugas
            // OSIS yang ragu tersimpan atau tidak (koneksi lambat, tidak ada
            // indikator apa pun) cenderung mengulang dari awal, dan menghasilkan
-           // 2 baris pelanggaran yang identik. `submitting` mengunci tombol
-           // sampai respons server benar-benar datang, dan modal baru ditutup
-           // setelah SUKSES -- kalau gagal (termasuk ditolak server karena
-           // duplikat, lihat addPelanggaranUpacara di Code.gs), modal tetap
-           // terbuka dengan pesan errornya supaya jelas tidak perlu diulang.
+           // 2 baris pelanggaran yang identik. Sekarang dikunci lewat overlay
+           // "Menyimpan..." global (isSavingOverlayActive(), ui-common.js) --
+           // modal baru ditutup setelah SUKSES; kalau gagal (termasuk ditolak
+           // server karena duplikat, lihat addPelanggaranUpacara di Code.gs),
+           // modal tetap terbuka dengan pesan errornya supaya jelas tidak
+           // perlu diulang.
            const submitUpacara = () => {
-               if (submitting) return;
+               if (isSavingOverlayActive()) return;
                const finalJenis = jenis === 'Custom' ? (jenisCustom.trim() || 'Lainnya') : jenis;
-               setSubmitting(true);
                onAddUpacara({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, catatan }, (ok, text) => {
-                   setSubmitting(false);
                    showMsg(ok, text);
                    if (ok) { setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setCatatan(''); }
                });
@@ -822,7 +805,7 @@
                                    harus terlihat DI SINI, karena banner di luar modal
                                    tertutup backdrop selama modal masih terbuka. */}
                                {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
-                               <Button onClick={submitUpacara} disabled={!jenis || submitting} className="w-full">{submitting ? 'Menyimpan...' : 'Simpan'}</Button>
+                               <Button onClick={submitUpacara} disabled={!jenis} className="w-full">Simpan</Button>
                                <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>

@@ -2,6 +2,69 @@
 // Komponen tampilan kecil yang dipakai berulang (Badge, kartu statistik,
 // grafik batang, dll), plus layar Login, Header, dan Bottom Navigation.
 
+       // ===== Overlay "Menyimpan..." global (audit UX September 2026) =====
+       // Sebelum ini, tiap tombol aksi tulis (Catat Terlambat/Surat/
+       // Pelanggaran, Izin Keluar tiap tahap, Hapus di semua tab, dll) punya
+       // state loading SENDIRI-SENDIRI (savingRecord, savingSurat, busyId,
+       // manageLoading, dst — satu per komponen, kadang satu per baris lewat
+       // id) dengan tampilan yang tidak seragam (sebagian spinner teks
+       // "Menyimpan...", sebagian "Memproses...", sebagian malah tidak ada
+       // sama sekali). Diganti jadi SATU overlay layar penuh yang dipicu
+       // lewat dua fungsi global sederhana (bukan React Context -- semua
+       // pemanggilnya adalah handler imperatif di app.js/gerbang.js/dst,
+       // bukan sesuatu yang perlu dibaca reaktif lewat props/hook, jadi
+       // pub-sub module-level ini cukup dan tidak perlu mengubah stub React
+       // di semua file test):
+       //   showSavingOverlay() / hideSavingOverlay() -- panggil sebelum &
+       //     sesudah (baik sukses MAUPUN gagal -- selalu lewat .finally)
+       //     tiap fetch aksi tulis ke API_URL.
+       //   isSavingOverlayActive() -- dipakai SEBAGAI PENGGANTI state
+       //     "saving"/"busy" lokal untuk mencegah tap ganda: dicek
+       //     SINKRON di baris pertama tiap handler, sebelum fetch
+       //     dikirim, supaya tap kedua yang masuk sebelum re-render
+       //     pertama selesai pun tetap tertolak (state React ter-apply
+       //     async, variabel modul ini tidak).
+       // savingOverlayActive booleannya SENGAJA tunggal (bukan counter) --
+       // aplikasi ini satu tab per pemakai, tidak ada dua aksi tulis yang
+       // benar-benar berjalan bersamaan dari sisi UI yang sama.
+       var savingOverlayActive = false;
+       var savingOverlayListeners = [];
+       function isSavingOverlayActive() { return savingOverlayActive; }
+       function showSavingOverlay() {
+           savingOverlayActive = true;
+           savingOverlayListeners.forEach(function (fn) { fn(true); });
+       }
+       function hideSavingOverlay() {
+           savingOverlayActive = false;
+           savingOverlayListeners.forEach(function (fn) { fn(false); });
+       }
+       // Dipasang SEKALI di root App() (app.js) -- lihat komentar di sana.
+       // Logo yang sama dengan Header/LoginScreen (IMG_1966.jpeg), berputar
+       // lewat CSS murni (.animate-spin-slow, didefinisikan di index.html,
+       // sama pola dengan .animate-pop/.animate-rise yang sudah ada) --
+       // bukan GIF. Overlay ini SENGAJA tidak pakai backdrop-blur (im
+       // ringan saja, bukan blur berat, sesuai desain) dan z-index-nya di
+       // ATAS segala modal/bottom-sheet lain (z-[100] vs z-50 modal biasa)
+       // supaya benar-benar mengunci seluruh interaksi, termasuk modal yang
+       // sedang terbuka di baliknya.
+       function SavingOverlay() {
+           const [active, setActive] = useState(false);
+           useEffect(() => {
+               const listener = (v) => setActive(v);
+               savingOverlayListeners.push(listener);
+               return () => { savingOverlayListeners = savingOverlayListeners.filter((l) => l !== listener); };
+           }, []);
+           if (!active) return null;
+           return (
+               <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center" role="alert" aria-live="assertive" aria-busy="true">
+                   <div className="flex flex-col items-center gap-3">
+                       <img src="IMG_1966.jpeg" alt="" className="w-16 h-16 object-contain rounded-2xl bg-white p-2 shadow-xl animate-spin-slow" />
+                       <div className="text-xs font-bold text-white drop-shadow">Menyimpan...</div>
+                   </div>
+               </div>
+           );
+       }
+
        // tone="sky" satu-satunya yang dipakai (badge peran di Header, yang
        // sekarang berlatar navy) -- makanya warnanya terang (putih di atas
        // navy), bukan biru gelap seperti tone lain yang dipakai di latar
@@ -418,7 +481,7 @@
        // dulu, dicek server (action 'changeMyPassword' di Code.gs), supaya sesi
        // yang ketinggalan login di perangkat orang lain tidak bisa dipakai
        // untuk mengunci pemilik akun sebenarnya.
-       function ChangePasswordModal({ onSubmit, onClose, loading }) {
+       function ChangePasswordModal({ onSubmit, onClose }) {
            const [oldPassword, setOldPassword] = useState('');
            const [newPassword, setNewPassword] = useState('');
            const [confirmPassword, setConfirmPassword] = useState('');
@@ -426,6 +489,7 @@
 
            const submit = (e) => {
                e.preventDefault();
+               if (isSavingOverlayActive()) return;
                if (!oldPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
                    setError('Semua kolom wajib diisi.');
                    return;
@@ -455,7 +519,7 @@
                        <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                        <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Konfirmasi password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                        {error && <p className="text-[11px] text-crimson text-center">{error}</p>}
-                       <Button type="submit" disabled={loading} className="w-full">{loading ? 'Menyimpan...' : 'Simpan Password Baru'}</Button>
+                       <Button type="submit" className="w-full">Simpan Password Baru</Button>
                        <Button type="button" onClick={onClose} variant="secondary" className="w-full">Batal</Button>
                    </form>
                </div>

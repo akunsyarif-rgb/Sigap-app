@@ -69,13 +69,6 @@
            const [tlMsg, setTlMsg] = useState('');
            const [showRiwayatTL, setShowRiwayatTL] = useState(false);
            const [locallyApproved, setLocallyApproved] = useState({});
-           // Audit UX September 2026: submitTindakLanjut tidak punya state
-           // "sedang menyimpan" -- tombol Ajukan tetap aktif tanpa spinner
-           // selama fetch berjalan, jadi tap ganda bisa mengirim dua
-           // permintaan. DITAMBAHKAN PALING AKHIR supaya index useState yang
-           // sudah dipakai test (stateOverrides = [undefined, student], dst.)
-           // tidak bergeser.
-           const [savingTindakLanjut, setSavingTindakLanjut] = useState(false);
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -117,10 +110,8 @@
 
            const showMsgTL = (text) => { setTlMsg(text); setTimeout(() => setTlMsg(''), 3000); };
            const submitTindakLanjut = () => {
-               if (!tindakLanjutTarget || !catatanInput.trim() || savingTindakLanjut) return;
-               setSavingTindakLanjut(true);
+               if (!tindakLanjutTarget || !catatanInput.trim() || isSavingOverlayActive()) return;
                onAjukanTindakLanjut({ nisn: tindakLanjutTarget.nisn, name: tindakLanjutTarget.name, class_name: tindakLanjutTarget.class, catatan: catatanInput.trim() }, (ok, text) => {
-                   setSavingTindakLanjut(false);
                    showMsgTL(text);
                    if (ok) { setTindakLanjutTarget(null); setCatatanInput(''); }
                });
@@ -376,8 +367,8 @@
                                    <div className="text-[10px] text-slate-500 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
                                </div>
                                <textarea value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder="Catatan tindak lanjut (mis. sudah dipanggil orang tua, diberi peringatan, dsb.)" rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim() || savingTindakLanjut} className="w-full">{savingTindakLanjut ? 'Menyimpan...' : 'Ajukan ke Admin'}</Button>
-                               <Button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} variant="secondary" disabled={savingTindakLanjut} className="w-full">Batal</Button>
+                               <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full">Ajukan ke Admin</Button>
+                               <Button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -590,9 +581,12 @@
                setManageMsg('');
            };
 
+           // manageLoading (useState di atas) TIDAK LAGI dipakai untuk spinner/
+           // disabled -- overlay "Menyimpan..." global (ui-common.js) sudah
+           // mengunci layar. Deklarasinya dibiarkan di tempatnya (index-nya
+           // dipakai stateOverrides di tests/render-smoke.test.js).
            const submitEdit = () => {
-               if (!manageTarget) return;
-               setManageLoading(true);
+               if (!manageTarget || isSavingOverlayActive()) return;
                const payload = { category, nisn: manageTarget.nisn, name: manageTarget.name, timestamp: manageTarget.timestamp };
                if (category === 'terlambat') {
                    payload.type = editType;
@@ -605,18 +599,15 @@
                    payload.keterangan = editKeterangan;
                }
                onEditEntry(payload, (ok, text) => {
-                   setManageLoading(false);
                    showManageMsg(ok, text);
                    if (ok) setTimeout(closeManage, 900);
                });
            };
 
            const submitDelete = () => {
-               if (!confirmDeleteTarget) return;
-               setManageLoading(true);
+               if (!confirmDeleteTarget || isSavingOverlayActive()) return;
                const payload = { category, nisn: confirmDeleteTarget.nisn, name: confirmDeleteTarget.name, timestamp: confirmDeleteTarget.timestamp };
                onDeleteEntry(payload, (ok, text) => {
-                   setManageLoading(false);
                    if (ok) {
                        setConfirmDeleteTarget(null);
                        closeManage();
@@ -833,9 +824,7 @@
 
                                {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
 
-                               <Button onClick={submitEdit} disabled={manageLoading} className="w-full">
-                                   {manageLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
-                               </Button>
+                               <Button onClick={submitEdit} className="w-full">Simpan Perubahan</Button>
                                <Button onClick={closeManage} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -851,9 +840,7 @@
                                    <p className="text-[11px] text-slate-500 mt-2">Tindakan ini tidak bisa dibatalkan.</p>
                                </div>
                                {manageMsg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${manageMsgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{manageMsg}</div>}
-                               <Button onClick={submitDelete} disabled={manageLoading} variant="danger" className="w-full">
-                                   {manageLoading ? 'Menghapus...' : 'Ya, Hapus'}
-                               </Button>
+                               <Button onClick={submitDelete} variant="danger" className="w-full">Ya, Hapus</Button>
                                <Button onClick={() => { setConfirmDeleteTarget(null); setManageMsg(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>

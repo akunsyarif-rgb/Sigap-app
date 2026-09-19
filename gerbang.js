@@ -3,7 +3,7 @@
 // (Catat Terlambat / Catat Surat). Surat cuma laporan tertulis (jenis +
 // keterangan) — TIDAK ada lampiran foto (dihapus, lihat catatan di Utils.gs).
 
-       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount, saving }) {
+       function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount }) {
            const presets = [
                { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
                { type: 'Hujan', emoji: '🌧️', label: 'Hujan' },
@@ -49,12 +49,9 @@
                            </div>
                        )}
 
-                       {saving && (
-                           <div className="text-center text-xs text-sky-dim font-bold">Menyimpan...</div>
-                       )}
                        <div className="grid grid-cols-2 gap-2.5">
                            {presets.map(p => (
-                               <button key={p.type} onClick={() => onRecord(p.type)} disabled={saving} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 border border-slate-300 text-slate-800 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
+                               <button key={p.type} onClick={() => onRecord(p.type)} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 border border-slate-300 text-slate-800 py-3 px-2 rounded-2xl font-medium text-xs transition active:scale-95 flex flex-col items-center justify-center gap-1">
                                    <span className="text-lg">{p.emoji}</span><span>{p.label}</span>
                                </button>
                            ))}
@@ -62,11 +59,11 @@
                        <div className="pt-2">
                            <label className="text-[10px] text-slate-500 font-bold mb-1.5 block uppercase tracking-wider">Atau Alasan Lainnya</label>
                            <div className="flex gap-2">
-                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} disabled={saving} placeholder="Ketik spesifik..." className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky disabled:opacity-60" />
-                               <button onClick={() => onRecord('Custom')} disabled={saving || !customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
+                               <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Ketik spesifik..." className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky disabled:opacity-60" />
+                               <button onClick={() => onRecord('Custom')} disabled={!customReason.trim()} className="bg-sky hover:bg-sky-light disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">Simpan</button>
                            </div>
                        </div>
-                       <Button onClick={onClose} variant="secondary" className="w-full" disabled={saving}>Batal</Button>
+                       <Button onClick={onClose} variant="secondary" className="w-full">Batal</Button>
                    </div>
                </div>
            );
@@ -92,7 +89,6 @@
            const [jenis, setJenis] = useState('Sakit');
            const [keterangan, setKeterangan] = useState('');
            const [msg, setMsg] = useState('');
-           const [savingSurat, setSavingSurat] = useState(false);
 
            // Jam berjalan (tanpa detik) supaya guru piket lihat waktu saat ini
            // tanpa perlu refresh halaman. Dicek tiap 15 detik tapi state cuma
@@ -153,9 +149,7 @@
            // modal. Sekarang kalau gagal, modal tetap terbuka dengan isian
            // (keterangan) masih ada supaya bisa langsung coba lagi.
            const submitSurat = () => {
-               setSavingSurat(true);
                onAddSurat({ nisn: suratStudent.nisn, name: suratStudent.name, class_name: suratStudent.class, jenis, keterangan }, (ok, text) => {
-                   setSavingSurat(false);
                    showMsg(ok, text);
                    if (ok) {
                        setSuratStudent(null); setJenis('Sakit'); setKeterangan('');
@@ -397,9 +391,7 @@
 
                                <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Keterangan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
-                               <Button onClick={submitSurat} disabled={savingSurat} className="w-full">
-                                   {savingSurat ? 'Menyimpan...' : 'Simpan'}
-                               </Button>
+                               <Button onClick={submitSurat} className="w-full">Simpan</Button>
                                <Button onClick={() => setSuratStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -578,9 +570,17 @@
 
            const resetForm = () => { setFormStudent(null); setKeperluan(''); setTujuan('kembali'); setJalurKhusus(false); setAlasanKhusus(''); };
 
+           // saving/busyId/suratLoadingId (useState di atas) TIDAK LAGI dipakai
+           // untuk spinner/disabled per-tombol -- overlay "Menyimpan..." global
+           // (SavingOverlay, ui-common.js, dipicu dari dalam handler-handler
+           // app.js: handleCreateIzin/handleIzinAction/handleGenerateIzinSurat)
+           // sudah mengunci SELURUH layar selama request berjalan, jadi
+           // penjaga per-baris ini jadi redundan. Deklarasi useState-nya
+           // SENGAJA dibiarkan di tempatnya (bukan dihapus) supaya index
+           // panggilan useState sesudahnya (verifJam, dst.) tidak bergeser --
+           // lihat catatan index di tests/izin-keluar-frontend.test.js.
            const submitIzin = () => {
-               if (saving) return;
-               setSaving(true);
+               if (isSavingOverlayActive()) return;
                onCreateIzin({
                    nisn: formStudent.nisn,
                    keperluan: keperluan,
@@ -593,17 +593,14 @@
                    // mengubah apa yang benar-benar tercatat.
                    konteks: konteksUntuk(formStudent),
                }, (ok, text) => {
-                   setSaving(false);
                    showMsg(ok, text);
                    if (ok) resetForm();
                });
            };
 
            const runAction = (fn, izin, konfirmasiTeks) => {
-               if (busyId) return;
-               setBusyId(izin.id);
+               if (isSavingOverlayActive()) return;
                fn({ id: izin.id }, (ok, text) => {
-                   setBusyId('');
                    showMsg(ok, text || konfirmasiTeks);
                });
            };
@@ -620,7 +617,7 @@
            // sekali untuk tujuan itu, konsisten dengan server yang mengabaikan
            // nilai apa pun yang terlanjur terkirim untuk tujuan "pulang".
            const handleVerifikasi = (izin) => {
-               if (busyId) return;
+               if (isSavingOverlayActive()) return;
                const jamTerpilih = String(verifJam[izin.id] || '').trim();
                if (izin.tujuan === 'kembali' && !jamTerpilih) {
                    showMsg(false, 'Pilih jam perkiraan kembali terlebih dahulu.');
@@ -628,9 +625,7 @@
                }
                const payload = { id: izin.id };
                if (izin.tujuan === 'kembali') payload.jam_perkiraan_kembali = jamTerpilih;
-               setBusyId(izin.id);
                onVerifikasi(payload, (ok, text) => {
-                   setBusyId('');
                    showMsg(ok, text || 'Terverifikasi.');
                    if (ok) {
                        setVerifJam(prev => {
@@ -650,7 +645,7 @@
            // Ini) — tersembunyi bukan berarti aman, cuma supaya tidak
            // menawarkan tombol yang pasti ditolak server.
            const handleHapusIzin = (izin) => {
-               if (busyId) return;
+               if (isSavingOverlayActive()) return;
                if (!window.confirm(`Hapus transaksi izin keluar ${izin.name}? Tindakan ini tidak bisa dibatalkan.`)) return;
                runAction(onDeleteIzin, izin, 'Transaksi izin keluar dihapus.');
            };
@@ -662,15 +657,13 @@
            // Code.gs), baru panggil server. onGenerateSurat (app.js) mengembalikan
            // { htmlContent, suratData, nomorSurat } lewat callback saat sukses.
            const handleCetakSuratIzin = (izin) => {
-               if (suratLoadingId) return;
+               if (isSavingOverlayActive()) return;
                if (!window.confirm('Generate surat izin keluar? Anda dapat mengunduh atau mencetak surat setelah ini.')) return;
                generateAndDownloadSurat(izin.id);
            };
 
            const generateAndDownloadSurat = (izinId) => {
-               setSuratLoadingId(izinId);
                onGenerateSurat({ izinId: izinId }, (ok, result) => {
-                   setSuratLoadingId('');
                    if (ok) {
                        setSuratPreview({ html: result.htmlContent, nomorSurat: result.nomorSurat });
                    } else {
@@ -780,7 +773,6 @@
                                                <select
                                                    value={verifJam[izin.id] || ''}
                                                    onChange={(e) => setVerifJam(prev => ({ ...prev, [izin.id]: e.target.value }))}
-                                                   disabled={busyId === izin.id}
                                                    className="w-full min-h-[44px] bg-white border border-slate-300 rounded-xl px-3 text-xs text-slate-900 focus:outline-none focus:border-sky"
                                                >
                                                    <option value="">Pilih jam...</option>
@@ -788,9 +780,7 @@
                                                </select>
                                            </div>
                                        )}
-                                       <Button onClick={() => handleVerifikasi(izin)} disabled={busyId === izin.id} size="compact" className="w-full">
-                                           {busyId === izin.id ? 'Memproses...' : 'Verifikasi & Siswa Keluar'}
-                                       </Button>
+                                       <Button onClick={() => handleVerifikasi(izin)} size="compact" className="w-full">Verifikasi & Siswa Keluar</Button>
                                    </React.Fragment>
                                ) : (
                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5 text-center">Menunggu diverifikasi Guru Piket yang bertugas.</div>
@@ -799,7 +789,7 @@
                                    piket bertugas/BK/admin, tapi cuma dalam 5 menit sejak
                                    dicatat (dicek ulang server, lihat 'deleteIzinKeluar'). */}
                                {canVerify && (
-                                   <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                                   <Button onClick={() => handleHapusIzin(izin)} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
                                )}
                            </KartuIzinKeluar>
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />} text="Tidak ada izin yang menunggu verifikasi." />}
@@ -812,17 +802,13 @@
                        {diLuar.length > 0 ? diLuar.map((izin) => (
                            <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                {canVerify ? (
-                                   <Button onClick={() => runAction(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai.')} disabled={busyId === izin.id} size="compact" variant="secondary" className="w-full">
-                                       {busyId === izin.id ? 'Memproses...' : 'Tandai Kembali'}
-                                   </Button>
+                                   <Button onClick={() => runAction(onTandaiKembali, izin, 'Ditandai kembali — transaksi selesai.')} size="compact" variant="secondary" className="w-full">Tandai Kembali</Button>
                                ) : (
                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5 text-center">Petugas piket yang bertugas yang menandai siswa kembali.</div>
                                )}
-                               <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
-                                   {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
-                               </Button>
+                               <Button onClick={() => handleCetakSuratIzin(izin)} size="compact" variant="ghost" className="w-full mt-1.5">📄 Cetak Surat Izin</Button>
                                {canVerify && (
-                                   <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                                   <Button onClick={() => handleHapusIzin(izin)} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
                                )}
                            </KartuIzinKeluar>
                        )) : <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} text="Tidak ada siswa yang sedang di luar." />}
@@ -842,16 +828,14 @@
                            {selesaiHariIni.map((izin) => (
                                <KartuIzinKeluar key={izin.id} izin={izin} waliByClass={waliByClass}>
                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{izin.status === 'Kembali' ? 'Selesai' : izin.status}</div>
-                                   <Button onClick={() => handleCetakSuratIzin(izin)} disabled={suratLoadingId === izin.id} size="compact" variant="ghost" className="w-full mt-1.5">
-                                       {suratLoadingId === izin.id ? 'Membuat surat...' : '📄 Cetak Surat Izin'}
-                                   </Button>
+                                   <Button onClick={() => handleCetakSuratIzin(izin)} size="compact" variant="ghost" className="w-full mt-1.5">📄 Cetak Surat Izin</Button>
                                    {/* Transaksi final (Selesai/Pulang) sudah melibatkan pihak
                                        lain (penyetuju + guru piket) — cuma admin yang boleh
                                        menghapusnya, bukan guru piket/BK yang kebetulan
                                        bertugas hari ini (server menolak selain admin, lihat
                                        'deleteIzinKeluar' di Code.gs). */}
                                    {isAdmin && (
-                                       <Button onClick={() => handleHapusIzin(izin)} disabled={busyId === izin.id} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
+                                       <Button onClick={() => handleHapusIzin(izin)} size="compact" variant="danger" className="w-full mt-1.5">🗑️ Hapus</Button>
                                    )}
                                </KartuIzinKeluar>
                            ))}
@@ -938,8 +922,8 @@
 
                                {msg && <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>{msg}</div>}
 
-                               <Button onClick={submitIzin} disabled={saving || !keperluan.trim() || (jalurKhusus && !alasanKhusus.trim())} className="w-full">
-                                   {saving ? 'Menyimpan...' : (jalurKhusus ? 'Catat Izin Khusus' : 'Setujui Izin')}
+                               <Button onClick={submitIzin} disabled={!keperluan.trim() || (jalurKhusus && !alasanKhusus.trim())} className="w-full">
+                                   {jalurKhusus ? 'Catat Izin Khusus' : 'Setujui Izin'}
                                </Button>
                                <Button onClick={resetForm} variant="secondary" className="w-full">Batal</Button>
                            </div>
@@ -1004,7 +988,7 @@
 
        // Kartu satu kegiatan. Tombolnya cuma mengikuti apa yang server izinkan —
        // kewenangan sebenarnya dicek ulang di server pada tiap aksi.
-       function KartuKelompok({ kelompok, peserta, canVerify, onLihat, onVerifikasi, onTandaiKembali, busy }) {
+       function KartuKelompok({ kelompok, peserta, canVerify, onLihat, onVerifikasi, onTandaiKembali }) {
            const r = ringkasPesertaKelompok(peserta);
            const jam = (v) => (v ? parseTimestamp(v).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
            const rincian = [
@@ -1056,18 +1040,14 @@
                    <div className="flex gap-2 pt-0.5">
                        <Button onClick={() => onLihat(kelompok)} variant="ghost" size="compact" className="flex-1">Lihat Peserta</Button>
                        {canVerify && r.menunggu > 0 && (
-                           <Button onClick={() => onVerifikasi(kelompok)} size="compact" disabled={busy} className="flex-1">
-                               {busy ? 'Memproses...' : 'Verifikasi Kelompok'}
-                           </Button>
+                           <Button onClick={() => onVerifikasi(kelompok)} size="compact" className="flex-1">Verifikasi Kelompok</Button>
                        )}
                        {/* "Tandai Rombongan Kembali" hanya untuk pola BERSAMA. Pola
                            individual ditandai per siswa dari daftar peserta — kalau
                            tombol rombongan ikut muncul di sana, artinya kita
                            menganggap semua pulang-pergi bareng padahal bukan. */}
                        {canVerify && r.menunggu === 0 && r.diLuar > 0 && kelompok.pola_kembali === 'bersama' && (
-                           <Button onClick={() => onTandaiKembali(kelompok)} variant="secondary" size="compact" disabled={busy} className="flex-1">
-                               {busy ? 'Memproses...' : 'Tandai Rombongan Kembali'}
-                           </Button>
+                           <Button onClick={() => onTandaiKembali(kelompok)} variant="secondary" size="compact" className="flex-1">Tandai Rombongan Kembali</Button>
                        )}
                    </div>
                </div>
@@ -1081,7 +1061,7 @@
        // Dua mode terakhir SELALU lewat centang, tidak pernah "ubah semua sekali
        // tap": mengubah 8 siswa sekaligus padahal 1 masih di luar itu persis
        // catatan palsu yang harus dicegah. Server menolak hal yang sama.
-       function PesertaKelompokSheet({ kelompok, peserta, mode, dipilih, onToggle, onTutup, onKonfirmasi, canVerify, busy, onTandaiKembaliIndividu, onTandaiPulang }) {
+       function PesertaKelompokSheet({ kelompok, peserta, mode, dipilih, onToggle, onTutup, onKonfirmasi, canVerify, onTandaiKembaliIndividu, onTandaiPulang }) {
            const bisaDicentang = (p) => (mode === 'verifikasi' ? p.status === 'Menunggu Verifikasi' : p.status === 'Sedang di Luar');
            const judul = mode === 'verifikasi' ? 'Verifikasi Kelompok' : mode === 'kembali' ? 'Tandai Rombongan Kembali' : 'Peserta Kegiatan';
            const terpilih = (dipilih || []).length;
@@ -1130,9 +1110,9 @@
                                        {mode === 'lihat' && canVerify && p.status === 'Sedang di Luar' && (
                                            <div className="flex gap-1.5 mt-1.5">
                                                {polaIndividual && (
-                                                   <button onClick={() => onTandaiKembaliIndividu(p)} disabled={busy} className="flex-1 text-[10px] font-bold text-sky-dim border border-sky-dim/40 rounded-lg py-1.5 disabled:opacity-40">Tandai Kembali</button>
+                                                   <button onClick={() => onTandaiKembaliIndividu(p)} className="flex-1 text-[10px] font-bold text-sky-dim border border-sky-dim/40 rounded-lg py-1.5 disabled:opacity-40">Tandai Kembali</button>
                                                )}
-                                               <button onClick={() => onTandaiPulang(p)} disabled={busy} className="flex-1 text-[10px] font-bold text-amber-700 border border-amber-300 rounded-lg py-1.5 disabled:opacity-40">Tandai Pulang</button>
+                                               <button onClick={() => onTandaiPulang(p)} className="flex-1 text-[10px] font-bold text-amber-700 border border-amber-300 rounded-lg py-1.5 disabled:opacity-40">Tandai Pulang</button>
                                            </div>
                                        )}
                                    </div>
@@ -1141,9 +1121,7 @@
                        </div>
 
                        {mode !== 'lihat' && (
-                           <Button onClick={onKonfirmasi} disabled={busy || !terpilih} className="w-full">
-                               {busy ? 'Memproses...' : `Konfirmasi ${terpilih} siswa`}
-                           </Button>
+                           <Button onClick={onKonfirmasi} disabled={!terpilih} className="w-full">Konfirmasi {terpilih} siswa</Button>
                        )}
                        <Button onClick={onTutup} variant="secondary" className="w-full">Tutup</Button>
                    </div>
@@ -1212,9 +1190,13 @@
 
            const resetForm = () => { setKegiatan(''); setKeperluan(''); setTujuan('kembali'); setPola('bersama'); setPilihan([]); setSearchQuery(''); setJalurKhusus(false); setAlasanKhusus(''); };
 
+           // saving/busyId (useState di atas) TIDAK LAGI dipakai untuk
+           // spinner/disabled -- overlay "Menyimpan..." global (ui-common.js)
+           // sudah mengunci seluruh layar, lihat catatan yang sama di
+           // IzinKeluarPanel. Deklarasinya dibiarkan di tempatnya supaya index
+           // useState sesudahnya (sheetKelompok, dst.) tidak bergeser.
            const submitKelompok = () => {
-               if (saving) return;
-               setSaving(true);
+               if (isSavingOverlayActive()) return;
                // Yang dikirim cuma NISN — nama & kelas diambil server dari
                // Master_Siswa, jadi tidak ada identitas siswa yang dikarang klien.
                onCreateKelompok({
@@ -1226,7 +1208,6 @@
                    jalur: jalurKhusus ? 'khusus' : 'normal',
                    alasan_khusus: jalurKhusus ? alasanKhusus : '',
                }, (ok, text) => {
-                   setSaving(false);
                    showMsg(ok, text);
                    if (ok) resetForm();
                });
@@ -1243,20 +1224,17 @@
            const toggleSheetPilih = (id) => setSheetPilih(prev => (prev.indexOf(id) !== -1 ? prev.filter(x => x !== id) : [...prev, id]));
 
            const konfirmasiSheet = () => {
-               if (!sheetKelompok || busyId) return;
+               if (!sheetKelompok || isSavingOverlayActive()) return;
                const fn = sheetMode === 'verifikasi' ? onVerifikasiKelompok : onTandaiKembaliKelompok;
-               setBusyId(sheetKelompok.id);
                fn({ id: sheetKelompok.id, pesertaIds: sheetPilih }, (ok, text) => {
-                   setBusyId('');
                    showMsg(ok, text);
                    if (ok) tutupSheet();
                });
            };
 
            const aksiPeserta = (fn, peserta) => {
-               if (busyId) return;
-               setBusyId(peserta.id);
-               fn({ id: peserta.id }, (ok, text) => { setBusyId(''); showMsg(ok, text); });
+               if (isSavingOverlayActive()) return;
+               fn({ id: peserta.id }, (ok, text) => showMsg(ok, text));
            };
 
            const seksi = (judul, list, kosong) => (
@@ -1264,7 +1242,7 @@
                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{judul} ({list.length})</h3>
                    {list.length > 0 ? list.map(k => (
                        <KartuKelompok
-                           key={k.id} kelompok={k} peserta={pesertaDari(k)} canVerify={canVerify} busy={busyId === k.id}
+                           key={k.id} kelompok={k} peserta={pesertaDari(k)} canVerify={canVerify}
                            onLihat={(kel) => bukaSheet(kel, 'lihat')}
                            onVerifikasi={(kel) => bukaSheet(kel, 'verifikasi')}
                            onTandaiKembali={(kel) => bukaSheet(kel, 'kembali')}
@@ -1382,8 +1360,8 @@
                        <p className="text-[11px] text-slate-600 leading-relaxed">
                            Anda akan tercatat sebagai pihak yang memberikan persetujuan kegiatan ini.
                        </p>
-                       <Button onClick={submitKelompok} disabled={saving || !kegiatan.trim() || !keperluan.trim() || !pilihan.length || (jalurKhusus && !alasanKhusus.trim())} className="w-full">
-                           {saving ? 'Menyimpan...' : (jalurKhusus ? 'Catat Kegiatan (Izin Khusus)' : 'Ajukan Kelompok')}
+                       <Button onClick={submitKelompok} disabled={!kegiatan.trim() || !keperluan.trim() || !pilihan.length || (jalurKhusus && !alasanKhusus.trim())} className="w-full">
+                           {jalurKhusus ? 'Catat Kegiatan (Izin Khusus)' : 'Ajukan Kelompok'}
                        </Button>
                    </div>
 
@@ -1395,7 +1373,7 @@
                        <PesertaKelompokSheet
                            kelompok={sheetKelompok} peserta={pesertaDari(sheetKelompok)} mode={sheetMode}
                            dipilih={sheetPilih} onToggle={toggleSheetPilih} onTutup={tutupSheet}
-                           onKonfirmasi={konfirmasiSheet} canVerify={canVerify} busy={!!busyId}
+                           onKonfirmasi={konfirmasiSheet} canVerify={canVerify}
                            onTandaiKembaliIndividu={(p) => aksiPeserta(onTandaiKembaliIndividu, p)}
                            onTandaiPulang={(p) => aksiPeserta(onTandaiPulang, p)}
                        />
