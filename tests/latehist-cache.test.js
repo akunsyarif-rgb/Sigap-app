@@ -218,3 +218,31 @@ test('getStudentLateHistory: cache dibuang lewat editEntry/deleteEntry kategori 
   assert.equal(del.status, 'success');
   assert.ok(!Object.prototype.hasOwnProperty.call(s.cacheStore, 'latehist_1001'), 'cache harus dibuang setelah baris dihapus');
 });
+
+test('getStudentLateHistory: NISN kosong/null/undefined TIDAK pernah masuk cache (selalu scan langsung)', () => {
+  const s = loadServer();
+
+  const kosong1 = s.get('admin', { action: 'getStudentLateHistory', nisn: '' });
+  assert.equal(kosong1.status, 'success');
+  assert.equal(s.sheets.Log_Gerbang.getRangeCalls, 1);
+  assert.ok(Object.keys(s.cacheStore).every((k) => !k.startsWith('latehist_')), 'NISN kosong tidak boleh menulis key cache latehist_ apa pun');
+
+  // Request kedua ber-NISN kosong juga -- kalau ada cache key generik
+  // (mis. "latehist_"), panggilan ini akan cache-hit dan TIDAK scan lagi.
+  // Harus tetap scan, karena tidak pernah di-cache sama sekali.
+  s.get('admin', { action: 'getStudentLateHistory', nisn: '' });
+  assert.equal(s.sheets.Log_Gerbang.getRangeCalls, 2, 'NISN kosong harus scan ulang tiap kali, tidak pernah cache hit');
+
+  // Tanpa parameter nisn sama sekali (undefined) -- perilaku sama.
+  s.get('admin', { action: 'getStudentLateHistory' });
+  assert.equal(s.sheets.Log_Gerbang.getRangeCalls, 3);
+  assert.ok(Object.keys(s.cacheStore).every((k) => !k.startsWith('latehist_')), 'NISN undefined juga tidak boleh menulis key cache latehist_ apa pun');
+
+  // NISN sungguhan tetap ke-cache seperti biasa setelah ini (bukti fungsi
+  // skip-cache-nya spesifik ke kosong/null/undefined, bukan mematikan cache
+  // untuk semua orang).
+  s.get('admin', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.ok(Object.prototype.hasOwnProperty.call(s.cacheStore, 'latehist_1001'));
+  s.get('admin', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.equal(s.sheets.Log_Gerbang.getRangeCalls, 4, 'NISN sungguhan tetap cache hit, tidak scan ulang');
+});

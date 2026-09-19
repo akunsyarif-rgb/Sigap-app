@@ -485,11 +485,19 @@ function startOfWeekServer(d) {
 // dan dibagikan ke pemanggil lain dengan cakupan berbeda. Cache dibuang oleh
 // action 'record' begitu siswa itu dapat catatan baru (lihat Code.gs) supaya
 // badge tidak basi.
+// NISN kosong/null/undefined SENGAJA dilewati dari cache (langsung scan,
+// tidak pernah put/get) -- tanpa ini, semua request ber-NISN kosong jatuh ke
+// SATU cache key generik ('latehist_'), jadi hasil scan permintaan pertama
+// yang malformed dibagikan ke permintaan malformed lain yang tidak
+// berhubungan selama TTL berjalan.
 function getLateHistoryForStudent(sheet, nisn) {
+  var nisnKey = String(nisn || '').trim();
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'latehist_' + nisn;
-  var cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  var cacheKey = nisnKey ? 'latehist_' + nisnKey : null;
+  if (cacheKey) {
+    var cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
 
   var lastRow = sheet.getLastRow();
   var result = [];
@@ -502,7 +510,7 @@ function getLateHistoryForStudent(sheet, nisn) {
     }
     result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
   }
-  cache.put(cacheKey, JSON.stringify(result), 300);
+  if (cacheKey) cache.put(cacheKey, JSON.stringify(result), 300);
   return result;
 }
 
@@ -514,11 +522,18 @@ function getLateHistoryForStudent(sheet, nisn) {
 // satu pemanggil ke-cache lalu dibagikan ke pemanggil lain dengan cakupan
 // beda. Cache dibuang oleh addPelanggaran/addPelanggaranKelompok/editEntry/
 // deleteEntry begitu siswa itu dapat/kehilangan catatan (lihat Code.gs).
+// NISN kosong/null/undefined SENGAJA dilewati dari cache (langsung scan,
+// tidak pernah put/get) -- pola sama persis dengan getLateHistoryForStudent
+// di atas, alasan sama: tanpa ini semua request ber-NISN kosong jatuh ke
+// SATU cache key generik ('pelcount_').
 function getPelanggaranMatchedForStudent(sheet, nisn) {
+  var nisnKey = String(nisn || '').trim();
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'pelcount_' + nisn;
-  var cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  var cacheKey = nisnKey ? 'pelcount_' + nisnKey : null;
+  if (cacheKey) {
+    var cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
 
   var result = [];
   var lastRow = sheet.getLastRow();
@@ -532,7 +547,7 @@ function getPelanggaranMatchedForStudent(sheet, nisn) {
       }
     }
   }
-  cache.put(cacheKey, JSON.stringify(result), 300);
+  if (cacheKey) cache.put(cacheKey, JSON.stringify(result), 300);
   return result;
 }
 

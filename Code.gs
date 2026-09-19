@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-19-cache-perstudent-badges';
+var BACKEND_VERSION = '2026-09-19-cache-skip-empty-nisn';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
 
 // ===== doPost =====

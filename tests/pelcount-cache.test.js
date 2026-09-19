@@ -167,3 +167,25 @@ test('getPelanggaranCountForStudent: cache dibuang lewat editEntry/deleteEntry k
   assert.equal(del.status, 'success');
   assert.ok(!Object.prototype.hasOwnProperty.call(s.cacheStore, 'pelcount_2002'), 'cache harus dibuang setelah baris dihapus');
 });
+
+test('getPelanggaranCountForStudent: NISN kosong/null/undefined TIDAK pernah masuk cache (selalu scan langsung)', () => {
+  const s = loadServer();
+
+  const kosong1 = s.get('admin', { action: 'getPelanggaranCountForStudent', nisn: '' });
+  assert.equal(kosong1.status, 'success');
+  assert.equal(s.sheets.Pelanggaran.getRangeCalls, 1);
+  assert.ok(Object.keys(s.cacheStore).every((k) => !k.startsWith('pelcount_')), 'NISN kosong tidak boleh menulis key cache pelcount_ apa pun');
+
+  s.get('admin', { action: 'getPelanggaranCountForStudent', nisn: '' });
+  assert.equal(s.sheets.Pelanggaran.getRangeCalls, 2, 'NISN kosong harus scan ulang tiap kali, tidak pernah cache hit');
+
+  s.get('admin', { action: 'getPelanggaranCountForStudent' });
+  assert.equal(s.sheets.Pelanggaran.getRangeCalls, 3);
+  assert.ok(Object.keys(s.cacheStore).every((k) => !k.startsWith('pelcount_')), 'NISN undefined juga tidak boleh menulis key cache pelcount_ apa pun');
+
+  // NISN sungguhan tetap ke-cache seperti biasa sesudahnya.
+  s.get('admin', { action: 'getPelanggaranCountForStudent', nisn: '1001' });
+  assert.ok(Object.prototype.hasOwnProperty.call(s.cacheStore, 'pelcount_1001'));
+  s.get('admin', { action: 'getPelanggaranCountForStudent', nisn: '1001' });
+  assert.equal(s.sheets.Pelanggaran.getRangeCalls, 4, 'NISN sungguhan tetap cache hit, tidak scan ulang');
+});
