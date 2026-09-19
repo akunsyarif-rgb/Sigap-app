@@ -48,6 +48,7 @@ function makeSheet(header, rows) {
       };
     },
     appendRow(row) { data.push(row.slice()); },
+    deleteRow(i) { data.splice(i - 1, 1); },
     getMaxRows: () => Math.max(data.length, 1000),
     insertRowsAfter(after, howMany) { for (let i = 0; i < howMany; i++) data.push([]); },
   };
@@ -205,4 +206,15 @@ test('getStudentLateHistory: cache tetap MENTAH (raw), RBAC tidak berubah lintas
   // Sheet cuma di-scan sekali walau dipanggil 3 pemakai berbeda, penyaringan
   // per-pemanggil terjadi SETELAH ambil dari cache, bukan sebelum disimpan.
   assert.equal(s.sheets.Log_Gerbang.getRangeCalls, 1);
+});
+
+test('getStudentLateHistory: cache dibuang lewat editEntry/deleteEntry kategori terlambat', () => {
+  const s = loadServer();
+  s.get('admin', { action: 'getStudentLateHistory', nisn: '1001' });
+  assert.ok(Object.prototype.hasOwnProperty.call(s.cacheStore, 'latehist_1001'));
+
+  const target = s.sheets.Log_Gerbang._data[3]; // baris kemarin(5), NISN 1001
+  const del = s.post('admin', { action: 'deleteEntry', category: 'terlambat', nisn: '1001', timestamp: target[0], name: 'Rahma' });
+  assert.equal(del.status, 'success');
+  assert.ok(!Object.prototype.hasOwnProperty.call(s.cacheStore, 'latehist_1001'), 'cache harus dibuang setelah baris dihapus');
 });

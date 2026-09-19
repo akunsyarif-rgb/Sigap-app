@@ -116,40 +116,50 @@
            };
 
            const submitReset = () => {
-               if (!resetPassword.trim() || !resetTarget) return;
+               if (!resetPassword.trim() || !resetTarget || savingReset) return;
+               setSavingReset(true);
                onUpdatePassword({ targetId: resetTarget.id, newPassword: resetPassword.trim() }, (ok, text) => {
+                   setSavingReset(false);
                    showMsg(ok, text);
-                   setResetTarget(null); setResetPassword('');
+                   if (ok) { setResetTarget(null); setResetPassword(''); }
                });
            };
 
            const submitJabatan = () => {
-               if (!jabatanTarget) return;
+               if (!jabatanTarget || savingJabatan) return;
+               setSavingJabatan(true);
                onUpdateJabatan({ targetId: jabatanTarget.id, newJabatan: jabatanInput.trim() }, (ok, text) => {
+                   setSavingJabatan(false);
                    showMsg(ok, text);
-                   setJabatanTarget(null); setJabatanInput('');
+                   if (ok) { setJabatanTarget(null); setJabatanInput(''); }
                });
            };
 
            const submitRole = () => {
-               if (!roleTarget) return;
+               if (!roleTarget || savingRole) return;
+               setSavingRole(true);
                onUpdateRole({ targetId: roleTarget.id, newRole: roleInput }, (ok, text) => {
+                   setSavingRole(false);
                    showMsg(ok, text);
-                   setRoleTarget(null);
+                   if (ok) setRoleTarget(null);
                });
            };
 
            const submitWaliKelas = () => {
-               if (!waliKelasTarget) return;
+               if (!waliKelasTarget || savingWaliKelas) return;
+               setSavingWaliKelas(true);
                onUpdateWaliKelas({ targetId: waliKelasTarget.id, newKelasWali: waliKelasInput.trim() }, (ok, text) => {
+                   setSavingWaliKelas(false);
                    showMsg(ok, text);
-                   setWaliKelasTarget(null); setWaliKelasInput('');
+                   if (ok) { setWaliKelasTarget(null); setWaliKelasInput(''); }
                });
            };
 
            const submitName = () => {
-               if (!nameTarget || !nameInput.trim()) return;
+               if (!nameTarget || !nameInput.trim() || savingName) return;
+               setSavingName(true);
                onUpdateName({ targetId: nameTarget.id, newName: nameInput.trim() }, (ok, text) => {
+                   setSavingName(false);
                    showMsg(ok, text);
                    if (ok) { setNameTarget(null); setNameInput(''); }
                });
@@ -217,7 +227,10 @@
            };
 
            const submitJadwal = () => {
+               if (savingJadwal) return;
+               setSavingJadwal(true);
                onSetJadwalPiket({ schedule: jadwalDraft }, (ok, text) => {
+                   setSavingJadwal(false);
                    showMsg(ok, text);
                    if (ok) setJadwalDirty(false);
                });
@@ -245,6 +258,22 @@
            const [confirmHapusData, setConfirmHapusData] = useState(null);
            const [hapusConfirmChecked, setHapusConfirmChecked] = useState(false);
            const [hapusDeleting, setHapusDeleting] = useState(false);
+           // Audit UX September 2026: submitName/submitJadwal/submitWaliKelas
+           // tidak punya state "sedang menyimpan" sama sekali -- tombolnya
+           // tetap aktif tanpa spinner selama fetch berjalan, jadi tap ganda
+           // bisa mengirim dua permintaan. DITAMBAHKAN PALING AKHIR dari
+           // seluruh useState di KelolaTab dengan sengaja -- beberapa test di
+           // tests/render-smoke.test.js memaksa nilai useState lewat INDEX
+           // urutan panggilan (stateOverrides sampai indeks ke-26). Menambah
+           // hook di tengah akan menggeser index itu dan membuat test lama
+           // salah sasaran secara diam-diam.
+           const [savingName, setSavingName] = useState(false);
+           const [savingJadwal, setSavingJadwal] = useState(false);
+           const [savingWaliKelas, setSavingWaliKelas] = useState(false);
+           const [savingReset, setSavingReset] = useState(false);
+           const [savingJabatan, setSavingJabatan] = useState(false);
+           const [savingRole, setSavingRole] = useState(false);
+           const [togglingStatusId, setTogglingStatusId] = useState(null);
 
            const hapusJenisTerpilih = () => HAPUS_DATA_JENIS_UI.map(j => j.key).filter(k => hapusJenis[k]);
 
@@ -371,8 +400,12 @@
                                                <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                                <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
                                                <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
-                                               <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
-                                                   {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
+                                               <button onClick={() => {
+                                                   if (togglingStatusId) return;
+                                                   setTogglingStatusId(t.id);
+                                                   onToggleStatus({ targetId: t.id }, (ok, text) => { setTogglingStatusId(null); showMsg(ok, text); });
+                                               }} disabled={togglingStatusId === t.id} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border disabled:opacity-50 ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
+                                                   {togglingStatusId === t.id ? 'Menyimpan...' : (t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan')}
                                                </button>
                                                <button onClick={() => setConfirmDeleteGuru(t)} className="text-[10px] font-semibold bg-crimson/10 border border-crimson/30 text-crimson px-2.5 py-1.5 rounded-lg">Hapus</button>
                                            </div>
@@ -444,7 +477,7 @@
                                    </div>
                                )}
 
-                               <Button onClick={submitJadwal} disabled={!jadwalDirty} className="w-full">Simpan Jadwal Piket</Button>
+                               <Button onClick={submitJadwal} disabled={!jadwalDirty || savingJadwal} className="w-full">{savingJadwal ? 'Menyimpan...' : 'Simpan Jadwal Piket'}</Button>
                            </Card>
                        </React.Fragment>
                    )}
@@ -549,7 +582,7 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{resetTarget.name}</div>
                                </div>
                                <input type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitReset} className="w-full">Simpan Password Baru</Button>
+                               <Button onClick={submitReset} disabled={!resetPassword.trim() || savingReset} className="w-full">{savingReset ? 'Menyimpan...' : 'Simpan Password Baru'}</Button>
                                <Button onClick={() => { setResetTarget(null); setResetPassword(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -566,7 +599,7 @@
                                <select value={roleInput} onChange={(e) => setRoleInput(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
                                    {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                </select>
-                               <Button onClick={submitRole} className="w-full">Simpan Role</Button>
+                               <Button onClick={submitRole} disabled={savingRole} className="w-full">{savingRole ? 'Menyimpan...' : 'Simpan Role'}</Button>
                                <Button onClick={() => setRoleTarget(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -581,7 +614,7 @@
                                    <div className="text-[10px] text-slate-500 mt-1">Hak akses tetap sesuai role: {ROLES[String(jabatanTarget.role).toLowerCase().trim()] ? ROLES[String(jabatanTarget.role).toLowerCase().trim()].label : 'Guru'}</div>
                                </div>
                                <input type="text" value={jabatanInput} onChange={(e) => setJabatanInput(e.target.value)} placeholder="Kosongkan untuk label default" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitJabatan} className="w-full">Simpan Jabatan</Button>
+                               <Button onClick={submitJabatan} disabled={savingJabatan} className="w-full">{savingJabatan ? 'Menyimpan...' : 'Simpan Jabatan'}</Button>
                                <Button onClick={() => { setJabatanTarget(null); setJabatanInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -596,7 +629,7 @@
                                    <div className="text-[10px] text-slate-500 mt-1">Perbaiki nama yang salah ketik. ID, password, role, dan riwayat tidak berubah.</div>
                                </div>
                                <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Nama lengkap" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitName} disabled={!nameInput.trim()} className="w-full">Simpan Nama</Button>
+                               <Button onClick={submitName} disabled={!nameInput.trim() || savingName} className="w-full">{savingName ? 'Menyimpan...' : 'Simpan Nama'}</Button>
                                <Button onClick={() => { setNameTarget(null); setNameInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -613,7 +646,7 @@
                                    <option value="">Tidak ada (lepas status wali kelas)</option>
                                    {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
                                </select>
-                               <Button onClick={submitWaliKelas} className="w-full">Simpan Wali Kelas</Button>
+                               <Button onClick={submitWaliKelas} disabled={savingWaliKelas} className="w-full">{savingWaliKelas ? 'Menyimpan...' : 'Simpan Wali Kelas'}</Button>
                                <Button onClick={() => { setWaliKelasTarget(null); setWaliKelasInput(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>

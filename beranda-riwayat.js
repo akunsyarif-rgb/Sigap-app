@@ -69,6 +69,13 @@
            const [tlMsg, setTlMsg] = useState('');
            const [showRiwayatTL, setShowRiwayatTL] = useState(false);
            const [locallyApproved, setLocallyApproved] = useState({});
+           // Audit UX September 2026: submitTindakLanjut tidak punya state
+           // "sedang menyimpan" -- tombol Ajukan tetap aktif tanpa spinner
+           // selama fetch berjalan, jadi tap ganda bisa mengirim dua
+           // permintaan. DITAMBAHKAN PALING AKHIR supaya index useState yang
+           // sudah dipakai test (stateOverrides = [undefined, student], dst.)
+           // tidak bergeser.
+           const [savingTindakLanjut, setSavingTindakLanjut] = useState(false);
            const now = new Date();
            const todayLate = allLogs.filter(l => isSameDay(parseTimestamp(l.timestamp), now));
            const todayPelanggaran = pelanggaranList.filter(p => isSameDay(parseTimestamp(p.timestamp), now));
@@ -110,9 +117,13 @@
 
            const showMsgTL = (text) => { setTlMsg(text); setTimeout(() => setTlMsg(''), 3000); };
            const submitTindakLanjut = () => {
-               if (!tindakLanjutTarget || !catatanInput.trim()) return;
-               onAjukanTindakLanjut({ nisn: tindakLanjutTarget.nisn, name: tindakLanjutTarget.name, class_name: tindakLanjutTarget.class, catatan: catatanInput.trim() }, (ok, text) => showMsgTL(text));
-               setTindakLanjutTarget(null); setCatatanInput('');
+               if (!tindakLanjutTarget || !catatanInput.trim() || savingTindakLanjut) return;
+               setSavingTindakLanjut(true);
+               onAjukanTindakLanjut({ nisn: tindakLanjutTarget.nisn, name: tindakLanjutTarget.name, class_name: tindakLanjutTarget.class, catatan: catatanInput.trim() }, (ok, text) => {
+                   setSavingTindakLanjut(false);
+                   showMsgTL(text);
+                   if (ok) { setTindakLanjutTarget(null); setCatatanInput(''); }
+               });
            };
            const approveTL = (t) => {
                setLocallyApproved(prev => ({ ...prev, [t.nisn]: true }));
@@ -365,8 +376,8 @@
                                    <div className="text-[10px] text-slate-500 mt-1">Akan diajukan ke Admin untuk disetujui — belum langsung hilang dari peringatan.</div>
                                </div>
                                <textarea value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder="Catatan tindak lanjut (mis. sudah dipanggil orang tua, diberi peringatan, dsb.)" rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim()} className="w-full">Ajukan ke Admin</Button>
-                               <Button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} variant="secondary" className="w-full">Batal</Button>
+                               <Button onClick={submitTindakLanjut} disabled={!catatanInput.trim() || savingTindakLanjut} className="w-full">{savingTindakLanjut ? 'Menyimpan...' : 'Ajukan ke Admin'}</Button>
+                               <Button onClick={() => { setTindakLanjutTarget(null); setCatatanInput(''); }} variant="secondary" disabled={savingTindakLanjut} className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}

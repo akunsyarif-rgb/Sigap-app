@@ -422,6 +422,18 @@ function clearCacheForCategory(category) {
   CacheService.getScriptCache().remove('today_data');
 }
 
+// Buang cache badge PER-NISN (getLateHistoryForStudent/
+// getPelanggaranMatchedForStudent di atas) begitu SATU baris milik siswa itu
+// diubah/dihapus lewat editEntry/deleteEntry -- tanpa ini, badge "sudah Nx
+// terlambat"/count pelanggaran bisa tetap basi sampai 5 menit walau baris
+// yang mendasarinya sudah tidak ada lagi/berubah. Kategori yang tidak punya
+// cache per-NISN (surat, upacara) sengaja tidak melakukan apa-apa di sini.
+function clearPerStudentCacheForCategory(category, nisn) {
+  var perStudentKeys = { terlambat: 'latehist_', pelanggaran: 'pelcount_' };
+  var prefix = perStudentKeys[category];
+  if (prefix) CacheService.getScriptCache().remove(prefix + nisn);
+}
+
 // Ambil baris >= cutoffDate secara efisien: baca HANYA kolom Timestamp dulu
 // (1 kali panggilan API ke Sheets, ringan), cari titik potong dengan binary
 // search DI MEMORI JavaScript (bukan berkali-kali getRange kecil — itu pola
@@ -489,6 +501,36 @@ function getLateHistoryForStudent(sheet, nisn) {
       }
     }
     result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  }
+  cache.put(cacheKey, JSON.stringify(result), 300);
+  return result;
+}
+
+// Pelanggaran 1 siswa saja (dipakai getPelanggaranCountForStudent di Code.gs,
+// on-demand tiap siswa dipilih di PelanggaranTab) — pola cache PERSIS sama
+// dengan getLateHistoryForStudent di atas: key per-NISN, TTL 5 menit, yang
+// disimpan MENTAH (cuma class + logged_by, belum disaring
+// scopePelanggaranForUser) supaya tidak ada hasil yang sudah difilter untuk
+// satu pemanggil ke-cache lalu dibagikan ke pemanggil lain dengan cakupan
+// beda. Cache dibuang oleh addPelanggaran/addPelanggaranKelompok/editEntry/
+// deleteEntry begitu siswa itu dapat/kehilangan catatan (lihat Code.gs).
+function getPelanggaranMatchedForStudent(sheet, nisn) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'pelcount_' + nisn;
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var result = [];
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    // Kolom B..H = NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh ->
+    // index 0 = nisn, index 2 = kelas, index 6 = dicatat_oleh.
+    var rows = sheet.getRange(2, 2, lastRow - 1, 7).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(nisn)) {
+        result.push({ class: rows[i][2], logged_by: rows[i][6] });
+      }
+    }
   }
   cache.put(cacheKey, JSON.stringify(result), 300);
   return result;

@@ -26,6 +26,15 @@
            // menggeser index itu dan membuat test lama salah sasaran secara diam-diam.
            // Menaruhnya di paling akhir menjaga semua index lama tetap benar.
            const [pelMode, setPelMode] = useState('individual');
+           // Audit UX September 2026: submitPelanggaran/submitBimbingan tidak
+           // punya state "sedang menyimpan" sama sekali sebelumnya -- tombol
+           // Simpan tetap aktif dan tidak menampilkan spinner selama fetch
+           // berjalan, jadi tap ganda (koneksi Apps Script lambat/lock antre
+           // saat jam piket ramai) bisa mengirim dua permintaan. Pola sama
+           // seperti savingSurat di gerbang.js. DITAMBAHKAN PALING AKHIR,
+           // sama alasannya dengan pelMode di atas (index useState dipakai test).
+           const [savingPelanggaran, setSavingPelanggaran] = useState(false);
+           const [savingBimbingan, setSavingBimbingan] = useState(false);
 
            const jenisPresets = ['Bolos', 'Rambut/Seragam', 'Merokok'];
            const sanksiPresets = ['Teguran Lisan', 'Surat Peringatan', 'Panggil Orang Tua'];
@@ -58,16 +67,29 @@
            const showMsg = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
            const submitPelanggaran = () => {
+               if (savingPelanggaran) return;
                const finalJenis = jenis === 'Custom' ? (jenisCustom.trim() || 'Lainnya') : jenis;
                const finalSanksi = sanksi === 'Custom' ? (sanksiCustom.trim() || 'Lainnya') : sanksi;
-               onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, sanksi: finalSanksi, catatan }, (ok, text) => showMsg(text));
-               setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setSanksi(''); setSanksiCustom(''); setCatatan('');
+               setSavingPelanggaran(true);
+               onAddPelanggaran({ nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, jenis_pelanggaran: finalJenis, sanksi: finalSanksi, catatan }, (ok, text) => {
+                   setSavingPelanggaran(false);
+                   showMsg(text);
+                   if (ok) {
+                       setSelectedStudent(null); setSearchQuery(''); setJenis(''); setJenisCustom(''); setSanksi(''); setSanksiCustom(''); setCatatan('');
+                   }
+               });
            };
 
            const submitBimbingan = () => {
-               if (!bimbinganCatatan.trim()) return;
-               onAddBimbingan({ nisn: bimbinganTarget.nisn, name: bimbinganTarget.name, class_name: bimbinganTarget.class, catatan: bimbinganCatatan.trim() }, (ok, text) => showMsg(text));
-               setBimbinganTarget(null); setBimbinganCatatan('');
+               if (savingBimbingan || !bimbinganCatatan.trim()) return;
+               setSavingBimbingan(true);
+               onAddBimbingan({ nisn: bimbinganTarget.nisn, name: bimbinganTarget.name, class_name: bimbinganTarget.class, catatan: bimbinganCatatan.trim() }, (ok, text) => {
+                   setSavingBimbingan(false);
+                   showMsg(text);
+                   if (ok) {
+                       setBimbinganTarget(null); setBimbinganCatatan('');
+                   }
+               });
            };
 
            return (
@@ -216,9 +238,9 @@
 
                                <input type="text" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan tambahan (opsional)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
 
-                               <Button onClick={submitPelanggaran} disabled={!jenis || !sanksi} className="w-full">Simpan</Button>
-                               <Button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} variant="ghost" className="w-full">Tandai Perlu Bimbingan Khusus</Button>
-                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" className="w-full">Batal</Button>
+                               <Button onClick={submitPelanggaran} disabled={!jenis || !sanksi || savingPelanggaran} className="w-full">{savingPelanggaran ? 'Menyimpan...' : 'Simpan'}</Button>
+                               <Button onClick={() => { setBimbinganTarget(selectedStudent); setSelectedStudent(null); }} variant="ghost" disabled={savingPelanggaran} className="w-full">Tandai Perlu Bimbingan Khusus</Button>
+                               <Button onClick={() => setSelectedStudent(null)} variant="secondary" disabled={savingPelanggaran} className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -231,8 +253,8 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{bimbinganTarget.name}</div>
                                </div>
                                <textarea value={bimbinganCatatan} onChange={(e) => setBimbinganCatatan(e.target.value)} placeholder="Catatan untuk Admin..." rows={3} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitBimbingan} className="w-full">Simpan (hanya Admin bisa lihat)</Button>
-                               <Button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} variant="secondary" className="w-full">Batal</Button>
+                               <Button onClick={submitBimbingan} disabled={savingBimbingan || !bimbinganCatatan.trim()} className="w-full">{savingBimbingan ? 'Menyimpan...' : 'Simpan (hanya Admin bisa lihat)'}</Button>
+                               <Button onClick={() => { setBimbinganTarget(null); setBimbinganCatatan(''); }} variant="secondary" disabled={savingBimbingan} className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
