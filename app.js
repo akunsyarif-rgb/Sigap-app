@@ -728,7 +728,6 @@
            const handleRecord = (type) => {
                if (isSavingOverlayActive()) return;
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
-               const newEntry = { timestamp: new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
                showSavingOverlay();
                const controller = new AbortController();
@@ -737,6 +736,11 @@
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
+                           // timestamp dari SERVER (baris ini, bukan Date()
+                           // client) — supaya edit/hapus berikutnya di entry
+                           // ini cocok persis dengan yang tertulis di sheet.
+                           // Lihat catatan bug di findRowByNisnTimestamp/Utils.gs.
+                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
                            setAllLogs(prev => [newEntry, ...prev]);
                            setSelectedStudent(null); setCustomReasonInput('');
                            setToast(`✓ ${newEntry.name} berhasil dicatat`);
@@ -932,7 +936,8 @@
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
-                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name };
+                           // timestamp dari server, sama alasan seperti handleRecord.
+                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
                            callback(true, 'Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
@@ -994,7 +999,8 @@
                    .then(res => res.json()).then(checkSession)
                    .then(data => {
                        if (data.status === 'success') {
-                           const newEntry = { timestamp: new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
+                           // timestamp dari server, sama alasan seperti handleRecord.
+                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
                            setPelanggaranList(prev => [newEntry, ...prev]);
                            callback(true, 'Pelanggaran berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
