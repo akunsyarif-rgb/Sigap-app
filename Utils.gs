@@ -422,6 +422,18 @@ function clearCacheForCategory(category) {
   CacheService.getScriptCache().remove('today_data');
 }
 
+// Buang cache badge PER-NISN (getLateHistoryForStudent/
+// getPelanggaranMatchedForStudent di atas) begitu SATU baris milik siswa itu
+// diubah/dihapus lewat editEntry/deleteEntry -- tanpa ini, badge "sudah Nx
+// terlambat"/count pelanggaran bisa tetap basi sampai 5 menit walau baris
+// yang mendasarinya sudah tidak ada lagi/berubah. Kategori yang tidak punya
+// cache per-NISN (surat, upacara) sengaja tidak melakukan apa-apa di sini.
+function clearPerStudentCacheForCategory(category, nisn) {
+  var perStudentKeys = { terlambat: 'latehist_', pelanggaran: 'pelcount_' };
+  var prefix = perStudentKeys[category];
+  if (prefix) CacheService.getScriptCache().remove(prefix + nisn);
+}
+
 // Ambil baris >= cutoffDate secara efisien: baca HANYA kolom Timestamp dulu
 // (1 kali panggilan API ke Sheets, ringan), cari titik potong dengan binary
 // search DI MEMORI JavaScript (bukan berkali-kali getRange kecil — itu pola
@@ -462,17 +474,80 @@ function startOfWeekServer(d) {
 // dikirim ke klien, tapi supaya hasilnya bisa disaring lewat
 // scopeDailyRecordsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
 // siswa bisa ditarik siapa saja yang tahu NISN-nya.
+//
+// Cache 5 menit per NISN (pola sama seperti login_users di Code.gs) — tanpa
+// ini, tiap kali RecordModal dibuka untuk seorang siswa, fungsi ini men-scan
+// ULANG SELURUH Log_Gerbang (linear terhadap total riwayat sekolah, bukan cuma
+// hari ini — beda dari cek duplikat di action 'record' yang sudah pakai
+// getRowsSince). Yang disimpan ke cache adalah hasil MENTAH (belum disaring
+// scopeDailyRecordsForUser) — sama seperti today_logs/pelanggaran_list_raw,
+// supaya tidak ada hasil "sudah difilter untuk satu pemanggil" yang ke-cache
+// dan dibagikan ke pemanggil lain dengan cakupan berbeda. Cache dibuang oleh
+// action 'record' begitu siswa itu dapat catatan baru (lihat Code.gs) supaya
+// badge tidak basi.
+// NISN kosong/null/undefined SENGAJA dilewati dari cache (langsung scan,
+// tidak pernah put/get) -- tanpa ini, semua request ber-NISN kosong jatuh ke
+// SATU cache key generik ('latehist_'), jadi hasil scan permintaan pertama
+// yang malformed dibagikan ke permintaan malformed lain yang tidak
+// berhubungan selama TTL berjalan.
 function getLateHistoryForStudent(sheet, nisn) {
+  var nisnKey = String(nisn || '').trim();
+  var cache = CacheService.getScriptCache();
+  var cacheKey = nisnKey ? 'latehist_' + nisnKey : null;
+  if (cacheKey) {
+    var cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
+
   var lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return [];
-  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   var result = [];
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][1]) === String(nisn)) {
-      result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
+  if (lastRow > 1) {
+    var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][1]) === String(nisn)) {
+        result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
+      }
+    }
+    result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  }
+  if (cacheKey) cache.put(cacheKey, JSON.stringify(result), 300);
+  return result;
+}
+
+// Pelanggaran 1 siswa saja (dipakai getPelanggaranCountForStudent di Code.gs,
+// on-demand tiap siswa dipilih di PelanggaranTab) — pola cache PERSIS sama
+// dengan getLateHistoryForStudent di atas: key per-NISN, TTL 5 menit, yang
+// disimpan MENTAH (cuma class + logged_by, belum disaring
+// scopePelanggaranForUser) supaya tidak ada hasil yang sudah difilter untuk
+// satu pemanggil ke-cache lalu dibagikan ke pemanggil lain dengan cakupan
+// beda. Cache dibuang oleh addPelanggaran/addPelanggaranKelompok/editEntry/
+// deleteEntry begitu siswa itu dapat/kehilangan catatan (lihat Code.gs).
+// NISN kosong/null/undefined SENGAJA dilewati dari cache (langsung scan,
+// tidak pernah put/get) -- pola sama persis dengan getLateHistoryForStudent
+// di atas, alasan sama: tanpa ini semua request ber-NISN kosong jatuh ke
+// SATU cache key generik ('pelcount_').
+function getPelanggaranMatchedForStudent(sheet, nisn) {
+  var nisnKey = String(nisn || '').trim();
+  var cache = CacheService.getScriptCache();
+  var cacheKey = nisnKey ? 'pelcount_' + nisnKey : null;
+  if (cacheKey) {
+    var cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
+
+  var result = [];
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    // Kolom B..H = NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh ->
+    // index 0 = nisn, index 2 = kelas, index 6 = dicatat_oleh.
+    var rows = sheet.getRange(2, 2, lastRow - 1, 7).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(nisn)) {
+        result.push({ class: rows[i][2], logged_by: rows[i][6] });
+      }
     }
   }
-  result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  if (cacheKey) cache.put(cacheKey, JSON.stringify(result), 300);
   return result;
 }
 

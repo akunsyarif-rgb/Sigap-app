@@ -59,7 +59,7 @@
            );
        }
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onPreviewHapusData, onHapusData, onGoToExportData, loading }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onPreviewHapusData, onHapusData, onGoToExportData }) {
            // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
            // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
            // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
@@ -108,7 +108,7 @@
 
            const submitAdd = (e) => {
                e.preventDefault();
-               if (!newId.trim() || !newName.trim() || !newPassword.trim()) return;
+               if (!newId.trim() || !newName.trim() || !newPassword.trim() || isSavingOverlayActive()) return;
                onAddTeacher({ newId: newId.trim(), newName: newName.trim(), newPassword: newPassword.trim(), newRole, newJabatan: newJabatan.trim() }, (ok, text) => {
                    showMsg(ok, text);
                    if (ok) { setNewId(''); setNewName(''); setNewPassword(''); setNewRole('guru'); setNewJabatan(''); setShowAddGuru(false); }
@@ -116,39 +116,39 @@
            };
 
            const submitReset = () => {
-               if (!resetPassword.trim() || !resetTarget) return;
+               if (!resetPassword.trim() || !resetTarget || isSavingOverlayActive()) return;
                onUpdatePassword({ targetId: resetTarget.id, newPassword: resetPassword.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   setResetTarget(null); setResetPassword('');
+                   if (ok) { setResetTarget(null); setResetPassword(''); }
                });
            };
 
            const submitJabatan = () => {
-               if (!jabatanTarget) return;
+               if (!jabatanTarget || isSavingOverlayActive()) return;
                onUpdateJabatan({ targetId: jabatanTarget.id, newJabatan: jabatanInput.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   setJabatanTarget(null); setJabatanInput('');
+                   if (ok) { setJabatanTarget(null); setJabatanInput(''); }
                });
            };
 
            const submitRole = () => {
-               if (!roleTarget) return;
+               if (!roleTarget || isSavingOverlayActive()) return;
                onUpdateRole({ targetId: roleTarget.id, newRole: roleInput }, (ok, text) => {
                    showMsg(ok, text);
-                   setRoleTarget(null);
+                   if (ok) setRoleTarget(null);
                });
            };
 
            const submitWaliKelas = () => {
-               if (!waliKelasTarget) return;
+               if (!waliKelasTarget || isSavingOverlayActive()) return;
                onUpdateWaliKelas({ targetId: waliKelasTarget.id, newKelasWali: waliKelasInput.trim() }, (ok, text) => {
                    showMsg(ok, text);
-                   setWaliKelasTarget(null); setWaliKelasInput('');
+                   if (ok) { setWaliKelasTarget(null); setWaliKelasInput(''); }
                });
            };
 
            const submitName = () => {
-               if (!nameTarget || !nameInput.trim()) return;
+               if (!nameTarget || !nameInput.trim() || isSavingOverlayActive()) return;
                onUpdateName({ targetId: nameTarget.id, newName: nameInput.trim() }, (ok, text) => {
                    showMsg(ok, text);
                    if (ok) { setNameTarget(null); setNameInput(''); }
@@ -156,10 +156,8 @@
            };
 
            const executeDeleteGuru = () => {
-               if (!confirmDeleteGuru) return;
-               setDeletingGuru(true);
+               if (!confirmDeleteGuru || isSavingOverlayActive()) return;
                onDeleteTeacher({ targetId: confirmDeleteGuru.id }, (ok, text) => {
-                   setDeletingGuru(false);
                    showMsg(ok, text);
                    setConfirmDeleteGuru(null);
                });
@@ -217,6 +215,7 @@
            };
 
            const submitJadwal = () => {
+               if (isSavingOverlayActive()) return;
                onSetJadwalPiket({ schedule: jadwalDraft }, (ok, text) => {
                    showMsg(ok, text);
                    if (ok) setJadwalDirty(false);
@@ -292,10 +291,8 @@
            };
 
            const executeHapusData = () => {
-               if (!confirmHapusData || !hapusConfirmChecked) return;
-               setHapusDeleting(true);
+               if (!confirmHapusData || !hapusConfirmChecked || isSavingOverlayActive()) return;
                onHapusData({ jenis: confirmHapusData.jenis, start: confirmHapusData.start, end: confirmHapusData.end, confirm: true }, (ok, result) => {
-                   setHapusDeleting(false);
                    if (ok) {
                        showMsg(true, `✓ Berhasil menghapus ${result && result.total || 0} data.`);
                        setConfirmHapusData(null);
@@ -371,7 +368,10 @@
                                                <button onClick={() => { setJabatanTarget(t); setJabatanInput(t.jabatan || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Jabatan</button>
                                                <button onClick={() => { setWaliKelasTarget(t); setWaliKelasInput(t.kelasWali || ''); }} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Wali Kelas</button>
                                                <button onClick={() => setResetTarget(t)} className="text-[10px] font-semibold bg-slate-100 border border-slate-300 text-slate-600 px-2.5 py-1.5 rounded-lg">Password</button>
-                                               <button onClick={() => onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text))} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
+                                               <button onClick={() => {
+                                                   if (isSavingOverlayActive()) return;
+                                                   onToggleStatus({ targetId: t.id }, (ok, text) => showMsg(ok, text));
+                                               }} className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border ${t.status === 'nonaktif' ? 'bg-sky-dim/10 border-sky-dim/40 text-sky-dim' : 'bg-crimson/10 border-crimson/30 text-crimson'}`}>
                                                    {t.status === 'nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
                                                </button>
                                                <button onClick={() => setConfirmDeleteGuru(t)} className="text-[10px] font-semibold bg-crimson/10 border border-crimson/30 text-crimson px-2.5 py-1.5 rounded-lg">Hapus</button>
@@ -533,9 +533,7 @@
                                    </select>
                                    <input type="text" value={newJabatan} onChange={(e) => setNewJabatan(e.target.value)} placeholder="Jabatan tampilan (opsional, misal: Kepala Sekolah)" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
                                    <p className="text-[10px] text-slate-500 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
-                                   <Button type="submit" disabled={loading} className="w-full">
-                                       {loading ? 'Menyimpan...' : 'Tambah Guru'}
-                                   </Button>
+                                   <Button type="submit" className="w-full">Tambah Guru</Button>
                                </form>
                            </div>
                        </div>
@@ -549,7 +547,7 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{resetTarget.name}</div>
                                </div>
                                <input type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Password baru" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
-                               <Button onClick={submitReset} className="w-full">Simpan Password Baru</Button>
+                               <Button onClick={submitReset} disabled={!resetPassword.trim()} className="w-full">Simpan Password Baru</Button>
                                <Button onClick={() => { setResetTarget(null); setResetPassword(''); }} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
@@ -627,10 +625,8 @@
                                    <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteGuru.name}</div>
                                    <p className="text-[11px] text-slate-500 mt-2">Akun ini akan dihapus permanen dan tidak bisa login lagi. Riwayat catatan yang sudah tersimpan tidak ikut terhapus. Kalau ini cuma nama yang salah ketik, gunakan "Edit Nama" saja, bukan Hapus.</p>
                                </div>
-                               <Button onClick={executeDeleteGuru} disabled={deletingGuru} variant="danger" className="w-full">
-                                   {deletingGuru ? 'Menghapus...' : 'Ya, Hapus'}
-                               </Button>
-                               <Button onClick={() => setConfirmDeleteGuru(null)} variant="secondary" className="w-full" disabled={deletingGuru}>Batal</Button>
+                               <Button onClick={executeDeleteGuru} variant="danger" className="w-full">Ya, Hapus</Button>
+                               <Button onClick={() => setConfirmDeleteGuru(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -685,12 +681,10 @@
                                            <input type="checkbox" checked={hapusConfirmChecked} onChange={(e) => setHapusConfirmChecked(e.target.checked)} className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                            <span>Saya memahami bahwa data yang dipilih akan dihapus permanen dan tidak dapat dipulihkan dari SIGAP.</span>
                                        </label>
-                                       <Button onClick={executeHapusData} disabled={!hapusConfirmChecked || hapusDeleting} variant="danger" className="w-full">
-                                           {hapusDeleting ? 'Menghapus...' : `Ya, Hapus ${confirmHapusData.total} Data Ini`}
-                                       </Button>
+                                       <Button onClick={executeHapusData} disabled={!hapusConfirmChecked} variant="danger" className="w-full">Ya, Hapus {confirmHapusData.total} Data Ini</Button>
                                    </React.Fragment>
                                )}
-                               <Button onClick={() => { setConfirmHapusData(null); setHapusConfirmChecked(false); }} variant="secondary" className="w-full" disabled={hapusDeleting}>
+                               <Button onClick={() => { setConfirmHapusData(null); setHapusConfirmChecked(false); }} variant="secondary" className="w-full">
                                    {confirmHapusData.total === 0 ? 'Tutup' : 'Batal'}
                                </Button>
                            </div>

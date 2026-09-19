@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-19-fix-pushqueue-lock';
+var BACKEND_VERSION = '2026-09-19-cache-skip-empty-nisn';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
 
 // ===== doPost =====
@@ -206,6 +206,11 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
+      // Siswa ini baru dapat catatan keterlambatan -- buang cache riwayatnya
+      // (lihat getLateHistoryForStudent di Utils.gs) supaya badge "sudah Nx
+      // terlambat" di form Catat Terlambat langsung akurat, bukan basi
+      // sampai TTL 5 menit habis.
+      CacheService.getScriptCache().remove('latehist_' + data.nisn);
       // Notifikasi Wali Kelas — kelas diambil ULANG dari Master_Siswa (BUKAN
       // data.class_name dari klien di atas, yang tidak diverifikasi untuk
       // aksi ini) lewat resolveSiswaForIzin, satu-satunya sumber kebenaran
@@ -728,6 +733,10 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.jenis_pelanggaran), sanitizeSheetValue(data.sanksi), sanitizeSheetValue(data.catatan || ''), sessionUser.name]);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
+      // Siswa ini baru dapat catatan pelanggaran -- buang cache count-nya
+      // (lihat getPelanggaranMatchedForStudent di Utils.gs) supaya angka di
+      // PelanggaranTab langsung akurat, bukan basi sampai TTL 5 menit habis.
+      CacheService.getScriptCache().remove('pelcount_' + data.nisn);
       var pelanggaranSiswa = resolveSiswaForIzin(ss, data.nisn);
       if (pelanggaranSiswa) {
         notifyRelevantUsers({ jenis: 'pelanggaran', nisn: pelanggaranSiswa.nisn, kelas: pelanggaranSiswa.class, needsPiketAction: false });
@@ -798,6 +807,11 @@ function doPost(e) {
       appendRowsBatch(pkSheet, pkRows);
       CacheService.getScriptCache().remove('pelanggaran_list_raw');
       CacheService.getScriptCache().remove('today_data');
+      // Semua siswa di kejadian ini baru dapat catatan pelanggaran -- buang
+      // cache count masing-masing (sama alasan seperti addPelanggaran individual).
+      pkResolved.siswa.forEach(function (siswa) {
+        CacheService.getScriptCache().remove('pelcount_' + siswa.nisn);
+      });
       logAudit(sessionUser, 'Pelanggaran Kelompok',
         'kelas=' + pkKelasAcuan + ' | jumlah=' + pkResolved.siswa.length +
         ' | siswa=' + pkResolved.siswa.map(function (s) { return s.name; }).join(', '));
@@ -1561,6 +1575,7 @@ function doPost(e) {
         return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
       }
       clearCacheForCategory(data.category);
+      clearPerStudentCacheForCategory(data.category, data.nisn);
       logAudit(sessionUser, 'Edit Data ' + data.category, data.name + ' (' + data.nisn + ')');
       return jsonOut({ status: 'success' });
     }
@@ -1591,6 +1606,7 @@ function doPost(e) {
       }
       sheet.deleteRow(found.rowIndex);
       clearCacheForCategory(data.category);
+      clearPerStudentCacheForCategory(data.category, data.nisn);
       logAudit(sessionUser, 'Hapus Data ' + data.category, data.name + ' (' + data.nisn + ')');
       return jsonOut({ status: 'success' });
     }
@@ -2213,22 +2229,11 @@ function doGet(e) {
   if (action === 'getPelanggaranCountForStudent') {
     if (isOsisRole(sessionUser.role)) return jsonOut({ status: 'error', message: 'Unauthorized' });
     var sheet = ss.getSheetByName('Pelanggaran');
-    var pcMatched = [];
-    if (sheet) {
-      var lastRow = sheet.getLastRow();
-      if (lastRow > 1) {
-        // Kolom B..H = NISN, Nama, Kelas, Jenis, Sanksi, Catatan, Dicatat_Oleh
-        // -> index 0 = nisn, index 2 = kelas, index 6 = dicatat_oleh. Tetap
-        // SATU panggilan getRange (biaya Sheets API tidak berubah), kelas &
-        // pencatat sekarang ikut dibaca supaya scopePelanggaranForUser bisa
-        // menegakkan cakupannya di bawah.
-        var pcRows = sheet.getRange(2, 2, lastRow - 1, 7).getValues();
-        for (var i = 0; i < pcRows.length; i++) {
-          if (String(pcRows[i][0]) !== String(e.parameter.nisn)) continue;
-          pcMatched.push({ class: pcRows[i][2], logged_by: pcRows[i][6] });
-        }
-      }
-    }
+    // getPelanggaranMatchedForStudent (Utils.gs) cache hasil MENTAH per-NISN
+    // 5 menit — sebelumnya baris ini men-scan ULANG SELURUH Pelanggaran tiap
+    // kali PelanggaranTab dibuka untuk seorang siswa (pola sama persis
+    // dengan getLateHistoryForStudent sebelum di-cache).
+    var pcMatched = sheet ? getPelanggaranMatchedForStudent(sheet, e.parameter.nisn) : [];
     var count = scopePelanggaranForUser(pcMatched, sessionUser).length;
     return jsonOut({ status: 'success', count: count });
   }
