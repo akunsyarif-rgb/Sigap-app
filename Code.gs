@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-19-fix-pushqueue-lock';
+var BACKEND_VERSION = '2026-09-19-cache-latehist';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
 
 // ===== doPost =====
@@ -206,6 +206,11 @@ function doPost(e) {
       sheet.appendRow([new Date(), data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
+      // Siswa ini baru dapat catatan keterlambatan -- buang cache riwayatnya
+      // (lihat getLateHistoryForStudent di Utils.gs) supaya badge "sudah Nx
+      // terlambat" di form Catat Terlambat langsung akurat, bukan basi
+      // sampai TTL 5 menit habis.
+      CacheService.getScriptCache().remove('latehist_' + data.nisn);
       // Notifikasi Wali Kelas — kelas diambil ULANG dari Master_Siswa (BUKAN
       // data.class_name dari klien di atas, yang tidak diverifikasi untuk
       // aksi ini) lewat resolveSiswaForIzin, satu-satunya sumber kebenaran

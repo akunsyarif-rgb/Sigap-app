@@ -462,17 +462,35 @@ function startOfWeekServer(d) {
 // dikirim ke klien, tapi supaya hasilnya bisa disaring lewat
 // scopeDailyRecordsForUser di Code.gs — tanpa keduanya, riwayat lengkap seorang
 // siswa bisa ditarik siapa saja yang tahu NISN-nya.
+//
+// Cache 5 menit per NISN (pola sama seperti login_users di Code.gs) — tanpa
+// ini, tiap kali RecordModal dibuka untuk seorang siswa, fungsi ini men-scan
+// ULANG SELURUH Log_Gerbang (linear terhadap total riwayat sekolah, bukan cuma
+// hari ini — beda dari cek duplikat di action 'record' yang sudah pakai
+// getRowsSince). Yang disimpan ke cache adalah hasil MENTAH (belum disaring
+// scopeDailyRecordsForUser) — sama seperti today_logs/pelanggaran_list_raw,
+// supaya tidak ada hasil "sudah difilter untuk satu pemanggil" yang ke-cache
+// dan dibagikan ke pemanggil lain dengan cakupan berbeda. Cache dibuang oleh
+// action 'record' begitu siswa itu dapat catatan baru (lihat Code.gs) supaya
+// badge tidak basi.
 function getLateHistoryForStudent(sheet, nisn) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'latehist_' + nisn;
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
   var lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return [];
-  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   var result = [];
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][1]) === String(nisn)) {
-      result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
+  if (lastRow > 1) {
+    var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][1]) === String(nisn)) {
+        result.push({ timestamp: data[i][0], type: data[i][4], class: data[i][3], logged_by: data[i][5] });
+      }
     }
+    result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
   }
-  result.sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  cache.put(cacheKey, JSON.stringify(result), 300);
   return result;
 }
 
