@@ -18,7 +18,7 @@
        // `npx web-push generate-vapid-keys` — subscription yang dibuat dengan
        // kunci publik lama tidak akan pernah bisa dikirimi notifikasi oleh
        // kunci privat yang baru.
-       const VAPID_PUBLIC_KEY = "BBGeLh0xTBdRYq3HIESmYtY6Lps8hix9eG0FurryAQL1TZySOMPxTGI443PQIoDNFOdf-xvZQiiBqWivX7wppb8";
+       const VAPID_PUBLIC_KEY = "BB3OFpiSC6bvbLX9rHG94bIRJOZMZswtqQl1oSHFRDoJKv4n6gINf7DxFooQb3r4e61wy4GBPk2sIVs5GjZ0Hfo";
 
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
