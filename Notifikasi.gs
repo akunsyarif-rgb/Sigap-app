@@ -515,25 +515,57 @@ function processPushQueue() {
     return;
   }
 
+  var httpStatus = response.getResponseCode();
+  var rawBody = '';
+  try {
+    rawBody = response.getContentText();
+  } catch (readErr) {
+    rawBody = '';
+  }
   var results = [];
   try {
-    var parsed = JSON.parse(response.getContentText());
+    var parsed = JSON.parse(rawBody);
     results = parsed && parsed.results ? parsed.results : [];
   } catch (parseErr) {
     results = [];
   }
 
+  if (!results.length) {
+    // Relay MENJAWAB (bukan exception jaringan — itu sudah ditangani di
+    // catch(fetchErr) di atas), tapi bodinya bukan bentuk sukses yang
+    // diharapkan ({results:[...]})  — entah relay menolak request ini
+    // sendiri (401 secret salah, 500 relay_not_configured di sisi Vercel,
+    // dst.) atau responsnya bukan JSON valid. Simpan status HTTP + potongan
+    // body-nya, bukan 'send_failed' polos — sebelumnya kegagalan di level
+    // ini gak bisa dibedakan dari gagal kirim per-device biasa.
+    var wholeErr = 'send_failed: HTTP ' + httpStatus + (rawBody ? ' ' + rawBody.slice(0, 250) : '');
+    pushFinalizeUnderLock(queueSheet, candidates, null, wholeErr, null);
+    return;
+  }
+
   var candidateOk = {};
+  var candidateErr = {};
   var goneEndpoints = [];
   for (var r = 0; r < results.length; r++) {
     var item = items[r];
     if (!item) continue;
-    if (results[r] && results[r].ok) candidateOk[item.candidateIndex] = true;
-    else if (results[r] && results[r].gone) goneEndpoints.push(item.endpoint);
+    if (results[r] && results[r].ok) { candidateOk[item.candidateIndex] = true; continue; }
+    if (results[r] && results[r].gone) { goneEndpoints.push(item.endpoint); continue; }
+    // Gagal kirim per-device tanpa 'gone' — relay sudah kasih tau alasannya
+    // (mis. invalid_subscription, atau statusCode dari layanan push) tapi
+    // dulu dibuang begitu saja, berakhir sebagai 'send_failed' polos yang
+    // sama buat semua penyebab. Ambil detail pertama kalau satu guru punya
+    // beberapa device gagal dengan alasan berbeda.
+    if (!candidateErr[item.candidateIndex]) {
+      var itemDetail = results[r] && (results[r].error || results[r].statusCode)
+        ? (results[r].error || ('HTTP ' + results[r].statusCode))
+        : null;
+      candidateErr[item.candidateIndex] = itemDetail ? 'send_failed: ' + itemDetail : 'send_failed';
+    }
   }
 
   // ---- Fase 3: tulis hasil akhir, di dalam lock singkat lagi ----
-  pushFinalizeUnderLock(queueSheet, candidates, candidateOk, null, { subSheet: subSheet, goneEndpoints: goneEndpoints });
+  pushFinalizeUnderLock(queueSheet, candidates, candidateOk, null, { subSheet: subSheet, goneEndpoints: goneEndpoints, candidateErr: candidateErr });
 }
 
 // Membungkus fase 3 (lock2 + tulis hasil akhir) — dipakai dari SEMUA jalur
@@ -551,7 +583,7 @@ function pushFinalizeUnderLock(queueSheet, candidates, candidateOk, errorLabelFo
     return;
   }
   try {
-    pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll);
+    pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll, goneInfo && goneInfo.candidateErr);
     if (goneInfo && goneInfo.goneEndpoints && goneInfo.goneEndpoints.length && goneInfo.subSheet) {
       removePushSubscriptionsByEndpoint(goneInfo.subSheet, goneInfo.goneEndpoints);
     }
@@ -570,7 +602,7 @@ function pushFinalizeUnderLock(queueSheet, candidates, candidateOk, errorLabelFo
 //     untuk pengganti pushIncrementAttempts() yang lama.
 //   - candidateOk !== null → hasil per kandidat dari respons relay (indeks
 //     kandidat yang ok dikirim, sisanya dianggap gagal kirim).
-function pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll) {
+function pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelForAll, candidateErr) {
   for (var i = 0; i < candidates.length; i++) {
     var cand = candidates[i];
     var ok = candidateOk ? candidateOk[i] : false;
@@ -579,7 +611,7 @@ function pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelF
       queueSheet.getRange(cand.sheetRow, 15).setValue('');
       continue;
     }
-    var errorLabel = errorLabelForAll || 'send_failed';
+    var errorLabel = errorLabelForAll || (candidateErr && candidateErr[i]) || 'send_failed';
     var attempts = (Number(queueSheet.getRange(cand.sheetRow, 13).getValue()) || 0) + 1;
     if (attempts >= PUSH_QUEUE_MAX_ATTEMPTS) {
       // Simpan errorLabel PERCOBAAN TERAKHIR ini, bukan string generik
