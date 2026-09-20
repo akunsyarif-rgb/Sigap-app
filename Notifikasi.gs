@@ -505,7 +505,13 @@ function processPushQueue() {
       muteHttpExceptions: true,
     });
   } catch (fetchErr) {
-    pushFinalizeUnderLock(queueSheet, candidates, null, 'relay_unreachable', null);
+    // Simpan pesan exception ASLI (DNS gagal/timeout/SSL/dst.), bukan cuma
+    // label generik 'relay_unreachable' — itu doang gak cukup buat bedain
+    // penyebabnya pas didiagnosis lewat Push_Queue. Dipotong ke 300 karakter
+    // supaya gak kepanjangan buat satu sel sheet (pesan exception GAS kadang
+    // ikut nyeret stack trace).
+    var fetchErrDetail = fetchErr && fetchErr.message ? String(fetchErr.message) : String(fetchErr);
+    pushFinalizeUnderLock(queueSheet, candidates, null, 'relay_unreachable: ' + fetchErrDetail.slice(0, 300), null);
     return;
   }
 
