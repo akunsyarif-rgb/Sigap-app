@@ -102,7 +102,7 @@ function loadServer(opts) {
   const fetchImpl = options.fetchImpl || ((url, params) => {
     const body = JSON.parse(params.payload);
     fetchCalls.push(body);
-    return { getContentText: () => JSON.stringify({ results: body.items.map(() => ({ ok: true })) }) };
+    return { getContentText: () => JSON.stringify({ results: body.items.map(() => ({ ok: true })) }), getResponseCode: () => 200 };
   });
   const sandbox = {
     console,
@@ -310,7 +310,7 @@ test('subscription yang dilaporkan relay sudah tidak berlaku (gone) dibersihkan 
     properties: { PUSH_RELAY_URL: 'https://relay.example/push-send', PUSH_RELAY_SECRET: 'relay-secret' },
     fetchImpl: (url, params) => {
       const body = JSON.parse(params.payload);
-      return { getContentText: () => JSON.stringify({ results: body.items.map(() => ({ ok: false, gone: true })) }) };
+      return { getContentText: () => JSON.stringify({ results: body.items.map(() => ({ ok: false, gone: true })) }), getResponseCode: () => 200 };
     },
   });
   s.post('wali', { action: 'savePushSubscription', subscription: { endpoint: 'https://push/dead', keys: { p256dh: 'p1', auth: 'a1' } } });
