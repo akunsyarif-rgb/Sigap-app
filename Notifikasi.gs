@@ -576,7 +576,12 @@ function pushFinalizeCandidates(queueSheet, candidates, candidateOk, errorLabelF
     var errorLabel = errorLabelForAll || 'send_failed';
     var attempts = (Number(queueSheet.getRange(cand.sheetRow, 13).getValue()) || 0) + 1;
     if (attempts >= PUSH_QUEUE_MAX_ATTEMPTS) {
-      queueSheet.getRange(cand.sheetRow, 11, 1, 5).setValues([[true, new Date(), attempts, 'max_attempts', '']]);
+      // Simpan errorLabel PERCOBAAN TERAKHIR ini, bukan string generik
+      // 'max_attempts' polos — sebelumnya baris ini menimpa total Last_Error,
+      // menghancurkan penyebab asli kegagalan (no_subscription/send_failed/
+      // relay_unreachable/dst.) tepat di percobaan yang membuatnya menyerah,
+      // padahal itu justru percobaan paling informatif buat didiagnosis.
+      queueSheet.getRange(cand.sheetRow, 11, 1, 5).setValues([[true, new Date(), attempts, errorLabel + ' (max_attempts reached)', '']]);
     } else {
       queueSheet.getRange(cand.sheetRow, 13, 1, 2).setValues([[attempts, errorLabel]]);
       queueSheet.getRange(cand.sheetRow, 15).setValue('');
