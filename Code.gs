@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-21-tambah-siswa';
+var BACKEND_VERSION = '2026-09-21-tambah-siswa-fix-role';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara', 'tambahSiswa'];
 
 // ===== doPost =====
@@ -667,17 +667,24 @@ function doPost(e) {
     }
 
     // ---- Tambah siswa langsung dari app (bukan untuk OSIS). Admin -> aktif
-    // langsung; guru/bk_kesiswaan -> perlu_verifikasi (baru dipakai penuh
-    // setelah admin menyetujui lewat verifyStudent). Dicek lewat
-    // normalizeRole LANGSUNG, BUKAN isAdminRole/isBkRole -- isBkRole
-    // menggabung admin+bk_kesiswaan jadi satu, padahal di sini admin & BK
-    // harus dapat perlakuan status yang BEDA. ----
+    // langsung; SELAIN admin (guru, bk_kesiswaan, dan apa pun variasi role
+    // guru lain yang dipakai sekolah -- lihat catatan bug di bawah) ->
+    // perlu_verifikasi (baru dipakai penuh setelah admin menyetujui lewat
+    // verifyStudent).
+    //
+    // BUG DITEMUKAN & DIPERBAIKI (deploy pertama): versi awal mengecek
+    // normalizeRole(sessionUser.role) === 'guru' secara harfiah, memaksa
+    // asumsi 4 role kanonik dari CLAUDE.md. Data sekolah nyata TERNYATA
+    // memakai role seperti 'guru_piket' untuk guru biasa -- ditolak keliru
+    // dengan "Tidak punya akses" walau akun itu memang guru. Tidak ada
+    // kode LAIN di seluruh Code.gs yang pernah mencocokkan string 'guru'
+    // secara harfiah -- isAdminRole/isBkRole/isOsisRole cuma menguji role
+    // KHUSUS (admin/bk_kesiswaan/osis), dan setiap tempat lain memperlakukan
+    // "bukan salah satu dari itu" sebagai guru biasa. Sekarang mengikuti
+    // pola yang sama: cuma isOsisRole (tolak) & isAdminRole (aktif) yang
+    // dicek eksplisit, sisanya (peran apa pun) -> perlu_verifikasi. ----
     if (action === 'addStudent') {
       if (isOsisRole(sessionUser.role)) {
-        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
-      }
-      var addRole = normalizeRole(sessionUser.role);
-      if (addRole !== 'admin' && addRole !== 'guru' && addRole !== 'bk_kesiswaan') {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       // Nama: trim + rapikan spasi ganda. Kelas: wajib. NISN: opsional.
@@ -713,7 +720,7 @@ function doPost(e) {
         }
       }
       var addNisnFinal = addNisnInput || generateTmpNisn(addRows);
-      var addStatus = addRole === 'admin' ? STUDENT_STATUS_AKTIF : STUDENT_STATUS_PERLU_VERIFIKASI;
+      var addStatus = isAdminRole(sessionUser.role) ? STUDENT_STATUS_AKTIF : STUDENT_STATUS_PERLU_VERIFIKASI;
       var addWaktu = new Date();
       addSheet.appendRow([
         sanitizeSheetValue(addNisnFinal), sanitizeSheetValue(addNama), sanitizeSheetValue(addKelas),
