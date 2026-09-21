@@ -195,6 +195,7 @@ function doPost(e) {
 
     // ---- Catat keterlambatan (bukan untuk OSIS) ----
     if (action === 'record') {
+      Logger.log('[TIMING] record: start @ ' + new Date().getTime());
       if (isOsisRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
@@ -216,6 +217,7 @@ function doPost(e) {
           return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
         }
       }
+      Logger.log('[TIMING] record: after dup check @ ' + new Date().getTime());
       // Timestamp ditangkap SATU KALI di sini (bukan new Date() literal di
       // appendRow) supaya nilai PERSIS yang ditulis ke baris bisa dikirim
       // balik ke klien di respons (lihat timestamp di jsonOut bawah) —
@@ -227,6 +229,7 @@ function doPost(e) {
       // dengan "Data tidak ditemukan").
       var recordTimestamp = new Date();
       sheet.appendRow([recordTimestamp, data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
+      Logger.log('[TIMING] record: after appendRow @ ' + new Date().getTime());
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
       // Siswa ini baru dapat catatan keterlambatan -- buang cache riwayatnya
@@ -244,6 +247,8 @@ function doPost(e) {
       if (recordSiswa) {
         notifyRelevantUsers({ jenis: 'keterlambatan', nisn: recordSiswa.nisn, kelas: recordSiswa.class, needsPiketAction: false });
       }
+      Logger.log('[TIMING] record: after notifyRelevantUsers @ ' + new Date().getTime());
+      Logger.log('[TIMING] record: before return jsonOut @ ' + new Date().getTime());
       return jsonOut({ status: 'success', timestamp: recordTimestamp });
     }
 
