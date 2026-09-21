@@ -69,7 +69,7 @@
            );
        }
 
-       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onDeleteIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat, onRefresh, loadingActivity }) {
+       function GerbangTab({ students, allLogs, pelanggaranList, onSelectLate, suratList, onAddSurat, isAdminUser, waliKelasMap, izinList, kelompokList, canVerifyIzin, onCreateIzin, onVerifikasiIzin, onTandaiKembaliIzin, onTandaiPulangIzin, onDeleteIzin, onCreateKelompok, onVerifikasiKelompok, onTandaiKembaliKelompok, myWaliKelas, initialMode, onGenerateSurat, onRefresh, loadingActivity, canAddStudent, onAddStudent, onReloadStudents }) {
            // "mode" sekarang benar-benar mengunci workflow (bukan cuma saklar
            // tampilan) — begitu dipilih, seluruh alur cari -> pilih -> bottom
            // sheet -> simpan ikut mode itu, tidak ditanya lagi di bottom sheet.
@@ -89,6 +89,7 @@
            const [jenis, setJenis] = useState('Sakit');
            const [keterangan, setKeterangan] = useState('');
            const [msg, setMsg] = useState('');
+           const kelasOptions = [...new Set(students.map(s => s.class).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
 
            // Jam berjalan (tanpa detik) supaya guru piket lihat waktu saat ini
            // tanpa perlu refresh halaman. Dicek tiap 15 detik tapi state cuma
@@ -124,6 +125,16 @@
            ].sort((a, b) => b._time - a._time).slice(0, 25);
 
            const [msgTone, setMsgTone] = useState('sky');
+           // ---- Tambah Siswa Langsung Dari App (state kosong pencarian).
+           // DITARUH DI UJUNG daftar useState (bukan disisipkan di tengah)
+           // supaya indeks posisi useState yang sudah dipakai override di
+           // tests/render-smoke.test.js (mis. GerbangTab picker) tidak
+           // bergeser -- pola sama dengan IzinKeluarTab di bawah. ----
+           const [showAddStudent, setShowAddStudent] = useState(false);
+           const [addStudentName, setAddStudentName] = useState('');
+           const [addStudentClass, setAddStudentClass] = useState('');
+           const [addStudentNisn, setAddStudentNisn] = useState('');
+           const [reloadingStudents, setReloadingStudents] = useState(false);
            const showMsg = (ok, text) => { setMsgTone(ok ? 'sky' : 'crimson'); setMsg(text); setTimeout(() => setMsg(''), 6000); };
            const alreadyToday = (list, nisn) => list.find(item => item.nisn === nisn && isSameDay(parseTimestamp(item.timestamp), new Date()));
            const monthCount = (list, nisn) => {
@@ -139,6 +150,32 @@
            const handleSelect = (s) => {
                setSearchQuery('');
                setPickerStudent(s);
+           };
+
+           // Sesudah sukses, siswa baru langsung bisa dipilih (students sudah
+           // di-update optimistic oleh handleAddStudent di app.js) -- form
+           // ditutup & kotak pencarian diisi namanya supaya langsung kelihatan
+           // di hasil, tanpa guru perlu ketik ulang.
+           const submitAddStudent = () => {
+               if (!onAddStudent || isSavingOverlayActive()) return;
+               const payload = { name: addStudentName, class_name: addStudentClass, nisn: addStudentNisn };
+               onAddStudent(payload, (ok, result) => {
+                   if (ok) {
+                       showMsg(true, '✓ Siswa berhasil ditambahkan.');
+                       setShowAddStudent(false);
+                       setAddStudentName(''); setAddStudentClass(''); setAddStudentNisn('');
+                       setSearchQuery(result && result.name ? result.name : addStudentName);
+                   } else {
+                       showMsg(false, typeof result === 'string' ? result : 'Gagal menambah siswa.');
+                   }
+               });
+           };
+
+           const handleReloadStudents = () => {
+               if (!onReloadStudents || reloadingStudents) return;
+               setReloadingStudents(true);
+               onReloadStudents();
+               setTimeout(() => setReloadingStudents(false), 1500);
            };
 
            // Modal HANYA ditutup & form direset setelah server konfirmasi
@@ -236,7 +273,10 @@
                                {filtered.length > 0 ? filtered.map((s, i) => (
                                    <div key={`${s.nisn}-${i}`} onClick={() => handleSelect(s)} className="px-4 py-3.5 border-b border-slate-200/60 flex items-center justify-between hover:bg-slate-100 active:bg-slate-200 cursor-pointer transition">
                                        <div className="min-w-0">
-                                           <div className="font-bold text-sm text-slate-900">{s.name}</div>
+                                           <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                                               {s.name}
+                                               {s.status === 'perlu_verifikasi' && <span className="flex-shrink-0"><Badge tone="amber">Perlu Verifikasi</Badge></span>}
+                                           </div>
                                            <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn || '(belum diisi)'}</span></div>
                                            <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
                                                <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-2.5 w-2.5 flex-shrink-0" />
@@ -245,7 +285,51 @@
                                        </div>
                                        <span className="text-xs bg-sky text-white px-3 py-1.5 rounded-lg font-semibold shadow-sm flex-shrink-0 ml-2">Pilih</span>
                                    </div>
-                               )) : <div className="p-6 text-center text-xs text-slate-500 font-medium">Siswa tidak ditemukan</div>}
+                               )) : (
+                                   <div className="p-6 text-center space-y-3">
+                                       <div className="text-xs text-slate-500 font-medium">Siswa tidak ditemukan</div>
+                                       {(canAddStudent || onReloadStudents) && (
+                                           <div className="flex flex-col gap-2 items-stretch">
+                                               {canAddStudent && !showAddStudent && (
+                                                   <button onClick={() => { setShowAddStudent(true); setAddStudentName(searchQuery); }} className="text-xs bg-sky text-white px-4 py-2.5 rounded-xl font-semibold shadow-sm">
+                                                       + Tambah siswa
+                                                   </button>
+                                               )}
+                                               {onReloadStudents && (
+                                                   <button onClick={handleReloadStudents} disabled={reloadingStudents} className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl font-semibold disabled:opacity-50">
+                                                       {reloadingStudents ? 'Memuat ulang...' : 'Muat ulang data siswa'}
+                                                   </button>
+                                               )}
+                                           </div>
+                                       )}
+                                   </div>
+                               )}
+                           </div>
+                       </div>
+                   )}
+
+                   {showAddStudent && (
+                       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xl animate-rise">
+                           <div className="text-xs font-bold text-slate-700 uppercase tracking-wide">Tambah Siswa Baru</div>
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Nama Lengkap*</label>
+                               <input type="text" value={addStudentName} onChange={(e) => setAddStudentName(e.target.value)} placeholder="Nama lengkap siswa" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Kelas*</label>
+                               <select value={addStudentClass} onChange={(e) => setAddStudentClass(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                   <option value="">Pilih kelas...</option>
+                                   {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-[10px] text-slate-500 font-semibold mb-1 block">NISN (opsional, boleh menyusul)</label>
+                               <input type="text" value={addStudentNisn} onChange={(e) => setAddStudentNisn(e.target.value)} placeholder="Kosongkan kalau belum tahu" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                           </div>
+                           {!isAdminUser && <div className="text-[10px] text-slate-500 italic">Siswa ini akan berstatus "Perlu Verifikasi" sampai disetujui admin.</div>}
+                           <div className="flex gap-2 pt-1">
+                               <Button onClick={submitAddStudent} disabled={!addStudentName.trim() || !addStudentClass.trim()} className="flex-1">Simpan</Button>
+                               <Button onClick={() => setShowAddStudent(false)} variant="secondary" className="flex-1">Batal</Button>
                            </div>
                        </div>
                    )}
@@ -275,7 +359,10 @@
                                            <div className="text-[11px] font-bold text-slate-500 w-11 text-center flex-shrink-0">{item._time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                                            <div className="w-px h-8 bg-slate-200 flex-shrink-0"></div>
                                            <div className="flex-1 min-w-0">
-                                               <div className="text-xs font-bold text-slate-900 truncate">{item.name} <span className="text-slate-500 font-normal">({item.class})</span></div>
+                                               <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                                   <span className="truncate">{item.name} <span className="text-slate-500 font-normal">({item.class})</span></span>
+                                                   {studentStatusByNisn(students, item.nisn) === 'perlu_verifikasi' && <span className="flex-shrink-0"><Badge tone="amber">Perlu Verifikasi</Badge></span>}
+                                               </div>
                                                <div className="flex items-center gap-1 text-[9px] text-slate-500">
                                                    <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />} className="h-2 w-2 flex-shrink-0" />
                                                    <span className="truncate">{waliByClass[normalizeClass(item.class)] || 'Belum ada wali kelas'}</span>

@@ -423,7 +423,7 @@
 
        const EDIT_WINDOW_MS = 5 * 60 * 1000; // 5 menit — sinkron dengan aturan server
 
-       function LogTab({ allLogs, pelanggaranList, suratList, izinList, initialCategory, canManage, isAdmin, isBk, currentUserName, onEditEntry, onDeleteEntry }) {
+       function LogTab({ allLogs, pelanggaranList, suratList, izinList, initialCategory, canManage, isAdmin, isBk, currentUserName, onEditEntry, onDeleteEntry, students }) {
            const [category, setCategory] = useState(initialCategory || 'terlambat');
            const [period, setPeriod] = useState('semua');
            const [customDate, setCustomDate] = useState('');
@@ -709,9 +709,12 @@
                                return (
                                    <div key={idx}>
                                        <RowCard onClick={() => setExpandedStudent(expandedStudent === item.nisn ? null : item.nisn)} className="space-y-1">
-                                           <div className="flex items-center justify-between">
-                                               <div className="font-semibold text-sm text-slate-900">{item.name}</div>
-                                               <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{subValue}</span>
+                                           <div className="flex items-center justify-between gap-2">
+                                               <div className="font-semibold text-sm text-slate-900 flex items-center gap-1.5 min-w-0">
+                                                   <span className="truncate">{item.name}</span>
+                                                   {studentStatusByNisn(students, item.nisn) === 'perlu_verifikasi' && <span className="flex-shrink-0"><Badge tone="amber">Perlu Verifikasi</Badge></span>}
+                                               </div>
+                                               <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">{subValue}</span>
                                            </div>
                                            <div className="text-[10px] text-slate-500 flex justify-between items-center">
                                                <span>{item.class} • {dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>

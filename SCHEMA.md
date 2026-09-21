@@ -49,11 +49,43 @@ puluhan tempat di `Code.gs`/`Auth.gs` (login, reset password, ubah role, dst.).
 
 ### `Master_Siswa`
 
+Kolom D-G (audit "Tambah Siswa Langsung Dari App", September 2026) ditambahkan
+**DI UJUNG** — A-C lama (NISN/Nama/Kelas) tidak bergeser, jadi baris lama yang
+belum punya kolom D-G sama sekali tetap terbaca benar (dianggap `aktif`,
+lihat kolom D di bawah).
+
 | # | Kolom | Header disarankan | Keterangan |
 |---|---|---|---|
-| 1 | A | `NISN` | Dipakai sebagai kunci pencarian siswa di semua fitur |
+| 1 | A | `NISN` | Dipakai sebagai kunci pencarian siswa di semua fitur. Boleh berisi ID sementara `TMP-001`, `TMP-002`, dst. (lihat kolom D & G) kalau NISN asli belum diketahui saat siswa ditambahkan dari app — TIDAK PERNAH digenerate untuk baris yang ditambah manual lewat Sheet |
 | 2 | B | `Nama` | |
 | 3 | C | `Kelas` | Nama kelas — dicocokkan toleran format oleh `sameClass()` (`Utils.gs`) & `normalizeClass()` (`helpers.js`) |
+| 4 | D | `status` | Kosong = `aktif` (baris lama, kompatibel mundur) \| `perlu_verifikasi` = ditambahkan lewat app oleh guru/bk_kesiswaan, belum disetujui admin. Ditulis `aktif` eksplisit untuk baris baru yang ditambah admin, dan diganti jadi `aktif` oleh `verifyStudent` saat admin menyetujui |
+| 5 | E | `ditambah_oleh` | Nama guru/admin yang menambahkan (dari sesi, bukan klaim klien) — kosong untuk baris lama yang tidak lewat app |
+| 6 | F | `waktu_tambah` | Timestamp saat baris ditambahkan lewat action `addStudent` — kosong untuk baris lama |
+| 7 | G | `nisn_lama` | Diisi otomatis oleh `verifyStudent` HANYA saat NISN baris ini diganti (biasanya `TMP-xxx` -> NISN asli) — menyimpan NISN/ID **sebelumnya**, permanen, tidak pernah dihapus/ditimpa lagi setelah terisi. Dipakai `resolveNisnAlias()` (`Utils.gs`, dipanggil sekali di awal `doPost`) supaya permintaan klien yang masih menyebut ID lama (mis. modal yang sudah kebuka sebelum verifikasi) tetap kena baris yang benar. Kosong untuk siswa yang NISN-nya belum pernah diganti |
+
+**Migrasi NISN saat `verifyStudent` mengganti ID (`migrateStudentNisnInLogs`,
+`Utils.gs`):** kalau admin mengganti NISN (paling umum: `TMP-xxx` -> NISN
+asli) lewat "Edit lalu Setujui", NISN lama itu juga harus diganti di **7
+sheet log** yang menaruh NISN di kolom B masing-masing — `Log_Gerbang`,
+`Pelanggaran`, `Surat_Masuk`, `Bimbingan_Khusus`, `Pelanggaran_Upacara`,
+`Izin_Keluar`, `Tindak_Lanjut` (lihat bagian masing-masing sheet itu di
+dokumen ini). Dibaca SATU range per sheet (bukan per baris), diganti di
+memori, ditulis balik SATU range — kolom lain di baris manapun tidak
+disentuh. **TIDAK ADA rollback sungguhan** (Google Sheets tidak punya
+transaksi lintas sheet): migrasi dijalankan LEBIH DULU, `Master_Siswa`
+sendiri baru ditulis PALING TERAKHIR sesudah ketujuh sheet itu sukses —
+kalau migrasi gagal di tengah jalan, `Master_Siswa` tetap menunjuk NISN
+lama yang masih valid (bisa dicoba lagi), tapi sheet-sheet yang SUDAH
+sempat berubah sebelum kegagalan TIDAK dikembalikan — pesan error
+menyebutkan persis sheet mana yang sudah terlanjur berubah.
+
+**`Push_Queue` (lihat bagian tersendiri di bawah) SENGAJA TIDAK ikut
+dimigrasi.** Kolom `NISN` di situ cuma bookkeeping/Audit, dan yang
+menentukan siapa dikirimi notifikasi adalah `Guru_ID`, bukan NISN — baris
+antrean lama yang masih menyebut NISN/ID lama tidak berdampak apa pun ke
+pengiriman. `Izin_Kelompok` juga tidak ikut (tidak punya kolom NISN sama
+sekali — lihat bagiannya sendiri di bawah).
 
 ### `Log_Gerbang` (Keterlambatan)
 
