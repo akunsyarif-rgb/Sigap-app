@@ -322,6 +322,19 @@
            return normalizeClass(a) === normalizeClass(b);
        }
 
+       // Tambah Siswa Langsung Dari App: badge "Perlu Verifikasi" dipakai di
+       // Gerbang (hasil pencarian, Live Activity Log), Riwayat & Statistik.
+       // Log/riwayat itu sendiri TIDAK punya kolom status (Log_Gerbang,
+       // Surat_Masuk, dkk. tidak pernah diubah strukturnya) -- status hanya
+       // hidup di Master_Siswa/getStudents, jadi setiap tempat yang mau
+       // menampilkan badge WAJIB mencocokkan nisn ke `students` (state yang
+       // sudah ada di app.js) lewat fungsi murni ini, bukan menyimpan status
+       // dobel di tempat lain.
+       function studentStatusByNisn(students, nisn) {
+           const s = (students || []).find(st => st.nisn === nisn);
+           return (s && s.status) || 'aktif';
+       }
+
        function parseTimestamp(ts) {
            if (!ts) return new Date();
            if (typeof ts === 'string') {

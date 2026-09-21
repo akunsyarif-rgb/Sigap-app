@@ -22,8 +22,8 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-20-send-failed-detail';
-var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara'];
+var BACKEND_VERSION = '2026-09-21-tambah-siswa';
+var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara', 'tambahSiswa'];
 
 // ===== doPost =====
 
@@ -152,6 +152,19 @@ function doPost(e) {
     var sessionUser = getSessionUser(data.sessionToken);
     if (!sessionUser) {
       return jsonOut({ status: 'error', message: 'Sesi berakhir, silakan login ulang.' });
+    }
+
+    // ---- Alias NISN TMP-xxx -> NISN asli, SATU titik saja untuk SELURUH
+    // doPost (bukan diulang di tiap action) -- lihat resolveNisnAlias di
+    // Utils.gs. Ditaruh di sini: sesudah sesi valid (di atas), sebelum
+    // action apa pun mulai dibaca -- action baru yang ditambahkan nanti
+    // otomatis ikut tertangani tanpa perlu diingat ulang. Cuma menyentuh
+    // data.nisn -- data.class_name/data.name dari klien tetap seperti
+    // aslinya (fitur ini tidak menyentuh apa pun di luar identifikasi
+    // NISN). doGet SENGAJA tidak diberi alias yang sama (di luar cakupan
+    // yang diminta) -- lihat CLAUDE.md/laporan Tahap 1-2 untuk alasannya. ----
+    if (data.nisn) {
+      data.nisn = resolveNisnAlias(ss, data.nisn);
     }
 
     // ---- Rate-limit PER SESI untuk semua aksi tulis (baris 132 ke bawah,
@@ -651,6 +664,172 @@ function doPost(e) {
         notifyRelevantUsers({ jenis: 'surat', nisn: suratSiswa.nisn, kelas: suratSiswa.class, needsPiketAction: false });
       }
       return jsonOut({ status: 'success', timestamp: suratTimestamp });
+    }
+
+    // ---- Tambah siswa langsung dari app (bukan untuk OSIS). Admin -> aktif
+    // langsung; guru/bk_kesiswaan -> perlu_verifikasi (baru dipakai penuh
+    // setelah admin menyetujui lewat verifyStudent). Dicek lewat
+    // normalizeRole LANGSUNG, BUKAN isAdminRole/isBkRole -- isBkRole
+    // menggabung admin+bk_kesiswaan jadi satu, padahal di sini admin & BK
+    // harus dapat perlakuan status yang BEDA. ----
+    if (action === 'addStudent') {
+      if (isOsisRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      var addRole = normalizeRole(sessionUser.role);
+      if (addRole !== 'admin' && addRole !== 'guru' && addRole !== 'bk_kesiswaan') {
+        return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
+      }
+      // Nama: trim + rapikan spasi ganda. Kelas: wajib. NISN: opsional.
+      var addNama = String(data.name || '').replace(/\s+/g, ' ').trim();
+      var addKelas = String(data.class_name || '').replace(/\s+/g, ' ').trim();
+      var addNisnInput = String(data.nisn || '').trim();
+      if (!addNama) {
+        return jsonOut({ status: 'error', message: 'Nama lengkap wajib diisi.' });
+      }
+      if (!addKelas) {
+        return jsonOut({ status: 'error', message: 'Kelas wajib diisi.' });
+      }
+      var addSheet = ss.getSheetByName('Master_Siswa');
+      if (!addSheet) {
+        return jsonOut({ status: 'error', message: 'Data induk siswa belum disiapkan. Hubungi admin.' });
+      }
+      var addRows = addSheet.getDataRange().getValues();
+      // Duplikat NISN: ditolak, bukan cuma diperingatkan -- NISN adalah
+      // kunci pencarian siswa di semua fitur lain (lihat SCHEMA.md).
+      if (addNisnInput) {
+        for (var adi = 1; adi < addRows.length; adi++) {
+          if (String(addRows[adi][MASTER_SISWA_COL_NISN - 1]) === addNisnInput) {
+            return jsonOut({ status: 'error', message: 'NISN sudah dipakai oleh ' + addRows[adi][MASTER_SISWA_COL_NAMA - 1] + ' (' + addRows[adi][MASTER_SISWA_COL_KELAS - 1] + ').' });
+          }
+        }
+      }
+      // Duplikat nama+kelas (tanpa beda huruf besar/kecil, kelas dicocokkan
+      // toleran lewat sameClass sama seperti fitur lain) -- tampilkan data
+      // yang sudah ada supaya guru tahu ini kemungkinan siswa yang sama.
+      for (var adj = 1; adj < addRows.length; adj++) {
+        if (String(addRows[adj][MASTER_SISWA_COL_NAMA - 1]).trim().toLowerCase() === addNama.toLowerCase() && sameClass(addRows[adj][MASTER_SISWA_COL_KELAS - 1], addKelas)) {
+          return jsonOut({ status: 'error', message: 'Siswa dengan nama & kelas yang sama sudah ada: ' + addRows[adj][MASTER_SISWA_COL_NAMA - 1] + ' (' + addRows[adj][MASTER_SISWA_COL_KELAS - 1] + ', NISN: ' + (addRows[adj][MASTER_SISWA_COL_NISN - 1] || '(belum diisi)') + ').' });
+        }
+      }
+      var addNisnFinal = addNisnInput || generateTmpNisn(addRows);
+      var addStatus = addRole === 'admin' ? STUDENT_STATUS_AKTIF : STUDENT_STATUS_PERLU_VERIFIKASI;
+      var addWaktu = new Date();
+      addSheet.appendRow([
+        sanitizeSheetValue(addNisnFinal), sanitizeSheetValue(addNama), sanitizeSheetValue(addKelas),
+        addStatus, sanitizeSheetValue(sessionUser.name), addWaktu, ''
+      ]);
+      CacheService.getScriptCache().remove('students_list');
+      logAudit(sessionUser, 'Tambah Siswa', addNama + ' (' + addKelas + ', NISN: ' + addNisnFinal + ', status: ' + addStatus + ')');
+      var addResult = { nisn: addNisnFinal, name: addNama, class: addKelas };
+      if (addStatus !== STUDENT_STATUS_AKTIF) addResult.status = addStatus;
+      return jsonOut({ status: 'success', student: addResult });
+    }
+
+    // ---- Verifikasi siswa perlu_verifikasi (admin only): "Setujui" apa
+    // adanya, atau "Edit lalu Setujui" (data.newName/data.newClass/
+    // data.newNisn opsional -- yang dikirim menimpa, yang tidak dikirim
+    // tetap nilai lama). Mengganti NISN (biasanya dari TMP-xxx ke NISN asli)
+    // memicu migrasi ke 7 sheet log lewat migrateStudentNisnInLogs -- lihat
+    // catatan panjangnya di Utils.gs soal kenapa TIDAK ADA rollback
+    // sungguhan kalau gagal di tengah jalan. ----
+    if (action === 'verifyStudent') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa memverifikasi siswa.' });
+      }
+      var vsNisnLama = String(data.nisn || '').trim();
+      if (!vsNisnLama) {
+        return jsonOut({ status: 'error', message: 'NISN siswa wajib dikirim.' });
+      }
+      var vsFound = findStudentRowByNisn(ss, vsNisnLama);
+      if (!vsFound) {
+        return jsonOut({ status: 'error', message: 'Siswa tidak ditemukan (mungkin sudah diubah/dihapus).' });
+      }
+      var vsNamaBaru = data.newName !== undefined ? String(data.newName).replace(/\s+/g, ' ').trim() : String(vsFound.row[MASTER_SISWA_COL_NAMA - 1]);
+      var vsKelasBaru = data.newClass !== undefined ? String(data.newClass).replace(/\s+/g, ' ').trim() : String(vsFound.row[MASTER_SISWA_COL_KELAS - 1]);
+      var vsNisnBaru = data.newNisn !== undefined && String(data.newNisn).trim() ? String(data.newNisn).trim() : vsNisnLama;
+      if (!vsNamaBaru) {
+        return jsonOut({ status: 'error', message: 'Nama lengkap wajib diisi.' });
+      }
+      if (!vsKelasBaru) {
+        return jsonOut({ status: 'error', message: 'Kelas wajib diisi.' });
+      }
+      var vsNisnBerubah = vsNisnBaru !== vsNisnLama;
+      if (vsNisnBerubah) {
+        // NISN baru wajib belum dipakai baris LAIN (baris ini sendiri
+        // dikecualikan lewat rowIndex, bukan re-scan allRows yang sudah basi).
+        for (var vsi = 1; vsi < vsFound.allRows.length; vsi++) {
+          if (vsi + 1 === vsFound.rowIndex) continue;
+          if (String(vsFound.allRows[vsi][MASTER_SISWA_COL_NISN - 1]) === vsNisnBaru) {
+            return jsonOut({ status: 'error', message: 'NISN baru sudah dipakai oleh ' + vsFound.allRows[vsi][MASTER_SISWA_COL_NAMA - 1] + '.' });
+          }
+        }
+      }
+      if (vsNisnBerubah) {
+        try {
+          migrateStudentNisnInLogs(ss, vsNisnLama, vsNisnBaru);
+        } catch (vsMigErr) {
+          var vsUpdatedSheets = (vsMigErr && vsMigErr.updatedSheets) || [];
+          logAudit(sessionUser, 'Verifikasi Siswa Gagal', 'nisn_lama=' + vsNisnLama + ' | nisn_baru_gagal=' + vsNisnBaru + ' | sheet_sudah_terupdate=' + (vsUpdatedSheets.join(', ') || '(tidak ada)') + ' | sheet_gagal=' + ((vsMigErr && vsMigErr.failedSheet) || '?'));
+          return jsonOut({
+            status: 'error',
+            message: 'Migrasi NISN gagal di sheet "' + ((vsMigErr && vsMigErr.failedSheet) || '?') + '". Sheet yang SUDAH terlanjur berubah ke NISN baru: ' + (vsUpdatedSheets.join(', ') || '(tidak ada)') + '. Master_Siswa BELUM diubah -- cek manual sheet yang sudah terupdate lalu ulangi verifikasi.',
+            updatedSheets: vsUpdatedSheets
+          });
+        }
+      }
+      // Master_Siswa sendiri ditulis PALING TERAKHIR, sesudah migrasi log
+      // (kalau ada) terbukti sukses semua -- lihat catatan di
+      // migrateStudentNisnInLogs (Utils.gs).
+      vsFound.sheet.getRange(vsFound.rowIndex, MASTER_SISWA_COL_NISN).setValue(sanitizeSheetValue(vsNisnBaru));
+      vsFound.sheet.getRange(vsFound.rowIndex, MASTER_SISWA_COL_NAMA).setValue(sanitizeSheetValue(vsNamaBaru));
+      vsFound.sheet.getRange(vsFound.rowIndex, MASTER_SISWA_COL_KELAS).setValue(sanitizeSheetValue(vsKelasBaru));
+      vsFound.sheet.getRange(vsFound.rowIndex, MASTER_SISWA_COL_STATUS).setValue(STUDENT_STATUS_AKTIF);
+      if (vsNisnBerubah) {
+        vsFound.sheet.getRange(vsFound.rowIndex, MASTER_SISWA_COL_NISN_LAMA).setValue(sanitizeSheetValue(vsNisnLama));
+      }
+      CacheService.getScriptCache().remove('students_list');
+      logAudit(sessionUser, 'Verifikasi Siswa', vsNamaBaru + ' (' + vsKelasBaru + ') | nisn_lama=' + vsNisnLama + ' | nisn_baru=' + vsNisnBaru);
+      return jsonOut({ status: 'success', student: { nisn: vsNisnBaru, name: vsNamaBaru, class: vsKelasBaru } });
+    }
+
+    // ---- Hapus siswa perlu_verifikasi (admin only). HANYA boleh kalau
+    // status-nya masih perlu_verifikasi DAN belum punya SATU PUN baris log
+    // di sheet manapun (STUDENT_LOG_SHEETS) -- kalau sudah punya log, admin
+    // diarahkan pakai Edit (verifyStudent), bukan hapus, supaya baris log
+    // yang sudah ada tidak jadi yatim piatu menunjuk NISN yang lenyap. ----
+    if (action === 'deleteStudent') {
+      if (!isAdminRole(sessionUser.role)) {
+        return jsonOut({ status: 'error', message: 'Hanya admin yang bisa menghapus siswa.' });
+      }
+      var dsNisn = String(data.nisn || '').trim();
+      if (!dsNisn) {
+        return jsonOut({ status: 'error', message: 'NISN siswa wajib dikirim.' });
+      }
+      var dsFound = findStudentRowByNisn(ss, dsNisn);
+      if (!dsFound) {
+        return jsonOut({ status: 'error', message: 'Siswa tidak ditemukan (mungkin sudah dihapus).' });
+      }
+      var dsStatus = studentStatusOf(dsFound.row[MASTER_SISWA_COL_STATUS - 1]);
+      if (dsStatus !== STUDENT_STATUS_PERLU_VERIFIKASI) {
+        return jsonOut({ status: 'error', message: 'Hanya siswa berstatus "perlu verifikasi" yang bisa dihapus. Gunakan Edit untuk siswa aktif.' });
+      }
+      for (var dli = 0; dli < STUDENT_LOG_SHEETS.length; dli++) {
+        var dsLogSheet = ss.getSheetByName(STUDENT_LOG_SHEETS[dli]);
+        if (!dsLogSheet) continue;
+        var dsLastRow = dsLogSheet.getLastRow();
+        if (dsLastRow < 2) continue;
+        var dsColVals = dsLogSheet.getRange(2, STUDENT_LOG_NISN_COL, dsLastRow - 1, 1).getValues();
+        for (var dlr = 0; dlr < dsColVals.length; dlr++) {
+          if (String(dsColVals[dlr][0]) === dsNisn) {
+            return jsonOut({ status: 'error', message: 'Siswa ini sudah punya catatan di ' + STUDENT_LOG_SHEETS[dli] + '. Gunakan Edit, bukan Hapus.' });
+          }
+        }
+      }
+      dsFound.sheet.deleteRow(dsFound.rowIndex);
+      CacheService.getScriptCache().remove('students_list');
+      logAudit(sessionUser, 'Hapus Siswa', dsFound.row[MASTER_SISWA_COL_NAMA - 1] + ' (' + dsFound.row[MASTER_SISWA_COL_KELAS - 1] + ', NISN: ' + dsNisn + ')');
+      return jsonOut({ status: 'success' });
     }
 
     // ---- Hapus Data (Pemeliharaan Data, admin only) — menggantikan aksi
@@ -2013,10 +2192,29 @@ function doGet(e) {
     var rows = sheet.getDataRange().getValues();
     var students = [];
     for (var i = 1; i < rows.length; i++) {
-      students.push({ nisn: rows[i][0], name: rows[i][1], class: rows[i][2] });
+      var studentEntry = { nisn: rows[i][0], name: rows[i][1], class: rows[i][2] };
+      // status HANYA dikirim kalau BUKAN 'aktif' -- mayoritas baris aktif,
+      // jadi tidak menambah field ke tiap baris menjaga payload tetap kecil
+      // (lihat catatan batas 100KB per key CacheService di bawah).
+      var studentStatus = studentStatusOf(rows[i][MASTER_SISWA_COL_STATUS - 1]);
+      if (studentStatus !== STUDENT_STATUS_AKTIF) studentEntry.status = studentStatus;
+      students.push(studentEntry);
     }
     var result = JSON.stringify({ status: 'success', students: students });
-    cache.put('students_list', result, 300);
+    // CacheService.put() MENOLAK value > 100KB (throw) -- sebelum audit ini
+    // tidak pernah ditangani sama sekali (doGet tidak punya try/catch
+    // pembungkus), jadi sekolah dengan banyak siswa/NISN panjang bisa saja
+    // sudah mepet limit ini dan satu kali gagal put() akan menjatuhkan
+    // SELURUH request dengan error mentah, bukan JSON. Cache di sini
+    // cuma percepatan (TTL 300 detik) -- kalau gagal disimpan, klien tetap
+    // dapat data yang benar, cuma request BERIKUTNYA tidak kena cache
+    // sampai ada yang berhasil put() lagi. Pola sama dengan try/catch di
+    // localStorage sisi klien (lihat helpers.js/app.js).
+    try {
+      cache.put('students_list', result, 300);
+    } catch (cacheErr) {
+      // diamkan -- lihat catatan di atas
+    }
     return ContentService.createTextOutput(result).setMimeType(ContentService.MimeType.JSON);
   }
 

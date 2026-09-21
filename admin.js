@@ -59,7 +59,7 @@
            );
        }
 
-       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onPreviewHapusData, onHapusData, onGoToExportData }) {
+       function KelolaTab({ teachers, students, jadwalPiket, onAddTeacher, onUpdatePassword, onUpdateJabatan, onToggleStatus, onUpdateRole, onUpdateWaliKelas, onUpdateName, onDeleteTeacher, onSetJadwalPiket, onPreviewHapusData, onHapusData, onGoToExportData, onVerifyStudent, onDeleteStudent }) {
            // Hub-and-spoke: 'hub' nampilin 3 kartu, sisanya sub-halaman. Sengaja
            // local state (bukan lewat activeTab/NAV_ITEMS) — KelolaTab di-unmount
            // total tiap ganti tab dari app.js, jadi otomatis reset ke hub tiap
@@ -71,6 +71,47 @@
            // Kelas/laporan wali kelas gagal mencocokkan data (lihat diskusi bug
            // "wali kelas baru tidak lihat laporan kelasnya").
            const kelasOptions = [...new Set(students.map(s => s.class))].sort((a, b) => String(a).localeCompare(String(b)));
+           // ---- Perlu Verifikasi (Tambah Siswa Langsung Dari App) ----
+           // Guard tap-ganda pakai isSavingOverlayActive() global (pola sama
+           // dengan submitReset/submitRole/dkk. di atas) -- TIDAK ada state
+           // busy lokal/teks "Memproses..." per-tombol, overlay "Menyimpan..."
+           // global sudah mengunci seluruh layar (lihat SavingOverlay,
+           // ui-common.js, & tests/saving-overlay.test.js).
+           const siswaPerluVerifikasi = students.filter(s => s.status === 'perlu_verifikasi');
+
+           const submitApproveStudent = (s) => {
+               if (isSavingOverlayActive()) return;
+               onVerifyStudent({ nisn: s.nisn }, (ok, result) => {
+                   showMsg(ok, ok ? `✓ ${s.name} disetujui.` : (typeof result === 'string' ? result : 'Gagal menyetujui siswa.'));
+               });
+           };
+
+           const openEditVerifyStudent = (s) => {
+               setVerifyEditTarget(s);
+               setVerifyEditName(s.name);
+               setVerifyEditClass(s.class);
+               setVerifyEditNisn(s.nisn && s.nisn.indexOf('TMP-') === 0 ? '' : s.nisn);
+           };
+
+           const submitEditVerifyStudent = () => {
+               if (!verifyEditTarget || isSavingOverlayActive()) return;
+               onVerifyStudent({ nisn: verifyEditTarget.nisn, newName: verifyEditName, newClass: verifyEditClass, newNisn: verifyEditNisn }, (ok, result) => {
+                   if (ok) {
+                       setVerifyEditTarget(null);
+                       showMsg(true, `✓ ${verifyEditName} disetujui.`);
+                   } else {
+                       showMsg(false, typeof result === 'string' ? result : 'Gagal menyetujui siswa.');
+                   }
+               });
+           };
+
+           const submitDeleteStudent = () => {
+               if (!confirmDeleteStudent || isSavingOverlayActive()) return;
+               onDeleteStudent({ nisn: confirmDeleteStudent.nisn }, (ok, result) => {
+                   setConfirmDeleteStudent(null);
+                   showMsg(ok, ok ? '✓ Siswa dihapus.' : (typeof result === 'string' ? result : 'Gagal menghapus siswa.'));
+               });
+           };
            const [newId, setNewId] = useState('');
            const [newName, setNewName] = useState('');
            const [newPassword, setNewPassword] = useState('');
@@ -245,6 +286,18 @@
            const [hapusConfirmChecked, setHapusConfirmChecked] = useState(false);
            const [hapusDeleting, setHapusDeleting] = useState(false);
 
+           // ---- Perlu Verifikasi (Tambah Siswa Langsung Dari App) -- state
+           // BARU ditaruh PALING TERAKHIR (setelah semua useState yang sudah
+           // ada di atas), bukan disisipkan di tengah -- tests/render-smoke.test.js
+           // memetakan override state lewat INDEKS urutan pemanggilan useState,
+           // menyisipkan di tengah menggeser indeks semua hook sesudahnya dan
+           // mematahkan test lain yang tidak disentuh sama sekali.
+           const [verifyEditTarget, setVerifyEditTarget] = useState(null); // siswa yang sedang di-"Edit lalu Setujui"
+           const [verifyEditName, setVerifyEditName] = useState('');
+           const [verifyEditClass, setVerifyEditClass] = useState('');
+           const [verifyEditNisn, setVerifyEditNisn] = useState('');
+           const [confirmDeleteStudent, setConfirmDeleteStudent] = useState(null);
+
            const hapusJenisTerpilih = () => HAPUS_DATA_JENIS_UI.map(j => j.key).filter(k => hapusJenis[k]);
 
            const applyHapusShortcut = (kind) => {
@@ -325,6 +378,10 @@
                                <KelolaHubCard
                                    icon={<path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6.75 3.75h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5C21.75 4.254 21.246 3.75 20.625 3.75H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />}
                                    title="Pemeliharaan Data" subtitle="Kelola & hapus data lama" onClick={() => setView('surat')}
+                               />
+                               <KelolaHubCard
+                                   icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />}
+                                   title="Perlu Verifikasi" subtitle={siswaPerluVerifikasi.length ? `${siswaPerluVerifikasi.length} siswa menunggu` : 'Tidak ada siswa menunggu'} onClick={() => setView('verifikasi')}
                                />
                            </div>
                        </React.Fragment>
@@ -535,6 +592,81 @@
                                    <p className="text-[10px] text-slate-500 leading-relaxed">Kosongkan Jabatan kalau mau tampil label peran biasa (misal "BK/Kesiswaan"). Isi kalau mau tampil beda, misal akun BK/Kesiswaan untuk Kepala Sekolah — hak aksesnya tetap sama seperti BK/Kesiswaan, cuma labelnya yang beda.</p>
                                    <Button type="submit" className="w-full">Tambah Guru</Button>
                                </form>
+                           </div>
+                       </div>
+                   )}
+
+                   {view === 'verifikasi' && (
+                       <React.Fragment>
+                           <KelolaSubHeader title="Perlu Verifikasi" onBack={() => setView('hub')} />
+                           {msg && (
+                               <div className={`text-xs font-medium text-center py-2 rounded-lg border ${msgTone === 'sky' ? 'text-sky-dim bg-sky-dim/15 border-sky-dim/40' : 'text-crimson bg-crimson/10 border-crimson/30'}`}>
+                                   {msg}
+                               </div>
+                           )}
+                           {siswaPerluVerifikasi.length === 0 ? (
+                               <div className="p-6 text-center text-xs text-slate-500 font-medium bg-white border border-slate-200 rounded-2xl">Tidak ada siswa yang menunggu verifikasi.</div>
+                           ) : (
+                               <div className="space-y-2.5">
+                                   {siswaPerluVerifikasi.map(s => (
+                                       <div key={s.nisn} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5">
+                                           <div className="flex items-center justify-between gap-2">
+                                               <div className="min-w-0">
+                                                   <div className="font-bold text-sm text-slate-900 truncate">{s.name}</div>
+                                                   <div className="text-xs text-sky-dim font-medium mt-0.5">{s.class} <span className="text-slate-500 font-normal">| NISN: {s.nisn}</span></div>
+                                               </div>
+                                               <span className="flex-shrink-0"><Badge tone="amber">Perlu Verifikasi</Badge></span>
+                                           </div>
+                                           <div className="flex gap-2">
+                                               <Button onClick={() => submitApproveStudent(s)} className="flex-1 text-xs">Setujui</Button>
+                                               <Button onClick={() => openEditVerifyStudent(s)} variant="secondary" className="flex-1 text-xs">Edit lalu Setujui</Button>
+                                               <Button onClick={() => setConfirmDeleteStudent(s)} variant="danger" className="flex-1 text-xs">Hapus</Button>
+                                           </div>
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                       </React.Fragment>
+                   )}
+
+                   {verifyEditTarget && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Edit lalu Setujui</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{verifyEditTarget.name}</div>
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Nama Lengkap*</label>
+                                   <input type="text" value={verifyEditName} onChange={(e) => setVerifyEditName(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-semibold mb-1 block">Kelas*</label>
+                                   <select value={verifyEditClass} onChange={(e) => setVerifyEditClass(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky">
+                                       <option value="">Pilih kelas...</option>
+                                       {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                                   </select>
+                               </div>
+                               <div>
+                                   <label className="text-[10px] text-slate-500 font-semibold mb-1 block">NISN {verifyEditTarget.nisn && verifyEditTarget.nisn.indexOf('TMP-') === 0 ? '(ID sementara ' + verifyEditTarget.nisn + ' -- isi NISN asli kalau sudah tahu)' : ''}</label>
+                                   <input type="text" value={verifyEditNisn} onChange={(e) => setVerifyEditNisn(e.target.value)} placeholder="Kosongkan untuk tetap pakai ID sementara" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-sky" />
+                               </div>
+                               <Button onClick={submitEditVerifyStudent} disabled={!verifyEditName.trim() || !verifyEditClass.trim()} className="w-full">Simpan & Setujui</Button>
+                               <Button onClick={() => setVerifyEditTarget(null)} variant="secondary" className="w-full">Batal</Button>
+                           </div>
+                       </div>
+                   )}
+
+                   {confirmDeleteStudent && (
+                       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop">
+                               <div className="text-center">
+                                   <h3 className="text-[10px] text-crimson uppercase tracking-widest font-bold">Hapus Siswa?</h3>
+                                   <div className="font-display text-lg font-extrabold text-slate-900 mt-1">{confirmDeleteStudent.name}</div>
+                                   <p className="text-[11px] text-slate-500 mt-2">Hanya bisa dihapus kalau siswa ini belum punya catatan apa pun. Kalau server menolak, siswa ini sudah punya riwayat -- gunakan Edit lalu Setujui, bukan Hapus.</p>
+                               </div>
+                               <Button onClick={submitDeleteStudent} variant="danger" className="w-full">Ya, Hapus</Button>
+                               <Button onClick={() => setConfirmDeleteStudent(null)} variant="secondary" className="w-full">Batal</Button>
                            </div>
                        </div>
                    )}

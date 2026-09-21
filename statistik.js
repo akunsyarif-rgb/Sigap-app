@@ -1,7 +1,7 @@
 // ===== statistik.js =====
 // Tab Statistik: tren per kategori & periode, top kelas/jenis, ekspor.
 
-       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking }) {
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking, students }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
            const [freqWindow, setFreqWindow] = useState('1minggu');
@@ -134,8 +134,11 @@
                            {frequentStudents.length > 0 ? (
                                <div className="space-y-2">
                                    {frequentStudents.map((s, idx) => (
-                                       <div key={idx} className="flex items-center justify-between">
-                                           <span className="text-xs text-slate-700 font-medium truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></span>
+                                       <div key={idx} className="flex items-center justify-between gap-2">
+                                           <span className="text-xs text-slate-700 font-medium truncate flex items-center gap-1.5 min-w-0">
+                                               <span className="truncate">{s.name} <span className="text-slate-500 font-normal">({s.class})</span></span>
+                                               {studentStatusByNisn(students, s.nisn) === 'perlu_verifikasi' && <span className="flex-shrink-0"><Badge tone="amber">Perlu Verifikasi</Badge></span>}
+                                           </span>
                                            <span className="text-[11px] text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                        </div>
                                    ))}

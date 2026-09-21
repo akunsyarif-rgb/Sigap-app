@@ -107,6 +107,146 @@ function getOrCreateSheet(ss, name, headers) {
   return sheet;
 }
 
+// ===== Tambah Siswa Langsung Dari App (audit September 2026) =====
+// Sheet apa saja yang punya baris "log" per siswa (kolom NISN) — dipakai
+// verifyStudent (migrasi NISN TMP-xxx -> NISN asli) dan deleteStudent (cek
+// "siswa ini sudah punya catatan?"). SEMUA 7 sheet ini kebetulan menaruh
+// NISN di kolom B yang sama persis (lihat SCHEMA.md) — kalau nanti ada
+// sheet baru yang menaruh NISN di kolom lain, JANGAN masukkan ke daftar
+// ini apa adanya, tambahkan kolomnya sendiri-sendiri.
+// SENGAJA TIDAK termasuk Push_Queue: NISN di sana cuma bookkeeping/Audit
+// (lihat komentar `nisn:` di Notifikasi.gs), tidak pernah dibaca ulang
+// untuk mengirim/mencocokkan apa pun, jadi tidak ada apa pun yang rusak
+// kalau baris lama di situ tetap menyebut NISN/ID lama. Juga TIDAK
+// termasuk Izin_Kelompok (tidak punya kolom NISN sama sekali, satu baris
+// = satu KEGIATAN, bukan satu siswa).
+var STUDENT_LOG_SHEETS = ['Log_Gerbang', 'Pelanggaran', 'Surat_Masuk', 'Bimbingan_Khusus', 'Pelanggaran_Upacara', 'Izin_Keluar', 'Tindak_Lanjut'];
+var STUDENT_LOG_NISN_COL = 2; // kolom B (1-based), sama di ketujuh sheet di atas
+
+// Master_Siswa (data induk, header TIDAK dijaga getOrCreateSheet — lihat
+// SCHEMA.md). Kolom D-G ditambahkan DI UJUNG (audit ini) supaya A-C lama
+// (NISN/Nama/Kelas) tidak bergeser.
+var MASTER_SISWA_COL_NISN = 1;
+var MASTER_SISWA_COL_NAMA = 2;
+var MASTER_SISWA_COL_KELAS = 3;
+var MASTER_SISWA_COL_STATUS = 4;
+var MASTER_SISWA_COL_DITAMBAH_OLEH = 5;
+var MASTER_SISWA_COL_WAKTU_TAMBAH = 6;
+var MASTER_SISWA_COL_NISN_LAMA = 7;
+var STUDENT_STATUS_PERLU_VERIFIKASI = 'perlu_verifikasi';
+var STUDENT_STATUS_AKTIF = 'aktif';
+
+// Baris lama (kolom status kosong) dianggap aktif -- kompatibel mundur,
+// SENGAJA bukan default string kosong yang berarti "belum tahu".
+function studentStatusOf(rawStatus) {
+  var s = String(rawStatus || '').trim().toLowerCase();
+  return s === STUDENT_STATUS_PERLU_VERIFIKASI ? STUDENT_STATUS_PERLU_VERIFIKASI : STUDENT_STATUS_AKTIF;
+}
+
+// Cari baris Master_Siswa lewat NISN (kolom A) apa adanya (string match,
+// sama seperti seluruh kode lain mencocokkan NISN). Kembalikan null kalau
+// tidak ketemu. rowIndex 1-based SIAP dipakai getRange().
+function findStudentRowByNisn(ss, nisn) {
+  var sheet = ss.getSheetByName('Master_Siswa');
+  if (!sheet) return null;
+  var rows = sheet.getDataRange().getValues();
+  var target = String(nisn);
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][MASTER_SISWA_COL_NISN - 1]) === target) {
+      return { sheet: sheet, rowIndex: i + 1, row: rows[i], allRows: rows };
+    }
+  }
+  return null;
+}
+
+// ID sementara TMP-001, TMP-002, dst. dipakai saat NISN dikosongkan.
+// Dipanggil dari DALAM sigapLock (doPost sudah memegangnya untuk seluruh
+// blok aksi tulis) jadi tidak butuh lock sendiri -- dua permintaan tambah
+// siswa tanpa NISN tidak bisa diproses bersamaan.
+function generateTmpNisn(existingRows) {
+  var max = 0;
+  for (var i = 1; i < existingRows.length; i++) {
+    var m = /^TMP-(\d+)$/.exec(String(existingRows[i][MASTER_SISWA_COL_NISN - 1]));
+    if (m) {
+      var n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  var next = max + 1;
+  var padded = String(next);
+  while (padded.length < 3) padded = '0' + padded;
+  return 'TMP-' + padded;
+}
+
+// Alias NISN TMP-xxx -> NISN asli. Dipanggil SATU kali di awal doPost
+// (lihat pemanggilnya) supaya permintaan yang sudah terlanjur dibuat klien
+// dengan NISN sementara (mis. modal Catat Pelanggaran yang sudah kebuka
+// SEBELUM verifyStudent mengganti NISN-nya) tetap kena baris yang benar,
+// tanpa perlu mengubah tiap action satu per satu. Kolom nisn_lama (G) DI
+// Master_Siswa yang jadi kuncinya -- baris yang NISN-nya sudah diganti
+// verifyStudent menyimpan ID TMP lamanya di situ, permanen (tidak pernah
+// dihapus), jadi alias ini tetap berlaku kapan pun, bukan cuma sesaat.
+function resolveNisnAlias(ss, nisn) {
+  var s = String(nisn || '');
+  if (s.indexOf('TMP-') !== 0) return s;
+  var sheet = ss.getSheetByName('Master_Siswa');
+  if (!sheet) return s;
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][MASTER_SISWA_COL_NISN_LAMA - 1] || '') === s) {
+      return String(rows[i][MASTER_SISWA_COL_NISN - 1]);
+    }
+  }
+  return s;
+}
+
+// Ganti NISN lama -> baru di ketujuh sheet log (STUDENT_LOG_SHEETS), SATU
+// range baca + SATU range tulis per sheet (bukan appendRow/setValue per
+// baris) -- lock global doPost cuma menunggu 10 detik, jadi seluruh proses
+// harus cepat. Kolom lain di baris manapun TIDAK disentuh sama sekali.
+//
+// TIDAK ADA rollback sungguhan: Google Sheets tidak punya transaksi lintas
+// sheet. Kalau satu sheet gagal ditulis DI TENGAH JALAN (mis. kena limit
+// Sheets API), sheet-sheet SEBELUMNYA di daftar ini SUDAH terlanjur
+// berubah ke NISN baru dan TIDAK dikembalikan lagi ke NISN lama -- yang
+// bisa dilakukan fungsi ini cuma BERHENTI secepatnya (tidak lanjut ke
+// sheet berikutnya) dan melaporkan PERSIS sheet mana saja yang sudah
+// berubah, supaya admin tahu tepat sheet mana yang masih perlu ditangani
+// manual. Pemanggil (verifyStudent) sengaja migrasi log ini DULU, baru
+// menulis NISN baru ke Master_Siswa sendiri PALING TERAKHIR -- kalau
+// migrasi gagal di tengah, Master_Siswa tetap menunjuk NISN lama yang
+// masih valid, admin tinggal ulangi verifikasinya.
+function migrateStudentNisnInLogs(ss, oldNisn, newNisn) {
+  var updated = [];
+  var oldStr = String(oldNisn);
+  var newStr = String(newNisn);
+  for (var i = 0; i < STUDENT_LOG_SHEETS.length; i++) {
+    var sheetName = STUDENT_LOG_SHEETS[i];
+    try {
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) continue; // sheet operasional belum pernah dibuat -- tidak ada data untuk dimigrasi
+      var lastRow = sheet.getLastRow();
+      if (lastRow < 2) continue; // cuma header / kosong
+      var range = sheet.getRange(2, STUDENT_LOG_NISN_COL, lastRow - 1, 1);
+      var values = range.getValues();
+      var changed = false;
+      for (var r = 0; r < values.length; r++) {
+        if (String(values[r][0]) === oldStr) {
+          values[r][0] = newStr;
+          changed = true;
+        }
+      }
+      if (changed) {
+        range.setValues(values);
+        updated.push(sheetName);
+      }
+    } catch (migErr) {
+      throw { migrationFailed: true, failedSheet: sheetName, updatedSheets: updated, error: String(migErr) };
+    }
+  }
+  return updated;
+}
+
 // uploadFotoSurat() (upload foto surat ke Drive) DIHAPUS — fitur lampiran
 // foto untuk Surat dicabut total, Surat sekarang cuma laporan tertulis
 // (jenis + keterangan). Alasan: berulang kali gagal di lapangan karena

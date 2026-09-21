@@ -76,7 +76,7 @@
        // terang. Kalau ada pemakai baru di latar terang nanti, tambah tone
        // baru, jangan ubah "sky" lagi (lihat kontras yang sudah dihitung).
        function Badge({ children, tone = 'sky' }) {
-           const tones = { sky: 'bg-white/15 text-white border-white/35', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300' };
+           const tones = { sky: 'bg-white/15 text-white border-white/35', crimson: 'bg-crimson/15 text-crimson border-crimson/40', ink: 'bg-slate-100 text-slate-600 border-slate-300', amber: 'bg-amber-500/15 text-amber-600 border-amber-500/40' };
            return <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${tones[tone]}`}>{children}</span>;
        }
 

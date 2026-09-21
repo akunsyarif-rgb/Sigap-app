@@ -946,6 +946,68 @@
                    .finally(() => hideSavingOverlay());
            };
 
+           // ---- Tambah Siswa Langsung Dari App (audit September 2026):
+           // dipanggil dari state kosong pencarian Gerbang. Server yang
+           // memutuskan status (aktif/perlu_verifikasi) berdasarkan role sesi
+           // -- payload di sini TIDAK pernah mengirim status. Optimistic
+           // update langsung setelah sukses supaya siswa baru BISA LANGSUNG
+           // dipilih tanpa reload, sama seperti setSuratList/setAllLogs
+           // di tempat lain. ----
+           const handleAddStudent = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addStudent', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success' && data.student) {
+                           setStudents(prev => [...prev, data.student]);
+                           callback(true, data.student);
+                       } else callback(false, data.message || 'Gagal menambah siswa.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
+           };
+
+           // ---- Verifikasi siswa perlu_verifikasi (admin only): setujui apa
+           // adanya, atau edit dulu (payload.newName/newClass/newNisn
+           // opsional). Kalau NISN berubah, server memigrasi 7 sheet log --
+           // daftar (allLogs/suratList/pelanggaranList/dll) yang SUDAH
+           // ter-fetch di klien TIDAK ikut diperbarui otomatis di sini
+           // (masih menunjuk NISN lama sampai tab terkait di-refresh/dibuka
+           // ulang) -- panggil fetchStudentsOnly() sesudahnya supaya
+           // setidaknya daftar siswa sendiri langsung akurat. ----
+           const handleVerifyStudent = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'verifyStudent', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           fetchStudentsOnly();
+                           callback(true, data.student);
+                       } else callback(false, data.message || 'Gagal memverifikasi siswa.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
+           };
+
+           // ---- Hapus siswa perlu_verifikasi (admin only, cuma yang belum
+           // punya log sama sekali -- server yang menegakkan, lihat Code.gs). ----
+           const handleDeleteStudent = (payload, callback) => {
+               if (isSavingOverlayActive()) return;
+               showSavingOverlay();
+               fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteStudent', token: API_TOKEN, sessionToken: sessionToken, ...payload }) })
+                   .then(res => res.json()).then(checkSession)
+                   .then(data => {
+                       if (data.status === 'success') {
+                           setStudents(prev => prev.filter(s => s.nisn !== payload.nisn));
+                           callback(true, 'Siswa berhasil dihapus.');
+                       } else callback(false, data.message || 'Gagal menghapus siswa.');
+                   })
+                   .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))
+                   .finally(() => hideSavingOverlay());
+           };
+
            // ---- Pemeliharaan Data > Hapus Data: pratinjau (baca-saja) lalu
            // eksekusi, menggantikan handleDeleteSurat/'deleteSurat' yang lama
            // (satu sheet, satu bulan/tahun, tanpa pratinjau). Sama seperti
@@ -1376,6 +1438,9 @@
                                        initialMode={gerbangMode}
                                        onGenerateSurat={handleGenerateIzinSurat}
                                        onRefresh={fetchData} loadingActivity={loadingLogs}
+                                       canAddStudent={roleKey !== 'osis'}
+                                       onAddStudent={handleAddStudent}
+                                       onReloadStudents={fetchStudentsOnly}
                                    />
                                )}
                                {activeTab === 'dashboard' && (
@@ -1401,14 +1466,15 @@
                                        allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} izinList={izinList} initialCategory={riwayatCategory}
                                        canManage={roleKey !== 'osis'} isAdmin={roleKey === 'admin'} isBk={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} currentUserName={user.name}
                                        onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
+                                       students={students}
                                    />
                                )}
-                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} />}
+                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} students={students} />}
                                {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
                                {activeTab === 'kelola' && effectiveMenus.includes('kelola') && (
-                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onPreviewHapusData={handlePreviewHapusData} onHapusData={handleHapusData} onGoToExportData={goToExportData} />
+                                   <KelolaTab teachers={teachers} students={students} jadwalPiket={jadwalPiket} onAddTeacher={handleAddTeacher} onUpdatePassword={handleUpdatePassword} onUpdateJabatan={handleUpdateJabatan} onToggleStatus={handleToggleStatus} onUpdateRole={handleUpdateRole} onUpdateWaliKelas={handleUpdateWaliKelas} onUpdateName={handleUpdateTeacherName} onDeleteTeacher={handleDeleteTeacher} onSetJadwalPiket={handleSetJadwalPiket} onPreviewHapusData={handlePreviewHapusData} onHapusData={handleHapusData} onGoToExportData={goToExportData} onVerifyStudent={handleVerifyStudent} onDeleteStudent={handleDeleteStudent} />
                                )}
                                {activeTab === 'auditlog' && effectiveMenus.includes('auditlog') && (
                                    <AuditLogTab auditLog={auditLog} />
