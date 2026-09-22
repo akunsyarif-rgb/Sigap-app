@@ -725,11 +725,29 @@
            // bukan diam selamanya — dan isSavingOverlayActive() (overlay global,
            // ui-common.js) mencegah klik ganda pas request pertama masih berjalan.
            const RECORD_TIMEOUT_MS = 15000;
+           // Optimistic update (audit kecepatan September 2026): allLogs
+           // ditambah SEBELUM server menjawab, bukan menunggu fetch selesai
+           // seperti sebelumnya -- backend action 'record' butuh ~10 panggilan
+           // Sheets/Cache API berurutan di dalam satu lock (lihat laporan
+           // audit), jadi menunggu penuh sebelum update UI berarti guru
+           // menatap overlay "Menyimpan..." lebih lama dari yang perlu untuk
+           // SEKADAR melihat entry-nya di daftar. _optimisticId menandai baris
+           // sementara ini supaya bisa ditemukan lagi persis (diganti saat
+           // sukses, dibuang saat gagal) walau beberapa handleRecord dipanggil
+           // berturut-turut. SavingOverlay TIDAK disentuh -- tetap nyala
+           // selama fetch persis seperti sebelumnya (lihat tests/saving-overlay.test.js),
+           // jadi guru belum akan MELIHAT hasil optimistic ini sampai overlay
+           // hilang -- perubahan ini soal state list-nya benar & aman untuk
+           // rollback, bukan klaim "kerasa lebih cepat sekarang juga".
            const handleRecord = (type) => {
                if (isSavingOverlayActive()) return;
+               const student = selectedStudent;
                const finalType = type === 'Custom' ? (customReasonInput.trim() || 'Lainnya') : type;
-               const payload = { action: 'record', nisn: selectedStudent.nisn, name: selectedStudent.name, class_name: selectedStudent.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
+               const payload = { action: 'record', nisn: student.nisn, name: student.name, class_name: student.class, type: finalType, sessionToken: sessionToken, token: API_TOKEN };
                showSavingOverlay();
+               const optimisticId = 'optimistic-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+               const optimisticEntry = { timestamp: new Date(), nisn: student.nisn, name: student.name, class: student.class, type: finalType, logged_by: user.name, _optimisticId: optimisticId };
+               setAllLogs(prev => [optimisticEntry, ...prev]);
                const controller = new AbortController();
                const timeoutId = setTimeout(() => controller.abort(), RECORD_TIMEOUT_MS);
                fetch(API_URL, { method: 'POST', body: JSON.stringify(payload), signal: controller.signal })
@@ -740,16 +758,26 @@
                            // client) — supaya edit/hapus berikutnya di entry
                            // ini cocok persis dengan yang tertulis di sheet.
                            // Lihat catatan bug di findRowByNisnTimestamp/Utils.gs.
-                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: selectedStudent.nisn, name: selectedStudent.name, class: selectedStudent.class, type: finalType, logged_by: user.name };
-                           setAllLogs(prev => [newEntry, ...prev]);
+                           // Entry optimistic DIGANTI (bukan ditambah lagi)
+                           // lewat _optimisticId, supaya tidak dobel di daftar.
+                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: student.nisn, name: student.name, class: student.class, type: finalType, logged_by: user.name };
+                           setAllLogs(prev => prev.map(item => item._optimisticId === optimisticId ? newEntry : item));
                            setSelectedStudent(null); setCustomReasonInput('');
                            setToast(`✓ ${newEntry.name} berhasil dicatat`);
                        } else {
+                           // Server tolak (mis. sudah tercatat hari ini) --
+                           // entry optimistic BUKAN kejadian nyata, harus
+                           // dibuang lagi, bukan dibiarkan nyangkut di daftar.
+                           setAllLogs(prev => prev.filter(item => item._optimisticId !== optimisticId));
                            setToast(data.message || 'Gagal menyimpan, coba lagi.');
                        }
                        setTimeout(() => setToast(null), 2000);
                    })
                    .catch((err) => {
+                       // Sama seperti rollback di atas -- koneksi gagal/timeout
+                       // berarti server tidak pernah mengonfirmasi, jadi entry
+                       // optimistic tidak boleh dianggap tersimpan.
+                       setAllLogs(prev => prev.filter(item => item._optimisticId !== optimisticId));
                        setToast(err && err.name === 'AbortError' ? 'Server tidak merespons, coba lagi.' : 'Koneksi gagal, coba lagi.');
                        setTimeout(() => setToast(null), 2000);
                    })
