@@ -196,7 +196,6 @@ function doPost(e) {
     // ---- Catat keterlambatan (bukan untuk OSIS) ----
     if (action === 'record') {
       Logger.log('[TIMING] record: start @ ' + new Date().getTime());
-      debugTimingLog('record: start'); // TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
       if (isOsisRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
@@ -219,7 +218,6 @@ function doPost(e) {
         }
       }
       Logger.log('[TIMING] record: after dup check @ ' + new Date().getTime());
-      debugTimingLog('record: after dup check'); // TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
       // Timestamp ditangkap SATU KALI di sini (bukan new Date() literal di
       // appendRow) supaya nilai PERSIS yang ditulis ke baris bisa dikirim
       // balik ke klien di respons (lihat timestamp di jsonOut bawah) —
@@ -232,7 +230,6 @@ function doPost(e) {
       var recordTimestamp = new Date();
       sheet.appendRow([recordTimestamp, data.nisn, data.name, data.class_name, sanitizeSheetValue(data.type), sessionUser.name]);
       Logger.log('[TIMING] record: after appendRow @ ' + new Date().getTime());
-      debugTimingLog('record: after appendRow'); // TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
       CacheService.getScriptCache().remove('today_logs');
       CacheService.getScriptCache().remove('today_data');
       // Siswa ini baru dapat catatan keterlambatan -- buang cache riwayatnya
@@ -251,9 +248,7 @@ function doPost(e) {
         notifyRelevantUsers({ jenis: 'keterlambatan', nisn: recordSiswa.nisn, kelas: recordSiswa.class, needsPiketAction: false });
       }
       Logger.log('[TIMING] record: after notifyRelevantUsers @ ' + new Date().getTime());
-      debugTimingLog('record: after notifyRelevantUsers'); // TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
       Logger.log('[TIMING] record: before return jsonOut @ ' + new Date().getTime());
-      debugTimingLog('record: before return jsonOut'); // TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
       return jsonOut({ status: 'success', timestamp: recordTimestamp });
     }
 
