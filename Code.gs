@@ -211,11 +211,39 @@ function doPost(e) {
       // saja berapa pun panjang riwayatnya.
       var today = new Date();
       var todayStartLog = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-      var rows = getRowsSince(sheet, todayStartLog, 6);
-      for (var i = 0; i < rows.length; i++) {
-        if (String(rows[i][1]) === String(data.nisn) && isSameDayServer(new Date(rows[i][0]), today)) {
-          return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
+      // Coba cache 'today_logs' dulu (sudah ada, sudah di-invalidate benar
+      // di record/editEntry/deleteEntry -- lihat AUDIT_BACKEND_PROPOSAL.md
+      // Proposal 3) sebelum baca Sheet lewat getRowsSince. Cache-nya berisi
+      // SELURUH Log_Gerbang (bukan cuma hari ini, walau namanya begitu),
+      // filter "hari ini" dilakukan di sini lewat isSameDayServer -- SAMA
+      // seperti kalau baca dari getRowsSince, cuma sumber datanya beda.
+      var dupFound = false;
+      var cachedTodayLogs = CacheService.getScriptCache().get('today_logs');
+      if (cachedTodayLogs) {
+        try {
+          var parsedTodayLogs = JSON.parse(cachedTodayLogs);
+          var todayLogsList = Array.isArray(parsedTodayLogs) ? parsedTodayLogs : (parsedTodayLogs.logs || []);
+          for (var ci = 0; ci < todayLogsList.length; ci++) {
+            if (String(todayLogsList[ci].nisn) === String(data.nisn) && isSameDayServer(new Date(todayLogsList[ci].timestamp), today)) {
+              dupFound = true;
+              break;
+            }
+          }
+        } catch (parseErr) {
+          cachedTodayLogs = null; // cache korup -- perlakukan sebagai miss, fallback di bawah
         }
+      }
+      if (!cachedTodayLogs) {
+        var rows = getRowsSince(sheet, todayStartLog, 6);
+        for (var i = 0; i < rows.length; i++) {
+          if (String(rows[i][1]) === String(data.nisn) && isSameDayServer(new Date(rows[i][0]), today)) {
+            dupFound = true;
+            break;
+          }
+        }
+      }
+      if (dupFound) {
+        return jsonOut({ status: 'error', message: data.name + ' sudah tercatat terlambat hari ini.' });
       }
       Logger.log('[TIMING] record: after dup check @ ' + new Date().getTime());
       // Timestamp ditangkap SATU KALI di sini (bukan new Date() literal di

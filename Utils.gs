@@ -1470,6 +1470,32 @@ function buildIzinAuditDetail(izin, tambahan) {
 function resolveSiswaForIzin(ss, nisn) {
   var target = String(nisn || '').trim();
   if (!target) return null;
+  // Cache HIT: 'students_list' sudah berisi SEMUA siswa (dipakai getStudents,
+  // TTL 300 detik, sudah di-invalidate benar di addStudent/verifyStudent/
+  // deleteStudent -- lihat AUDIT_BACKEND_PROPOSAL.md Proposal 1). Kalau
+  // ketemu di cache, hasilnya SAH langsung dipakai -- cache ini berisi
+  // seluruh Master_Siswa tanpa filter apa pun, jadi "tidak ketemu di cache"
+  // juga berarti sah "tidak ketemu di sheet", TIDAK perlu fallback baca
+  // sheet lagi untuk kasus itu.
+  var cachedStudents = CacheService.getScriptCache().get('students_list');
+  if (cachedStudents) {
+    try {
+      var parsedStudents = JSON.parse(cachedStudents);
+      var studentList = parsedStudents && parsedStudents.students;
+      if (Array.isArray(studentList)) {
+        for (var c = 0; c < studentList.length; c++) {
+          if (String(studentList[c].nisn).trim() === target) {
+            return { nisn: String(studentList[c].nisn).trim(), name: String(studentList[c].name), class: String(studentList[c].class) };
+          }
+        }
+        return null;
+      }
+    } catch (parseErr) {
+      // Cache korup -- lanjut ke fallback baca sheet di bawah, jangan gagal diam-diam.
+    }
+  }
+  // Fallback (cache kosong/miss/korup): baca langsung dari sheet, PERSIS
+  // perilaku lama -- tidak ada regresi kalau cache belum/tidak terisi.
   var sheet = ss.getSheetByName('Master_Siswa');
   if (!sheet) return null;
   var lastRow = sheet.getLastRow();
