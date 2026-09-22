@@ -390,6 +390,24 @@ function logAudit(actor, action, detail) {
   }
 }
 
+// TEMP DEBUG - HAPUS SETELAH DIAGNOSIS SELESAI
+// Sementara buat audit kecepatan action 'record' (lihat [TIMING] di Code.gs)
+// — Logger.log susah dibaca dari HP/iPad (UI Eksekusi Apps Script), sheet
+// biasa gampang dibuka dari mana saja. SENGAJA tanpa lock sendiri (dipanggil
+// dari dalam sigapLock yang sudah ada di Code.gs, dan ini cuma debug tool —
+// baris kepentok/keskip kalau race gak masalah, bakal dihapus lagi). Gak
+// pernah throw ke pemanggil, sama pola seperti logAudit() di atas.
+function debugTimingLog(label) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = getOrCreateSheet(ss, 'Debug_Timing', ['Label', 'Timestamp_ms', 'Waktu (readable)']);
+    var now = new Date();
+    sheet.appendRow([label, now.getTime(), now]);
+  } catch (e) {
+    // Sama seperti logAudit — gagal tulis debug log tidak boleh menggagalkan aksi utama.
+  }
+}
+
 // Peta kategori -> nama sheet
 function getSheetForCategory(ss, category) {
   var sheetNames = { terlambat: 'Log_Gerbang', pelanggaran: 'Pelanggaran', surat: 'Surat_Masuk' };
