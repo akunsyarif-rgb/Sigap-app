@@ -69,12 +69,17 @@
                const groupByStudent = (list, detailField) => {
                    const map = {};
                    list.forEach(item => {
-                       if (!map[item.nisn]) map[item.nisn] = { nisn: item.nisn, name: item.name, count: 0, details: [] };
+                       if (!map[item.nisn]) map[item.nisn] = { nisn: item.nisn, name: item.name, count: 0, details: [], timestamps: [] };
                        map[item.nisn].count++;
+                       map[item.nisn].timestamps.push(item.timestamp);
                        if (item[detailField] && !map[item.nisn].details.includes(item[detailField])) {
                            map[item.nisn].details.push(item[detailField]);
                        }
                    });
+                   // tanggal: "Tanggal: ..." di bawah tiap siswa (lihat
+                   // ringkasTanggalKejadian, helpers.js) — wali kelas perlu tahu
+                   // KAPAN, bukan cuma berapa kali.
+                   Object.values(map).forEach(s => { s.tanggal = ringkasTanggalKejadian(s.timestamps); });
                    return Object.values(map).sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)));
                };
                const siswaTerlambat = groupByStudent(lateKelas, 'type');
@@ -146,6 +151,7 @@
                                                        <span className="text-crimson font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                                    </div>
                                                    {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
+                                                   {s.tanggal && <div className="text-[10px] text-slate-500 mt-0.5">Tanggal: {s.tanggal}</div>}
                                                </div>
                                            )) : (
                                                <div className="text-[11px] text-slate-500">Tidak ada catatan terlambat di periode ini.</div>
@@ -160,6 +166,7 @@
                                                        <span className="text-amber-600 font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                                    </div>
                                                    {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
+                                                   {s.tanggal && <div className="text-[10px] text-slate-500 mt-0.5">Tanggal: {s.tanggal}</div>}
                                                </div>
                                            )) : (
                                                <div className="text-[11px] text-slate-500">Tidak ada catatan pelanggaran di periode ini.</div>
@@ -174,6 +181,7 @@
                                                        <span className="text-sky-dim font-bold flex-shrink-0 ml-2">{s.count}x</span>
                                                    </div>
                                                    {s.details.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">{s.details.join(', ')}</div>}
+                                                   {s.tanggal && <div className="text-[10px] text-slate-500 mt-0.5">Tanggal: {s.tanggal}</div>}
                                                </div>
                                            )) : (
                                                <div className="text-[11px] text-slate-500">Tidak ada catatan upacara di periode ini.</div>

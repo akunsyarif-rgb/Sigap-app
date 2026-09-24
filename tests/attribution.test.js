@@ -216,7 +216,7 @@ test('LoginScreen: toggle Tentang menukar ke TentangSigapPage, BUKAN form login 
   const TentangFn = get('TentangSigapPage');
   const found = findAll(tree, (n) => n.type === TentangFn);
   assert.equal(found.length, 1, 'harus merender TentangSigapPage persis sekali saat showTentang=true');
-  const passwordInputs = findAll(tree, (n) => n.type === 'input' && n.props.type === 'password');
+  const passwordInputs = findAll(tree, (n) => (n.type === 'input' && n.props.type === 'password') || n.type === get('PasswordField'));
   assert.equal(passwordInputs.length, 0, 'form login (field password) tidak boleh ikut dirender saat Tentang terbuka');
 });
 

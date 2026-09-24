@@ -3,7 +3,7 @@
 [![Test](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml)
 
 Aplikasi web internal **SMAN 2 Tarakan** untuk mencatat keterlambatan siswa,
-surat izin/sakit, izin keluar/pulang di tengah jam pelajaran (BETA),
+surat izin/sakit, izin keluar/pulang di tengah jam pelajaran,
 pelanggaran tata tertib, dan pelanggaran saat upacara — menggantikan buku
 piket kertas dengan satu sistem yang bisa dicari dan direkap kapan saja.
 
@@ -67,8 +67,9 @@ digembok token API + sesi guru yang login.
 ## Fitur Utama
 
 - **Gerbang**: catat keterlambatan & surat izin/sakit, termasuk Izin
-  Keluar/Pulang di tengah jam pelajaran (BETA) — perorangan maupun
-  rombongan (Izin Kelompok).
+  Keluar/Pulang di tengah jam pelajaran — perorangan maupun
+  rombongan (Izin Kelompok), plus cetak surat izin lewat dialog cetak
+  peramban.
 - **Pelanggaran**: catat pelanggaran tata tertib + tindakan, dan pelanggaran
   saat upacara (dicatat OSIS/BK/Admin).
 - **Bimbingan Khusus**: catatan konseling, dibatasi ketat untuk BK/Admin.

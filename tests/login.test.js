@@ -163,8 +163,13 @@ function findAll(node, predicate) {
   return flatten(node).filter((n) => n.type !== undefined && predicate(n));
 }
 
+// Kolom password sekarang dirender lewat <PasswordField> (ui-common.js, tombol
+// mata lihat/sembunyikan). React palsu di sini tidak membuka komponen, jadi
+// elemen PasswordField dihitung sebagai kolom password juga — props-nya
+// (placeholder, inputMode, disabled, dst.) diteruskan apa adanya ke <input>.
 function inputsOfType(node, type) {
-  return findAll(node, (n) => n.type === 'input' && n.props.type === type);
+  const PasswordField = get('PasswordField');
+  return findAll(node, (n) => (n.type === 'input' && n.props.type === type) || (type === 'password' && n.type === PasswordField));
 }
 
 function submitButton(node) {

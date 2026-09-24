@@ -237,9 +237,9 @@ yang ia tulis sendiri (dicocokkan ke kolom `Dicatat_Oleh`).
 
 ---
 
-### Izin Keluar / Pulang (BETA)
+### Izin Keluar / Pulang
 
-Lihat `CLAUDE.md` bagian "Izin Keluar / Pulang (BETA)" untuk mesin status
+Lihat `CLAUDE.md` bagian "Izin Keluar / Pulang" untuk mesin status
 lengkap (`Menunggu Verifikasi` → `Sedang di Luar` → `Selesai`/`Pulang`) —
 di sini hanya parameter tiap aksi.
 

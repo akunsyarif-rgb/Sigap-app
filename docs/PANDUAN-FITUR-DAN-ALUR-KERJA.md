@@ -7,7 +7,7 @@
 
 ## 1. Ringkasan Singkat
 
-SIGAP (Sistem Informasi Gerbang, Absensi, dan Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, izin keluar/pulang di tengah jam pelajaran (BETA), pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
+SIGAP (Sistem Informasi Gerbang, Absensi, dan Pelanggaran) adalah aplikasi sekolah untuk **mencatat keterlambatan siswa, surat izin/sakit, izin keluar/pulang di tengah jam pelajaran, pelanggaran tata tertib, dan pelanggaran saat upacara** di SMAN 2 Tarakan. Semua catatan yang selama ini ditulis di buku piket sekarang masuk ke satu tempat yang rapi, bisa dicari, dan bisa dilihat rekapnya kapan saja.
 
 Aplikasi ini dipakai **oleh guru dan petugas sekolah**, dibuka lewat **browser HP atau laptop** — tidak perlu instal apa pun dari Play Store atau App Store.
 
@@ -87,11 +87,11 @@ Aturan ini soal **apa yang terlihat**. Aturan perbaikan catatan tidak berubah: k
 
 **Perbaikan salah ketik:** kalau guru salah memilih alasan atau salah ketik keterangan, catatan bisa **diubah atau dihapus dalam 5 menit pertama** sejak dicatat, dan hanya catatan yang ditulis sendiri. Setelah 5 menit lewat, hanya Admin yang bisa memperbaikinya. Aturan ini sengaja dibuat agar catatan tidak bisa "dirapikan" diam-diam berhari-hari kemudian.
 
-### 3.3b Izin Keluar · BETA — Siswa Meninggalkan Sekolah di Tengah Jam Pelajaran
+### 3.3b Izin Keluar — Siswa Meninggalkan Sekolah di Tengah Jam Pelajaran
 
 Ada di dalam menu **Gerbang**, sebagai mode ketiga di samping *Catat Terlambat* dan *Catat Surat*. Ini **bukan** fitur Surat: Surat adalah laporan tertulis untuk siswa yang tidak masuk atau terlambat, sedangkan Izin Keluar mencatat siswa yang **keluar dari lingkungan sekolah** dan mengikutinya sampai siswa itu kembali (atau memang pulang).
 
-Statusnya **BETA** karena masih tahap uji coba dan perangkat pencetakan slip belum tersedia di sekolah.
+Supaya mudah ditemukan, di bawah sakelar mode *Catat Terlambat* / *Catat Surat* ada keterangan singkat dengan tautan **Buka Izin Keluar**. Ingat bedanya: jenis **Izin** di *Catat Surat* adalah surat izin **tidak hadir** dari orang tua, bukan izin keluar/pulang saat jam sekolah.
 
 **Alurnya persis prosedur yang sudah berjalan — tidak dipotong:**
 
@@ -141,7 +141,7 @@ Satu siswa tetap **tidak bisa punya dua izin berjalan sekaligus**: kalau ada sat
 
 **Soal privasi:** izin yang **masih berjalan** terlihat semua guru — petugas piket harus tahu siapa yang masih di luar. Riwayat izin yang sudah tertutup mengikuti aturan yang sama dengan keterlambatan & surat: wali kelas melihat kelas perwaliannya, BK/Admin melihat seluruh sekolah, dan OSIS tidak melihat sama sekali. Nama kegiatan hanya ikut terlihat kalau pesertanya memang boleh dilihat. Fitur ini **tidak** menambah akses siapa pun.
 
-**Soal cetak:** untuk sekarang seluruhnya digital. Jenis printer, cara koneksi, media, dan ukuran kertas/slip **belum ditentukan sekolah**, jadi belum ada satu pun bagian aplikasi yang berhubungan dengan alat cetak. Yang tampil di layar hanya keterangan *"Fitur pencetakan masih dalam tahap BETA."* Kalau nanti printernya sudah ada, cetakan menjadi hasil dari transaksi yang **sudah tersimpan** — bukan syarat supaya transaksinya berhasil.
+**Soal cetak:** surat izin keluar bisa dicetak lewat tombol **📄 Cetak Surat Izin** pada kartu izin berstatus **Sedang di Luar** dan di kelompok **Selesai Hari Ini** — tidak tersedia saat masih **Menunggu Verifikasi** (belum ada yang bisa dicetak sebelum diverifikasi), dan belum tersedia untuk peserta Izin Kelompok. Aplikasi membuka pratinjau surat, lalu tombol cetak memakai **dialog cetak bawaan peramban**: pilih printer yang tersedia, atau *Simpan sebagai PDF*. SIGAP tidak terhubung langsung ke printer mana pun. Nomor surat dibuat otomatis dan tetap sama walau dicetak ulang kapan saja. Cetakan adalah hasil dari transaksi yang **sudah tersimpan** — bukan syarat supaya transaksinya berhasil.
 
 ### 3.4 Pelanggaran — Catat Pelanggaran Tata Tertib
 
@@ -266,9 +266,9 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 3. Pilih **jenis** (Sakit / Izin / lainnya) dan tulis **keterangan** singkat.
 4. Tekan **Simpan**. Jendela isian baru tertutup setelah server benar-benar mengonfirmasi tersimpan — jadi kalau gagal, isian Anda tidak hilang dan bisa langsung dicoba lagi.
 
-### 5.3b Mencatat Izin Keluar / Pulang (BETA)
+### 5.3b Mencatat Izin Keluar / Pulang
 
-1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar · BETA**.
+1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar** (atau ketuk tautan **Buka Izin Keluar** di bawah sakelar).
 2. Cari dan pilih siswanya. (Kalau siswa itu masih punya izin yang berjalan, namanya tidak bisa dipilih lagi.)
 3. Formulirnya langsung terbuka dengan judul yang menyesuaikan konteks: *"Persetujuan sebagai Wali Kelas"* kalau ini kelas perwalian Anda, atau *"Persetujuan sebagai Guru Mapel"* kalau bukan — isinya tetap formulir yang sama.
 4. Isi **keperluan**, lalu pilih tujuan: **Kembali ke sekolah** atau **Pulang / tidak kembali**.
@@ -280,7 +280,7 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 
 ### 5.3c Mencatat Izin Kelompok (satu kegiatan, banyak siswa)
 
-1. Buka menu **Gerbang** → **Izin Keluar · BETA** → tombol **Kelompok**.
+1. Buka menu **Gerbang** → **Izin Keluar** → tombol **Kelompok**.
 2. Isi **Kegiatan** (contoh: *Seminar Bank Indonesia*) dan **Keperluan**.
 3. Pilih **Tujuan**, lalu **Pola Kembali** (*Bersama* atau *Individual*).
 4. Cari dan **centang semua siswa peserta**. Siswa yang masih punya izin berjalan tidak bisa dipilih.
@@ -361,7 +361,7 @@ Agar tidak ada salah harapan, berikut hal-hal yang **belum** ditangani aplikasi 
 - Jadwal pelajaran / jadwal mengajar guru per jam (yang ada adalah **jadwal piket guru**). Karena itu aplikasi juga tidak memverifikasi siapa guru mata pelajaran pada jam tertentu — lihat penjelasan di bagian Izin Keluar.
 - Aplikasi khusus siswa atau orang tua, dan pengumuman ke siswa.
 - Aplikasi Android/iOS di toko aplikasi — SIGAP dibuka lewat **browser**.
-- **Cetak slip izin keluar.** Fitur Izin Keluar masih BETA dan seluruhnya digital; jenis printer, cara koneksi, media, dan ukuran slipnya belum ditentukan sekolah, jadi belum dirancang sama sekali.
+- **Cetak surat izin untuk peserta Izin Kelompok.** Cetak surat izin keluar baru tersedia untuk izin individual (lihat bagian Izin Keluar).
 
 ---
 
