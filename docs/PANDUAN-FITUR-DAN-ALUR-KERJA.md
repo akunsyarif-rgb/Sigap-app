@@ -91,8 +91,6 @@ Aturan ini soal **apa yang terlihat**. Aturan perbaikan catatan tidak berubah: k
 
 Ada di dalam menu **Gerbang**, sebagai mode ketiga di samping *Catat Terlambat* dan *Catat Surat*. Ini **bukan** fitur Surat: Surat adalah laporan tertulis untuk siswa yang tidak masuk atau terlambat, sedangkan Izin Keluar mencatat siswa yang **keluar dari lingkungan sekolah** dan mengikutinya sampai siswa itu kembali (atau memang pulang).
 
-Supaya mudah ditemukan, di bawah sakelar mode *Catat Terlambat* / *Catat Surat* ada keterangan singkat dengan tautan **Buka Izin Keluar**. Ingat bedanya: jenis **Izin** di *Catat Surat* adalah surat izin **tidak hadir** dari orang tua, bukan izin keluar/pulang saat jam sekolah.
-
 **Alurnya persis prosedur yang sudah berjalan — tidak dipotong:**
 
 | Langkah | Siapa | Yang terjadi di aplikasi |
@@ -268,7 +266,7 @@ Catatan langsung tersimpan dan muncul di daftar **Aktivitas Hari Ini**.
 
 ### 5.3b Mencatat Izin Keluar / Pulang
 
-1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar** (atau ketuk tautan **Buka Izin Keluar** di bawah sakelar).
+1. Buka menu **Gerbang**, geser sakelar ke **Izin Keluar**.
 2. Cari dan pilih siswanya. (Kalau siswa itu masih punya izin yang berjalan, namanya tidak bisa dipilih lagi.)
 3. Formulirnya langsung terbuka dengan judul yang menyesuaikan konteks: *"Persetujuan sebagai Wali Kelas"* kalau ini kelas perwalian Anda, atau *"Persetujuan sebagai Guru Mapel"* kalau bukan — isinya tetap formulir yang sama.
 4. Isi **keperluan**, lalu pilih tujuan: **Kembali ke sekolah** atau **Pulang / tidak kembali**.

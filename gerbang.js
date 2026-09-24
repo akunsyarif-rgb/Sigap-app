@@ -227,21 +227,6 @@
                        </button>
                    </div>
 
-                   {/* Keterangan satu baris per mode (masukan survei guru,
-                       September 2026): ada guru yang minta fitur "izin keluar /
-                       pulang" padahal sudah ada di sakelar ketiga ini — jadi di
-                       dua mode lain ditunjukkan jalannya. Mode Izin Keluar tidak
-                       diberi caption: sudah punya kartu penjelas sendiri. */}
-                   {mode !== 'izin' && (
-                       <p className="text-[11px] text-slate-500 text-center leading-relaxed -mt-2">
-                           {mode === 'surat'
-                               ? 'Catat Surat: surat sakit/izin tidak hadir dari orang tua.'
-                               : 'Catat Terlambat: siswa yang datang terlambat di gerbang.'}
-                           {' '}Siswa keluar/pulang saat jam sekolah?{' '}
-                           <button type="button" onClick={() => setMode('izin')} className="text-sky-dim font-semibold underline">Buka Izin Keluar</button>
-                       </p>
-                   )}
-
                    {mode === 'izin' ? (
                        <IzinKeluarTab
                            students={students} izinList={izinList} kelompokList={kelompokList} canVerify={canVerifyIzin} waliKelasMap={waliKelasMap}
@@ -486,14 +471,6 @@
                                    ))}
                                </div>
 
-                               {/* "Izin" di sini sering tertukar dengan Izin Keluar
-                                   (masukan survei guru, September 2026). */}
-                               {jenis === 'Izin' && (
-                                   <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">
-                                       <strong>Izin</strong> = surat izin <strong>tidak hadir</strong> dari orang tua. Untuk siswa yang keluar atau pulang saat jam sekolah, pakai menu <strong>Izin Keluar</strong> di Gerbang.
-                                   </p>
-                               )}
-
                                {/* Toast `msg` di layar belakang tertutup modal ini (z-50,
                                    full-screen) — pesan gagal DIULANG di sini supaya kelihatan
                                    selama modal masih terbuka (lihat catatan di submitSurat). */}
@@ -512,7 +489,7 @@
            );
        }
 
-       // ===== Izin Keluar / Pulang =====
+       // ===== Izin Keluar / Pulang (BETA) =====
        // Dipakai sebagai mode KETIGA di dalam Gerbang (bukan menu BottomNav
        // baru): satu tempat yang sama dengan tempat guru piket sudah bekerja.
        //
@@ -1492,7 +1469,7 @@
            );
        }
 
-       // Pembungkus mode Izin Keluar di dalam Gerbang: kartu penjelas + sakelar
+       // Pembungkus mode Izin Keluar di dalam Gerbang: kartu BETA + sakelar
        // Individual/Kelompok. Sengaja komponen tersendiri supaya state milik
        // kedua panel tidak bercampur, dan supaya panel individual yang sudah
        // dipakai tidak perlu diubah sama sekali saat mode kelompok ditambahkan.

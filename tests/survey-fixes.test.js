@@ -4,8 +4,9 @@
 //      dipakai di Login & Ganti Password.
 //   2. Rekap Kelas — "Tanggal: ..." di bawah tiap siswa untuk Terlambat,
 //      Pelanggaran, Upacara (urut lama ke baru, hari sama digabung "(Nx)").
-//   3. Gerbang — keterangan satu baris + tautan "Buka Izin Keluar", dan
-//      penjelasan bahwa jenis "Izin" di Catat Surat BUKAN izin keluar.
+//   3. Gerbang — teks bantu Izin Keluar yang sempat ditambahkan lalu DICABUT
+//      setelah uji di HP (tidak dipakai guru); tes penjaga memastikan tidak
+//      muncul lagi.
 //
 // Sandbox sama seperti login.test.js: React palsu yang cuma mencatat elemen
 // (komponen anak TIDAK dibuka), useState bisa di-override per indeks posisi.
@@ -215,28 +216,17 @@ test('RekapKelasTab: tanggal ikut tersaring periode (Hari Ini -> tidak ada baris
   assert.doesNotMatch(allText(tree), /Tanggal:/);
 });
 
-// ================= 3. Gerbang: Izin Keluar lebih terlihat =================
+// ================= 3. Gerbang: teks bantu yang dicabut tetap hilang =================
 
 const gerbangProps = { students, allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {}, isAdminUser: false, waliKelasMap, izinList: [], kelompokList: [], canVerifyIzin: false };
 
-test('GerbangTab: keterangan + tautan "Buka Izin Keluar" di mode Terlambat & Surat, tidak di mode Izin Keluar', () => {
+test('GerbangTab: teks bantu Izin Keluar yang dicabut tidak muncul lagi (mode Terlambat, Surat, form Surat jenis Izin)', () => {
   for (const mode of ['terlambat', 'surat']) {
-    const tree = render('GerbangTab', gerbangProps, [mode]);
-    const link = findAll(tree, (n) => n.type === 'button' && allText(n) === 'Buka Izin Keluar');
-    assert.equal(link.length, 1, `tautan harus ada di mode ${mode}`);
-    assert.equal(link[0].props.type, 'button');
-    assert.match(allText(tree), /keluar\/pulang saat jam sekolah/);
+    assert.doesNotMatch(allText(render('GerbangTab', gerbangProps, [mode])), /Buka Izin Keluar/, `mode ${mode}`);
   }
-  const izin = render('GerbangTab', gerbangProps, ['izin']);
-  assert.equal(findAll(izin, (n) => n.type === 'button' && allText(n) === 'Buka Izin Keluar').length, 0);
-});
-
-test('GerbangTab Catat Surat: jenis "Izin" dijelaskan sebagai izin tidak hadir, bukan izin keluar', () => {
-  const siswa = students[0];
   // idx 0 mode, 1 searchQuery, 2 pickerStudent, 3 suratStudent, 4 jenis
-  const izin = allText(render('GerbangTab', gerbangProps, ['surat', undefined, undefined, siswa, 'Izin']));
-  assert.match(izin, /surat izin\s+tidak hadir\s+dari orang tua/);
-  assert.match(izin, /keluar atau pulang saat jam sekolah/);
-  const sakit = allText(render('GerbangTab', gerbangProps, ['surat', undefined, undefined, siswa, 'Sakit']));
-  assert.doesNotMatch(sakit, /tidak hadir\s+dari orang tua\. Untuk siswa/);
+  const formIzin = allText(render('GerbangTab', gerbangProps, ['surat', undefined, undefined, students[0], 'Izin'])).replace(/\s+/g, ' ');
+  assert.match(formIzin, /Catat Surat Masuk/, 'form Surat harus benar-benar terbuka');
+  assert.doesNotMatch(formIzin, /surat izin tidak hadir dari orang tua/);
+  assert.doesNotMatch(formIzin, /Buka Izin Keluar/);
 });
