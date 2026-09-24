@@ -478,8 +478,10 @@ in parallel and runs `Babel.transform()` over the joined ~500KB result exactly
 once — but until this audit it did that on *every single page load*, even
 when nothing had changed since the previous one. Measured with `@babel/core`
 (same transform logic as the in-browser `@babel/standalone`, without its
-in-browser overhead) against this repo's actual combined source: **~250–440ms
-of pure CPU**, before React ever gets to render a single element — likely
+in-browser overhead) against this repo's actual combined source: **423–972ms
+of pure CPU** (re-measured September 2026: 5 runs, first/cold run 972ms, on a
+4-core **sandbox, not a phone**, over 604 KB of joined source — the original
+~250–440ms figure was measured when the source was smaller), before React ever gets to render a single element — likely
 substantially more on a mid/low-end Android phone, which is this app's
 primary device profile (see the carrier-proxy note below). This is a real,
 measured cost, not a guess — reproduce it with `@babel/core`'s
@@ -582,6 +584,37 @@ response headers. `.js` files are untouched by this — they keep their existing
 headers. If a report like this recurs, this is now covered — check whether the
 affected device is actually pulling a current `index.html` (view source, check
 `BUILD_VERSION` and the file list) before assuming a different cause.
+
+**Cached data is never hidden behind "Memuat data..." (September 2026).**
+`fetchData()` in `app.js` sets `loadingLogs` on boot (including a boot from
+`bootCache`) and on every Beranda/Gerbang Refresh tap. Beranda
+(`DashboardTab`) and Gerbang (`GerbangTab`) used to swap their whole
+"Aktivitas Hari Ini" feed for "Memuat data..." whenever that flag was on —
+so cached or already-loaded rows vanished during every refresh, while the
+"Menampilkan data tersimpan..." banner claimed they were on screen. Now the
+text shows only while that feed is empty. Riwayat (`LogTab`) and Statistik
+(`StatsTab`) had the opposite bug: they never knew a load was in flight and
+showed "Tidak ada catatan..."/"Belum ada data di periode ini." before the
+first response arrived. They now receive the same `loadingLogs` flag (no new
+state) and show "Memuat..." in place of those empty messages. Limit:
+`loadingLogs` tracks only `getLogs`, not `getSurat`/`getPelanggaran`, so the
+Surat/Pelanggaran categories can still briefly read as empty if those two
+responses land after `getLogs`. `tests/loading-cache-visibility.test.js`
+pins all four screens.
+
+**Tombol Refresh Beranda diberi status "Memuat..." + disabled (September
+2026, verifikasi lanjutan).** Beranda tidak pernah menandai tombol Refresh
+sedang bekerja — beda dari Gerbang, yang sejak awal sudah `disabled={loadingActivity}`
+dan label `'Memuat...'`. Sekarang Beranda memakai pola yang sama persis
+(`disabled={loading}`, label berganti saat `loading`). Statistik: kartu total
+periode menampilkan `-` bukan `0` saat `loading` true dan datanya belum
+pernah datang — angka nol asli (data memang kosong) tidak diubah.
+`getLogs` yang gagal (reject/offline) sudah mengembalikan `loadingLogs` ke
+`false` lewat `.catch()` sejak sebelum audit ini — diverifikasi, bukan
+diperbaiki. Diketahui BELUM ditangani: `fetchData()` tidak punya timeout/
+`AbortController` seperti `handleRecord` — kalau `getLogs` hang tanpa pernah
+resolve/reject (bukan error, hanya diam), `loadingLogs` tetap true selamanya;
+di luar cakupan perbaikan ini. `tests/refresh-guard.test.js` pins semuanya.
 
 **Remaining gap the header fix alone can't close: a session left open for
 hours.** The no-cache header only gets checked on a fresh *navigation*

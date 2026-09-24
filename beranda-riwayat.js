@@ -186,7 +186,7 @@
                            <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{sapaanWaktu()}</h2>
                            <div className="font-display text-lg font-extrabold text-slate-900">{user.name.split(' ')[0]}</div>
                        </div>
-                       <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md">Refresh</button>
+                       <button onClick={onRefresh} disabled={loading} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md disabled:opacity-50">{loading ? 'Memuat...' : 'Refresh'}</button>
                    </div>
 
                    {/* ② Assignment Hari Ini */}
@@ -376,7 +376,10 @@
                    {/* ⑤ Aktivitas Hari Ini */}
                    <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Aktivitas Hari Ini</h2>
 
-                   {loading ? (
+                   {/* "Memuat data..." HANYA bila feed masih kosong -- data yang
+                       sudah ada (cache boot / sebelum Refresh) tetap tampil
+                       selagi fetchData() berjalan. */}
+                   {loading && combinedFeed.length === 0 ? (
                        <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
                    ) : combinedFeed.length > 0 ? (
                        <div className="space-y-2.5">
@@ -423,7 +426,7 @@
 
        const EDIT_WINDOW_MS = 5 * 60 * 1000; // 5 menit — sinkron dengan aturan server
 
-       function LogTab({ allLogs, pelanggaranList, suratList, izinList, initialCategory, canManage, isAdmin, isBk, currentUserName, onEditEntry, onDeleteEntry, students }) {
+       function LogTab({ allLogs, pelanggaranList, suratList, izinList, initialCategory, canManage, isAdmin, isBk, currentUserName, onEditEntry, onDeleteEntry, students, loading }) {
            const [category, setCategory] = useState(initialCategory || 'terlambat');
            const [period, setPeriod] = useState('semua');
            const [customDate, setCustomDate] = useState('');
@@ -773,6 +776,8 @@
                                );
                            })}
                        </div>
+                   ) : loading ? (
+                       <div className="text-center py-10 text-xs text-slate-500">Memuat...</div>
                    ) : (
                        <EmptyState icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} text={`Tidak ada catatan ${activeCat.label.toLowerCase()} yang cocok.`} />
                    )}

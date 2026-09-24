@@ -1494,10 +1494,10 @@
                                        allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} izinList={izinList} initialCategory={riwayatCategory}
                                        canManage={roleKey !== 'osis'} isAdmin={roleKey === 'admin'} isBk={roleKey === 'admin' || roleKey === 'bk_kesiswaan'} currentUserName={user.name}
                                        onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry}
-                                       students={students}
+                                       students={students} loading={loadingLogs}
                                    />
                                )}
-                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} students={students} />}
+                               {activeTab === 'stats' && effectiveMenus.includes('stats') && <StatsTab allLogs={allLogs} pelanggaranList={pelanggaranList} suratList={suratList} canExport={roleConfig.canExport} canViewRanking={roleConfig.canViewRanking} students={students} loading={loadingLogs} />}
                                {activeTab === 'rekap' && effectiveMenus.includes('rekap') && canSeeClassDetail && (
                                    <RekapKelasTab students={students} allLogs={allLogs} pelanggaranList={pelanggaranList} upacaraList={upacaraList} waliKelasMap={waliKelasMap} isPrivileged={roleConfig.canViewRanking} myWaliKelas={user.waliKelas || ''} />
                                )}
