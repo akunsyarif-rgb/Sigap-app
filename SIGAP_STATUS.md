@@ -212,6 +212,10 @@ Item di bawah **tercatat eksplisit** di kode/dokumentasi — bukan tebakan.
    2026) — **5 hari sebelum** dokumen ini terakhir disentuh. Ini bukan item
    "sengaja ditunda", melainkan dokumentasi yang perlu disinkronkan ulang
    dengan `CLAUDE.md`.
+   **Update (24 September 2026): sudah disinkronkan** — label BETA dihapus
+   dari panduan, README, dan API.md; bagian "Soal cetak" kini menjelaskan
+   Cetak Surat Izin lewat dialog cetak peramban (status *Sedang di Luar* &
+   *Selesai Hari Ini*, bukan *Menunggu Verifikasi*).
 
 6. **Push Notification — verifikasi end-to-end ke perangkat fisik belum
    pernah dilakukan dari lingkungan pengembangan mana pun** (bukan "ditunda"

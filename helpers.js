@@ -356,6 +356,27 @@
            return isNaN(fallback.getTime()) ? new Date() : fallback;
        }
 
+       // Daftar tanggal kejadian per siswa untuk Rekap Kelas (masukan survei
+       // wali kelas, September 2026): "3 Sep 2026, 10 Sep 2026 (2x)". Urut lama
+       // ke baru, kejadian di hari yang sama digabung "(Nx)", tanpa jam.
+       // Timestamp kosong DILEWATI — parseTimestamp mengembalikan "sekarang"
+       // untuk nilai kosong, dan itu akan tampil sebagai tanggal palsu.
+       function ringkasTanggalKejadian(timestamps) {
+           const perHari = {};
+           (timestamps || []).forEach(ts => {
+               if (!ts) return;
+               const d = parseTimestamp(ts);
+               const key = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+               if (!perHari[key]) perHari[key] = { d, n: 0 };
+               perHari[key].n++;
+           });
+           return Object.keys(perHari).map(Number).sort((a, b) => a - b).map(k => {
+               const { d, n } = perHari[k];
+               const label = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+               return n > 1 ? `${label} (${n}x)` : label;
+           }).join(', ');
+       }
+
        const isSameDay = (a, b) => a.toDateString() === b.toDateString();
        const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
