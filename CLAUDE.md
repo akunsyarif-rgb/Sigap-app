@@ -434,6 +434,23 @@ File load order (`index.html`'s `files` array):
   `pelanggaran-bimbingan-upacara.js`, `rekap-kelas.js`, `statistik.js`,
   `admin.js`, `export-data.js`) are one file per feature tab/group of tabs,
   named after what they contain.
+- **Gerbang mode accents (September 2026).** The three Gerbang modes carry
+  their own muted accent colour — terlambat `#9E2F28` (= `crimson.dim`),
+  surat `#1F5278` (= `sky.dim`), izin `#2F6B4F` — defined once in
+  `GERBANG_MODE_ACCENT` at the top of `gerbang.js`, as *complete* Tailwind
+  class strings (never assembled from a hex via template string, so the
+  Tailwind CDN always sees them). Purpose: stop teachers working in the
+  wrong mode (a real report: someone meant to record lateness but typed into
+  Catat Surat, because all three tabs looked identically blue once
+  selected). One firm signal (active tab: tint + text + 3px underline), the
+  rest whispers (6px dot on inactive tabs, top-left so it never collides
+  with `izinBadge` top-right; 3px left border on the search box; 3px top
+  border + title chip on the RecordModal / Catat Surat Masuk sheets; green
+  info card and approval-form chip in Izin Keluar). Tabs carry
+  `aria-pressed` and keep their text labels — colour is never the only cue.
+  **Action buttons are deliberately NOT tinted**: `Button` and every
+  Simpan/Setujui/Hapus stay `bg-sky`/`crimson`; `tests/gerbang-mode-accent.test.js`
+  pins that, plus the accent wiring itself.
 
 **Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
 constant appended as `?v=` to every fetched file. **Bump this on every deploy
