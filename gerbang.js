@@ -3,6 +3,43 @@
 // (Catat Terlambat / Catat Surat). Surat cuma laporan tertulis (jenis +
 // keterangan) — TIDAK ada lampiran foto (dihapus, lihat catatan di Utils.gs).
 
+       // Aksen warna per mode Gerbang — mencegah guru salah mode (kejadian nyata:
+       // mau catat terlambat, malah menulis di Catat Surat, karena ketiga mode
+       // tampak sama-sama biru setelah dipilih). Prinsip: satu sinyal tegas (tab
+       // aktif), sisanya bisikan (titik, garis tipis, chip judul). Warna muted:
+       // terlambat = crimson.dim, surat = sky.dim (tailwind.config di index.html),
+       // izin = hijau tua. String kelas SENGAJA ditulis lengkap, bukan dirakit
+       // dari hex lewat template string, supaya Tailwind CDN pasti mengenalinya.
+       // Tombol aksi (Button: Simpan/Setujui/Hapus) TIDAK ikut diwarnai.
+       const GERBANG_MODE_ACCENT = {
+           terlambat: {
+               hex: '#9E2F28',
+               tabActive: 'bg-[#9E2F28]/10 text-[#9E2F28] shadow-[inset_0_-3px_0_#9E2F28]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(158,47,40,0.35)]',
+               searchFrame: 'border border-[#9E2F28]/45',
+               sheetTop: 'border-t-[3px] border-t-[#9E2F28]',
+               chip: 'bg-[#9E2F28]/10 text-[#9E2F28]',
+           },
+           surat: {
+               hex: '#1F5278',
+               tabActive: 'bg-[#1F5278]/10 text-[#1F5278] shadow-[inset_0_-3px_0_#1F5278]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(31,82,120,0.35)]',
+               searchFrame: 'border border-[#1F5278]/45',
+               sheetTop: 'border-t-[3px] border-t-[#1F5278]',
+               chip: 'bg-[#1F5278]/10 text-[#1F5278]',
+           },
+           izin: {
+               hex: '#2F6B4F',
+               tabActive: 'bg-[#2F6B4F]/10 text-[#2F6B4F] shadow-[inset_0_-3px_0_#2F6B4F]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(47,107,79,0.35)]',
+               searchFrame: 'border border-[#2F6B4F]/45',
+               sheetTop: 'border-t-[3px] border-t-[#2F6B4F]',
+               chip: 'bg-[#2F6B4F]/10 text-[#2F6B4F]',
+               card: 'bg-[#2F6B4F]/10 border border-[#2F6B4F]/30',
+               cardText: 'text-[#2F6B4F]',
+           },
+       };
+
        function RecordModal({ student, customReason, setCustomReason, onRecord, onClose, allLogs, onGetLateCount }) {
            const presets = [
                { type: 'Terlambat bangun', emoji: '⏰', label: 'Telat Bangun' },
@@ -28,10 +65,10 @@
            const totalLate = Math.max(studentHistory.length, serverLateCount);
            return (
                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                   <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-5 animate-pop">
+                   <div className={`bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-5 animate-pop ${GERBANG_MODE_ACCENT.terlambat.sheetTop}`}>
                        <div className="text-center">
                            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-4 sm:hidden"></div>
-                           <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Catat Keterlambatan</h3>
+                           <h3 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest font-bold ${GERBANG_MODE_ACCENT.terlambat.chip}`}><span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${GERBANG_MODE_ACCENT.terlambat.dot}`}></span>Catat Keterlambatan</h3>
                            <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{student.name}</div>
                            <div className="text-xs text-slate-500 font-medium bg-white inline-block px-3 py-1 rounded-full mt-2 border border-slate-200">{student.class}</div>
                        </div>
@@ -200,6 +237,17 @@
            // dipakai lagi di ringkasan Beranda (DashboardTab).
            const izinBadge = hitungIzinMenungguVerifikasi(izinList, kelompokList, canVerifyIzin);
 
+           // Tab aktif: latar tipis + teks + garis bawah 3px warna mode. Tab
+           // tidak aktif tetap netral, hanya titik 6px warna mode di KIRI atas
+           // (kanan atas tab Izin Keluar dipakai badge izinBadge).
+           // Titik warna di pojok tab tidak aktif (percobaan pertama) DIHAPUS
+           // setelah uji di HP: terbaca sebagai lencana notifikasi, apalagi
+           // yang merah, dan tab Izin Keluar sudah punya badge hitungan asli
+           // (izinBadge) di pojok kanan atas. Penanda mode-nya sekarang garis
+           // bawah tipis (inset 2px, opasitas ~35%) — tidak berbentuk lencana,
+           // jadi tidak lagi bisa disalahartikan sebagai notifikasi.
+           const tabClass = (m) => (mode === m ? GERBANG_MODE_ACCENT[m].tabActive : `text-slate-500 ${GERBANG_MODE_ACCENT[m].tabInactive}`);
+
            return (
                <div className="space-y-5 animate-rise">
                    <div className="text-center text-[11px] text-slate-500 font-medium mt-6">{todayLabel} &middot; {timeLabel}</div>
@@ -209,9 +257,9 @@
                        ROLES, config.js), dan alurnya memang milik guru piket yang
                        sudah bekerja di layar ini. */}
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       <button onClick={() => setMode('terlambat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'terlambat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Terlambat</button>
-                       <button onClick={() => setMode('surat')} className={`py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'surat' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>Catat Surat</button>
-                       <button onClick={() => setMode('izin')} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${mode === 'izin' ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>
+                       <button onClick={() => setMode('terlambat')} aria-pressed={mode === 'terlambat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('terlambat')}`}>Catat Terlambat</button>
+                       <button onClick={() => setMode('surat')} aria-pressed={mode === 'surat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('surat')}`}>Catat Surat</button>
+                       <button onClick={() => setMode('izin')} aria-pressed={mode === 'izin'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('izin')}`}>
                            Izin Keluar
                            {/* Badge = pekerjaan yang menunggu SAYA (Menunggu
                                Verifikasi yang memang boleh saya proses), BUKAN
@@ -254,7 +302,7 @@
                            <input
                                type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                                placeholder="Ketik nama, kelas, atau NISN..."
-                               className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm transition"
+                               className={`w-full bg-white rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm transition ${GERBANG_MODE_ACCENT[mode === 'surat' ? 'surat' : 'terlambat'].searchFrame}`}
                            />
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
                        </div>
@@ -458,9 +506,9 @@
 
                    {suratStudent && (
                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-                           <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
+                           <div className={`bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4 ${GERBANG_MODE_ACCENT.surat.sheetTop}`}>
                                <div className="text-center">
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">Catat Surat Masuk</h3>
+                                   <h3 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest font-bold ${GERBANG_MODE_ACCENT.surat.chip}`}><span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${GERBANG_MODE_ACCENT.surat.dot}`}></span>Catat Surat Masuk</h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{suratStudent.name}</div>
                                    <div className="text-xs text-slate-500">{suratStudent.class}</div>
                                </div>
@@ -942,7 +990,8 @@
                            <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-3xl p-6 border border-slate-200 shadow-2xl space-y-4 animate-pop my-4">
                                <div className="text-center">
                                    <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2 sm:hidden"></div>
-                                   <h3 className="text-[10px] text-sky-dim uppercase tracking-widest font-bold">
+                                   <h3 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest font-bold ${GERBANG_MODE_ACCENT.izin.chip}`}>
+                                       <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${GERBANG_MODE_ACCENT.izin.dot}`}></span>
                                        {konteksUntuk(formStudent) === 'wali_kelas' ? 'Persetujuan sebagai Wali Kelas' : 'Persetujuan sebagai Guru Mapel'}
                                    </h3>
                                    <div className="font-display text-xl font-extrabold text-slate-900 mt-1">{formStudent.name}</div>
@@ -1481,9 +1530,9 @@
                        September 2026): alurnya sudah stabil sejak lama, dan fitur
                        Cetak Surat Izin (tombol "Cetak Surat Izin" di kartu transaksi
                        di bawah) sudah menggantikan status BETA pencetakan. */}
-                   <div className="bg-sky-dim/10 border border-sky-dim/30 rounded-2xl p-3 space-y-1">
-                       <div className="text-[10px] font-bold uppercase tracking-wider text-sky-dim">Izin Keluar</div>
-                       <p className="text-[11px] text-sky-dim leading-relaxed">
+                   <div className={`rounded-2xl p-3 space-y-1 ${GERBANG_MODE_ACCENT.izin.card}`}>
+                       <div className={`text-[10px] font-bold uppercase tracking-wider ${GERBANG_MODE_ACCENT.izin.cardText}`}>Izin Keluar</div>
+                       <p className={`text-[11px] leading-relaxed ${GERBANG_MODE_ACCENT.izin.cardText}`}>
                            Alur tetap seperti prosedur sekolah: <strong>persetujuan guru</strong> dulu, lalu <strong>verifikasi Guru Piket</strong>, baru siswa keluar.
                        </p>
                    </div>

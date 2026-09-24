@@ -434,6 +434,38 @@ File load order (`index.html`'s `files` array):
   `pelanggaran-bimbingan-upacara.js`, `rekap-kelas.js`, `statistik.js`,
   `admin.js`, `export-data.js`) are one file per feature tab/group of tabs,
   named after what they contain.
+- **Gerbang mode accents (September 2026).** The three Gerbang modes carry
+  their own muted accent colour — terlambat `#9E2F28` (= `crimson.dim`),
+  surat `#1F5278` (= `sky.dim`), izin `#2F6B4F` — defined once in
+  `GERBANG_MODE_ACCENT` at the top of `gerbang.js`, as *complete* Tailwind
+  class strings (never assembled from a hex via template string, so the
+  Tailwind CDN always sees them). Purpose: stop teachers working in the
+  wrong mode (a real report: someone meant to record lateness but typed into
+  Catat Surat, because all three tabs looked identically blue once
+  selected). One firm signal (active tab: tint + text + 3px underline), the
+  rest whispers: inactive tabs get a faint 2px inset underline (~35% opacity
+  rgba, not the mode's own `bg-[hex]/…` token, since a flat colour token at
+  that low an opacity reads differently than an explicit rgba — see the dot
+  postmortem below); the search box (terlambat/surat only) gets a 1px frame
+  at ~45% opacity; the RecordModal / Catat Surat Masuk sheets get a 3px top
+  border + title chip; Izin Keluar gets a green info card and approval-form
+  chip. Tabs carry `aria-pressed` and keep their text labels — colour is
+  never the only cue. **Action buttons are deliberately NOT tinted**:
+  `Button` and every Simpan/Setujui/Hapus stay `bg-sky`/`crimson`;
+  `tests/gerbang-mode-accent.test.js` pins that, plus the accent wiring
+  itself.
+
+  **Postmortem: a 6px dot on inactive tabs was tried first and pulled after
+  phone testing.** It read as a notification badge, not a mode indicator —
+  made worse by the crimson dot specifically, and by the Izin Keluar tab
+  already carrying a *real* count badge (`izinBadge`) in the opposite
+  corner. Same problem one level down: the search box's first attempt was a
+  3px left border, which combined with the input's own rounded corners into
+  a stiff-looking crescent. Both were replaced (not layered) with the faint
+  underline / 1px frame described above. **Lesson: don't reach for a
+  dot/badge shape to mark a mode — that shape is reserved for `izinBadge`'s
+  actual notification count**, and don't rely on a rounded-corner element's
+  straight-line border to read as anything other than that corner shape.
 
 **Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
 constant appended as `?v=` to every fetched file. **Bump this on every deploy
