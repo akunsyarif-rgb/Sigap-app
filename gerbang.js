@@ -15,24 +15,24 @@
            terlambat: {
                hex: '#9E2F28',
                tabActive: 'bg-[#9E2F28]/10 text-[#9E2F28] shadow-[inset_0_-3px_0_#9E2F28]',
-               dot: 'bg-[#9E2F28]',
-               searchBorder: 'border-l-[3px] border-l-[#9E2F28] focus:border-l-[#9E2F28]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(158,47,40,0.35)]',
+               searchFrame: 'border border-[#9E2F28]/45',
                sheetTop: 'border-t-[3px] border-t-[#9E2F28]',
                chip: 'bg-[#9E2F28]/10 text-[#9E2F28]',
            },
            surat: {
                hex: '#1F5278',
                tabActive: 'bg-[#1F5278]/10 text-[#1F5278] shadow-[inset_0_-3px_0_#1F5278]',
-               dot: 'bg-[#1F5278]',
-               searchBorder: 'border-l-[3px] border-l-[#1F5278] focus:border-l-[#1F5278]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(31,82,120,0.35)]',
+               searchFrame: 'border border-[#1F5278]/45',
                sheetTop: 'border-t-[3px] border-t-[#1F5278]',
                chip: 'bg-[#1F5278]/10 text-[#1F5278]',
            },
            izin: {
                hex: '#2F6B4F',
                tabActive: 'bg-[#2F6B4F]/10 text-[#2F6B4F] shadow-[inset_0_-3px_0_#2F6B4F]',
-               dot: 'bg-[#2F6B4F]',
-               searchBorder: 'border-l-[3px] border-l-[#2F6B4F] focus:border-l-[#2F6B4F]',
+               tabInactive: 'shadow-[inset_0_-2px_0_rgba(47,107,79,0.35)]',
+               searchFrame: 'border border-[#2F6B4F]/45',
                sheetTop: 'border-t-[3px] border-t-[#2F6B4F]',
                chip: 'bg-[#2F6B4F]/10 text-[#2F6B4F]',
                card: 'bg-[#2F6B4F]/10 border border-[#2F6B4F]/30',
@@ -240,8 +240,13 @@
            // Tab aktif: latar tipis + teks + garis bawah 3px warna mode. Tab
            // tidak aktif tetap netral, hanya titik 6px warna mode di KIRI atas
            // (kanan atas tab Izin Keluar dipakai badge izinBadge).
-           const tabClass = (m) => (mode === m ? GERBANG_MODE_ACCENT[m].tabActive : 'text-slate-500');
-           const tabDot = (m) => (mode === m ? null : <span aria-hidden="true" className={`absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full ${GERBANG_MODE_ACCENT[m].dot}`}></span>);
+           // Titik warna di pojok tab tidak aktif (percobaan pertama) DIHAPUS
+           // setelah uji di HP: terbaca sebagai lencana notifikasi, apalagi
+           // yang merah, dan tab Izin Keluar sudah punya badge hitungan asli
+           // (izinBadge) di pojok kanan atas. Penanda mode-nya sekarang garis
+           // bawah tipis (inset 2px, opasitas ~35%) — tidak berbentuk lencana,
+           // jadi tidak lagi bisa disalahartikan sebagai notifikasi.
+           const tabClass = (m) => (mode === m ? GERBANG_MODE_ACCENT[m].tabActive : `text-slate-500 ${GERBANG_MODE_ACCENT[m].tabInactive}`);
 
            return (
                <div className="space-y-5 animate-rise">
@@ -252,10 +257,9 @@
                        ROLES, config.js), dan alurnya memang milik guru piket yang
                        sudah bekerja di layar ini. */}
                    <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       <button onClick={() => setMode('terlambat')} aria-pressed={mode === 'terlambat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('terlambat')}`}>{tabDot('terlambat')}Catat Terlambat</button>
-                       <button onClick={() => setMode('surat')} aria-pressed={mode === 'surat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('surat')}`}>{tabDot('surat')}Catat Surat</button>
+                       <button onClick={() => setMode('terlambat')} aria-pressed={mode === 'terlambat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('terlambat')}`}>Catat Terlambat</button>
+                       <button onClick={() => setMode('surat')} aria-pressed={mode === 'surat'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('surat')}`}>Catat Surat</button>
                        <button onClick={() => setMode('izin')} aria-pressed={mode === 'izin'} className={`relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${tabClass('izin')}`}>
-                           {tabDot('izin')}
                            Izin Keluar
                            {/* Badge = pekerjaan yang menunggu SAYA (Menunggu
                                Verifikasi yang memang boleh saya proses), BUKAN
@@ -298,7 +302,7 @@
                            <input
                                type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                                placeholder="Ketik nama, kelas, atau NISN..."
-                               className={`w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm transition ${GERBANG_MODE_ACCENT[mode === 'surat' ? 'surat' : 'terlambat'].searchBorder}`}
+                               className={`w-full bg-white rounded-2xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-sky shadow-sm transition ${GERBANG_MODE_ACCENT[mode === 'surat' ? 'surat' : 'terlambat'].searchFrame}`}
                            />
                            <Icon path={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />} className="h-5 w-5 absolute right-4 top-3.5 text-slate-500" />
                        </div>

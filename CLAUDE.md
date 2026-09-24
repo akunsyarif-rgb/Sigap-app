@@ -443,14 +443,29 @@ File load order (`index.html`'s `files` array):
   wrong mode (a real report: someone meant to record lateness but typed into
   Catat Surat, because all three tabs looked identically blue once
   selected). One firm signal (active tab: tint + text + 3px underline), the
-  rest whispers (6px dot on inactive tabs, top-left so it never collides
-  with `izinBadge` top-right; 3px left border on the search box; 3px top
-  border + title chip on the RecordModal / Catat Surat Masuk sheets; green
-  info card and approval-form chip in Izin Keluar). Tabs carry
-  `aria-pressed` and keep their text labels — colour is never the only cue.
-  **Action buttons are deliberately NOT tinted**: `Button` and every
-  Simpan/Setujui/Hapus stay `bg-sky`/`crimson`; `tests/gerbang-mode-accent.test.js`
-  pins that, plus the accent wiring itself.
+  rest whispers: inactive tabs get a faint 2px inset underline (~35% opacity
+  rgba, not the mode's own `bg-[hex]/…` token, since a flat colour token at
+  that low an opacity reads differently than an explicit rgba — see the dot
+  postmortem below); the search box (terlambat/surat only) gets a 1px frame
+  at ~45% opacity; the RecordModal / Catat Surat Masuk sheets get a 3px top
+  border + title chip; Izin Keluar gets a green info card and approval-form
+  chip. Tabs carry `aria-pressed` and keep their text labels — colour is
+  never the only cue. **Action buttons are deliberately NOT tinted**:
+  `Button` and every Simpan/Setujui/Hapus stay `bg-sky`/`crimson`;
+  `tests/gerbang-mode-accent.test.js` pins that, plus the accent wiring
+  itself.
+
+  **Postmortem: a 6px dot on inactive tabs was tried first and pulled after
+  phone testing.** It read as a notification badge, not a mode indicator —
+  made worse by the crimson dot specifically, and by the Izin Keluar tab
+  already carrying a *real* count badge (`izinBadge`) in the opposite
+  corner. Same problem one level down: the search box's first attempt was a
+  3px left border, which combined with the input's own rounded corners into
+  a stiff-looking crescent. Both were replaced (not layered) with the faint
+  underline / 1px frame described above. **Lesson: don't reach for a
+  dot/badge shape to mark a mode — that shape is reserved for `izinBadge`'s
+  actual notification count**, and don't rely on a rounded-corner element's
+  straight-line border to read as anything other than that corner shape.
 
 **Cache-busting**: `index.html` has a manually-incremented `BUILD_VERSION`
 constant appended as `?v=` to every fetched file. **Bump this on every deploy

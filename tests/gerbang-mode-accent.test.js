@@ -4,6 +4,11 @@
 // sini juga menjaga bahwa tombol aksi (Button, Simpan) tidak ikut diwarnai.
 // Sandbox sama seperti survey-fixes.test.js: React palsu, komponen anak tidak
 // dibuka, useState bisa di-override per indeks posisi.
+//
+// Revisi (uji HP, putaran kedua): titik warna di tab tidak aktif dan garis
+// kiri 3px di kolom cari DIHAPUS (terbaca sebagai lencana notifikasi / bulan
+// sabit kaku) — diganti garis bawah tipis (tab) dan bingkai 1px (kolom cari).
+// Lihat CLAUDE.md, bagian "Gerbang mode accents", untuk alasan lengkapnya.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -118,6 +123,8 @@ function findAll(node, predicate) {
 // ================= Aksen warna per mode Gerbang =================
 
 const EXPECTED_HEX = { terlambat: '#9E2F28', surat: '#1F5278', izin: '#2F6B4F' };
+// rgba yang harus dipakai tabInactive (garis bawah tipis) — dari hex yang sama.
+const EXPECTED_RGBA = { terlambat: 'rgba(158,47,40,0.35)', surat: 'rgba(31,82,120,0.35)', izin: 'rgba(47,107,79,0.35)' };
 const waliKelasMap = [{ class: 'XI B', waliKelasName: 'Kartina', waliKelasId: 'G01' }];
 const siswa = { nisn: '111', name: 'Rahma', class: 'XI B' };
 const gerbangProps = { students: [siswa], allLogs: [], pelanggaranList: [], onSelectLate: () => {}, suratList: [], onAddSurat: () => {}, isAdminUser: false, waliKelasMap, izinList: [], kelompokList: [], canVerifyIzin: false };
@@ -131,21 +138,33 @@ function tabs(tree) {
   return findAll(tree, (n) => n.type === 'button' && n.props['aria-pressed'] !== undefined);
 }
 
-test('GERBANG_MODE_ACCENT: tiga kunci, hex sesuai & berbeda, kelas lengkap memakai hex mode-nya sendiri', () => {
+test('GERBANG_MODE_ACCENT: tiga kunci, hex sesuai & berbeda, kelas lengkap memakai warna mode-nya sendiri', () => {
   const a = accent();
   assert.deepEqual(Object.keys(a).sort(), ['izin', 'surat', 'terlambat']);
   const hexes = Object.keys(a).map((k) => a[k].hex);
   assert.equal(new Set(hexes.map((h) => h.toLowerCase())).size, 3, 'hex tiap mode harus berbeda');
+  assert.equal(new Set(Object.values(EXPECTED_RGBA)).size, 3, 'rgba tiap mode harus berbeda');
   for (const [mode, hex] of Object.entries(EXPECTED_HEX)) {
     assert.equal(a[mode].hex, hex, `hex ${mode}`);
+    // tabInactive dicek lewat rgba (bukan hex) -- garis bawah tipis sengaja
+    // pakai rgba eksplisit, bukan token bg-[hex]/opacity, lihat CLAUDE.md.
+    assert.ok(a[mode].tabInactive.includes(EXPECTED_RGBA[mode]), `${mode}.tabInactive harus memakai rgba ${mode}`);
     for (const [key, cls] of Object.entries(a[mode])) {
-      if (key === 'hex') continue;
+      if (key === 'hex' || key === 'tabInactive') continue;
       assert.ok(cls.includes(hex), `${mode}.${key} harus memakai ${hex}`);
       for (const other of Object.values(EXPECTED_HEX)) {
         if (other !== hex) assert.ok(!cls.includes(other), `${mode}.${key} tidak boleh memakai warna mode lain`);
       }
     }
+    for (const [otherMode, rgba] of Object.entries(EXPECTED_RGBA)) {
+      if (otherMode !== mode) assert.ok(!a[mode].tabInactive.includes(rgba), `${mode}.tabInactive tidak boleh memakai rgba mode lain`);
+    }
   }
+  // "dot" (titik) sudah dicabut sepenuhnya dari konstanta.
+  Object.values(a).forEach((m) => assert.equal(m.dot, undefined, 'field dot tidak boleh ada lagi'));
+  // "searchBorder" (garis kiri 3px) diganti searchFrame (bingkai 1px).
+  assert.ok(a.terlambat.searchFrame, 'searchFrame harus ada');
+  assert.equal(a.terlambat.searchBorder, undefined, 'searchBorder (garis kiri) tidak boleh ada lagi');
   // Kelas harus ditulis lengkap di sumber (Tailwind CDN memindai nama kelas
   // utuh), bukan dirakit dari hex lewat template string.
   const src = fs.readFileSync(path.join(ROOT, 'gerbang.js'), 'utf8');
@@ -153,7 +172,7 @@ test('GERBANG_MODE_ACCENT: tiga kunci, hex sesuai & berbeda, kelas lengkap memak
   assert.ok(!blok.includes('${'), 'tidak boleh ada template string di GERBANG_MODE_ACCENT');
 });
 
-test('GerbangTab: tab aktif memakai kelas aksen mode-nya, tab lain netral + titik warna mode; aria-pressed sesuai', () => {
+test('GerbangTab: tab aktif TIDAK berubah (kelas lama persis sama); tab tidak aktif pakai garis bawah tipis, BUKAN titik', () => {
   const a = accent();
   const order = ['terlambat', 'surat', 'izin'];
   for (const mode of order) {
@@ -162,45 +181,56 @@ test('GerbangTab: tab aktif memakai kelas aksen mode-nya, tab lain netral + titi
     t.forEach((btn, i) => {
       const m = order[i];
       const cls = btn.props.className;
-      assert.match(cls, /\brelative\b/, 'semua tab perlu relative (titik & badge absolute)');
+      assert.match(cls, /\brelative\b/, 'semua tab perlu relative (badge izinBadge absolute)');
       assert.match(cls, /\bpy-3\.5\b/, 'tap target tetap');
       assert.ok(!/bg-sky text-white/.test(cls), 'kelas aktif lama (blok biru pekat) tidak boleh kembali');
+      // Titik/lencana DIHAPUS total -- tidak boleh ada span rounded-full
+      // absolut di pojok kiri atas tab mana pun, aktif atau tidak.
       const dots = findAll(btn, (n) => n.type === 'span' && /rounded-full/.test(n.props.className || '') && /top-1\.5 left-1\.5/.test(n.props.className || ''));
+      assert.equal(dots.length, 0, `tab ${m}: tidak boleh ada elemen titik/lencana`);
       if (m === mode) {
-        assert.ok(cls.includes(a[m].tabActive), `tab aktif ${m} harus memakai aksen ${m}`);
+        // Tab AKTIF: kelas persis sama seperti sebelum revisi ini -- tidak berubah.
+        assert.equal(cls, `relative py-3.5 px-2 rounded-xl text-xs font-bold transition ${a[m].tabActive}`);
         assert.equal(btn.props['aria-pressed'], true);
-        assert.equal(dots.length, 0, 'tab aktif tidak butuh titik');
       } else {
         order.forEach((o) => assert.ok(!cls.includes(a[o].tabActive), `tab tidak aktif ${m} tidak boleh memakai aksen ${o}`));
-        assert.match(cls, /\btext-slate-500\b/);
+        assert.match(cls, /\btext-slate-500\b/, 'teks tab tidak aktif tetap netral, tidak dinuansai');
         assert.equal(btn.props['aria-pressed'], false);
-        assert.equal(dots.length, 1, `tab tidak aktif ${m} punya satu titik`);
-        assert.ok(dots[0].props.className.includes(a[m].dot), `titik ${m} berwarna mode-nya`);
+        assert.ok(cls.includes(a[m].tabInactive), `tab tidak aktif ${m} harus memakai garis bawah tipis mode-nya`);
+        order.forEach((o) => { if (o !== m) assert.ok(!cls.includes(a[o].tabInactive), `tab ${m} tidak boleh memakai garis bawah mode lain (${o})`); });
       }
     });
   }
 });
 
-test('GerbangTab: titik di kiri atas tidak menggeser badge izinBadge (tetap kanan atas, kelas tidak berubah)', () => {
+test('GerbangTab: badge izinBadge di tab Izin Keluar sama sekali tidak berubah (tetap kanan atas, tanpa titik di kiri)', () => {
   const izinList = [{ id: 'IZ1', nisn: '111', name: 'Rahma', class: 'XI B', status: 'Menunggu Verifikasi', timestamp: new Date().toISOString() }];
   const tree = render('GerbangTab', { ...gerbangProps, izinList, canVerifyIzin: true }, ['terlambat']);
   const izinTab = tabs(tree)[2];
   const badge = findAll(izinTab, (n) => n.type === 'span' && /-top-1\.5 -right-1\.5/.test(n.props.className || ''));
   assert.equal(badge.length, 1, 'badge hitungan harus ada');
   assert.match(badge[0].props.className, /bg-crimson text-white/, 'warna badge saat tab tidak aktif tidak berubah');
+  assert.equal(allText(badge[0]).trim(), '1');
+  // Tidak ada elemen titik di pojok kiri sama sekali sekarang.
   const dot = findAll(izinTab, (n) => n.type === 'span' && /top-1\.5 left-1\.5/.test(n.props.className || ''));
-  assert.equal(dot.length, 1);
+  assert.equal(dot.length, 0, 'titik sudah dicabut, tidak ada lagi elemen di pojok kiri atas');
 });
 
-test('GerbangTab: kolom cari siswa punya garis kiri warna mode (terlambat vs surat), label tidak berubah', () => {
+test('GerbangTab: kolom cari siswa punya bingkai 1px warna mode (terlambat vs surat), TANPA garis kiri 3px, label tidak berubah', () => {
   const a = accent();
   for (const mode of ['terlambat', 'surat']) {
     const tree = render('GerbangTab', gerbangProps, [mode]);
     const input = findAll(tree, (n) => n.type === 'input' && n.props.placeholder === 'Ketik nama, kelas, atau NISN...')[0];
-    assert.ok(input.props.className.includes(a[mode].searchBorder), `garis kiri ${mode}`);
-    assert.match(input.props.className, /border-2 border-slate-200/, 'border lain tetap netral');
+    const cls = input.props.className;
+    assert.ok(cls.includes(a[mode].searchFrame), `bingkai 1px ${mode}`);
+    assert.doesNotMatch(cls, /border-l-\[3px\]/, 'garis kiri 3px (percobaan pertama) tidak boleh ada lagi');
+    assert.doesNotMatch(cls, /\bborder-2\b/, 'lebar border netral lama (border-2) harus dilepas supaya tidak bentrok dengan bingkai 1px');
+    assert.doesNotMatch(cls, /border-slate-200/, 'warna border netral lama harus dilepas -- bingkai sekarang bernuansa mode');
     const lain = mode === 'surat' ? 'terlambat' : 'surat';
-    assert.ok(!input.props.className.includes(a[lain].searchBorder));
+    assert.ok(!cls.includes(a[lain].searchFrame));
+    // Kelas focus dibiarkan seperti semula (focus:border-sky) -- pilihan
+    // paling sederhana, lihat CLAUDE.md/laporan.
+    assert.match(cls, /focus:border-sky/, 'kelas focus tidak diubah');
   }
   assert.match(allText(render('GerbangTab', gerbangProps, ['terlambat'])), /Cari siswa untuk mencatat keterlambatan/);
   assert.match(allText(render('GerbangTab', gerbangProps, ['surat'])), /Cari siswa untuk membuat surat/);
