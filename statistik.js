@@ -1,7 +1,7 @@
 // ===== statistik.js =====
 // Tab Statistik: tren per kategori & periode, top kelas/jenis, ekspor.
 
-       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking, students }) {
+       function StatsTab({ allLogs, pelanggaranList, suratList, canExport, canViewRanking, students, loading }) {
            const [category, setCategory] = useState('terlambat');
            const [period, setPeriod] = useState('mingguan');
            const [freqWindow, setFreqWindow] = useState('1minggu');
@@ -113,7 +113,7 @@
                                        ))}
                                    </div>
                                ) : (
-                                   <div className="text-xs text-slate-500 py-2 text-center">Belum ada data di periode ini.</div>
+                                   <div className="text-xs text-slate-500 py-2 text-center">{loading ? 'Memuat...' : 'Belum ada data di periode ini.'}</div>
                                );
                            })()}
                        </Card>
@@ -144,7 +144,7 @@
                                    ))}
                                </div>
                            ) : (
-                               <div className="text-xs text-slate-500 py-1 text-center">Tidak ada siswa dengan ≥3x terlambat di periode ini.</div>
+                               <div className="text-xs text-slate-500 py-1 text-center">{loading ? 'Memuat...' : 'Tidak ada siswa dengan ≥3x terlambat di periode ini.'}</div>
                            )}
                        </Card>
                    )}

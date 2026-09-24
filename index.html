@@ -140,7 +140,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 81;
+           var BUILD_VERSION = 82;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.
@@ -149,7 +149,8 @@
            // gabungan SEMUA file .js (>500KB) SETIAP KALI halaman ini dibuka,
            // walau isinya belum berubah sejak pembukaan sebelumnya -- diukur
            // dengan @babel/core (mesin yang sama, tanpa overhead standalone)
-           // di server pengembangan: ~250-440ms untuk sumber sebesar ini,
+           // di sandbox pengembangan (4 core, BUKAN HP): 423-972ms untuk
+           // sumber gabungan 604 KB (ukur ulang Sep 2026),
            // kemungkinan jauh lebih lama di HP Android kelas menengah/bawah
            // lewat @babel/standalone. Itu semua CPU murni yang menahan
            // render pertama, terjadi lagi dan lagi tanpa alasan begitu

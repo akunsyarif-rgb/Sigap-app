@@ -398,7 +398,7 @@
                                    </button>
                                )}
                            </div>
-                           {loadingActivity ? (
+                           {loadingActivity && todayActivity.length === 0 ? (
                                <div className="text-center py-10 text-xs text-slate-500">Memuat data...</div>
                            ) : todayActivity.length > 0 ? (
                                <div className="space-y-2">
