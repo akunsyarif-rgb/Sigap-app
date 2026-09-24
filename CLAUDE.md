@@ -602,6 +602,20 @@ Surat/Pelanggaran categories can still briefly read as empty if those two
 responses land after `getLogs`. `tests/loading-cache-visibility.test.js`
 pins all four screens.
 
+**Tombol Refresh Beranda diberi status "Memuat..." + disabled (September
+2026, verifikasi lanjutan).** Beranda tidak pernah menandai tombol Refresh
+sedang bekerja — beda dari Gerbang, yang sejak awal sudah `disabled={loadingActivity}`
+dan label `'Memuat...'`. Sekarang Beranda memakai pola yang sama persis
+(`disabled={loading}`, label berganti saat `loading`). Statistik: kartu total
+periode menampilkan `-` bukan `0` saat `loading` true dan datanya belum
+pernah datang — angka nol asli (data memang kosong) tidak diubah.
+`getLogs` yang gagal (reject/offline) sudah mengembalikan `loadingLogs` ke
+`false` lewat `.catch()` sejak sebelum audit ini — diverifikasi, bukan
+diperbaiki. Diketahui BELUM ditangani: `fetchData()` tidak punya timeout/
+`AbortController` seperti `handleRecord` — kalau `getLogs` hang tanpa pernah
+resolve/reject (bukan error, hanya diam), `loadingLogs` tetap true selamanya;
+di luar cakupan perbaikan ini. `tests/refresh-guard.test.js` pins semuanya.
+
 **Remaining gap the header fix alone can't close: a session left open for
 hours.** The no-cache header only gets checked on a fresh *navigation*
 (refresh, or reopening after the app was actually closed) — a teacher who

@@ -79,7 +79,7 @@
                    <BarChart data={series} title={`Tren ${activeCat.label} — ${activePeriod.label}`} />
 
                    <div className="grid grid-cols-1 gap-3">
-                       <StatCard value={periodData.length} label={`Total ${activeCat.label} (${activePeriod.label})`} accent />
+                       <StatCard value={loading && periodData.length === 0 ? '-' : periodData.length} label={`Total ${activeCat.label} (${activePeriod.label})`} accent />
                    </div>
 
                    {/* Rekap per Kelas & Siswa Sering Terlambat: cuma admin/BK/Kesiswaan

@@ -186,7 +186,7 @@
                            <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{sapaanWaktu()}</h2>
                            <div className="font-display text-lg font-extrabold text-slate-900">{user.name.split(' ')[0]}</div>
                        </div>
-                       <button onClick={onRefresh} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md">Refresh</button>
+                       <button onClick={onRefresh} disabled={loading} className="text-[10px] text-sky-dim font-semibold bg-sky-dim/10 px-2 py-1 rounded-md disabled:opacity-50">{loading ? 'Memuat...' : 'Refresh'}</button>
                    </div>
 
                    {/* ② Assignment Hari Ini */}
