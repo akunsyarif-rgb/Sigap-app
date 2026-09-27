@@ -38,6 +38,7 @@ function makeSheet(header, rows) {
           }
           return out;
         },
+        getValue: () => { const src = data[row - 1] || []; return src[col - 1] === undefined ? '' : src[col - 1]; },
         setValue(v) { while (data.length < row) data.push([]); data[row - 1][col - 1] = v; },
         setNumberFormat() { return this; },
         setValues(vals) {
@@ -64,6 +65,7 @@ const USERS = {
   admin: { id: 'G00', name: 'Pak Admin', role: 'admin', jabatan: '', waliKelas: '' },
   bk: { id: 'G01', name: 'Bu BK', role: 'bk_kesiswaan', jabatan: '', waliKelas: '' },
   guru: { id: 'G02', name: 'Pak Guru', role: 'guru', jabatan: '', waliKelas: '' },
+  osis: { id: 'G03', name: 'Siswa OSIS', role: 'osis', jabatan: '', waliKelas: '' },
 };
 
 const SISWA = [
@@ -223,6 +225,75 @@ test('addIzinKelompok: kegiatan, keperluan & alasan_khusus berbahaya diberi pref
   const pesertaRow = s.lastRow('Izin_Keluar');
   assert.equal(pesertaRow[5], "'=1+1", 'kolom Keperluan di baris peserta Izin_Keluar');
   assert.equal(pesertaRow[9], "'-2+3", 'kolom Alasan_Khusus di baris peserta Izin_Keluar');
+});
+
+// ---- editEntry: jalur UBAH harus disanitasi sama seperti jalur tambah.
+// Tanpa ini, payload yang disanitasi saat dicatat bisa dimasukkan lagi
+// mentah lewat Edit (audit 27 Sep 2026). ----
+test('editEntry terlambat: type berbahaya diberi prefix kutip satu', () => {
+  PAYLOAD_BERBAHAYA.forEach((payload) => {
+    const s = loadServer();
+    assert.equal(s.post('guru', { action: 'record', nisn: '1001', name: 'Rahma', class_name: 'XI B', type: 'Hujan' }).status, 'success');
+    const ts = s.lastRow('Log_Gerbang')[0];
+    const res = s.post('guru', { action: 'editEntry', category: 'terlambat', nisn: '1001', name: 'Rahma', timestamp: new Date(ts).toISOString(), type: payload });
+    assert.equal(res.status, 'success');
+    assert.equal(s.lastRow('Log_Gerbang')[4], "'" + payload);
+  });
+});
+
+test('editEntry pelanggaran: jenis_pelanggaran, sanksi & catatan berbahaya diberi prefix kutip satu', () => {
+  const s = loadServer();
+  assert.equal(s.post('guru', { action: 'addPelanggaran', nisn: '2002', name: 'Budi', class_name: 'XI A', jenis_pelanggaran: 'Atribut', sanksi: 'Teguran', catatan: 'ok' }).status, 'success');
+  const ts = s.lastRow('Pelanggaran')[0];
+  const res = s.post('guru', { action: 'editEntry', category: 'pelanggaran', nisn: '2002', name: 'Budi', timestamp: new Date(ts).toISOString(), jenis_pelanggaran: '=1+1', sanksi: '+CMD|x', catatan: '@SUM(A1:A9)' });
+  assert.equal(res.status, 'success');
+  const row = s.lastRow('Pelanggaran');
+  assert.equal(row[4], "'=1+1");
+  assert.equal(row[5], "'+CMD|x");
+  assert.equal(row[6], "'@SUM(A1:A9)");
+});
+
+test('editEntry surat: jenis & keterangan berbahaya diberi prefix kutip satu', () => {
+  const s = loadServer();
+  assert.equal(s.post('guru', { action: 'addSurat', nisn: '3003', name: 'Citra', class_name: 'XII C', jenis: 'Sakit', keterangan: 'demam' }).status, 'success');
+  const ts = s.lastRow('Surat_Masuk')[0];
+  const res = s.post('guru', { action: 'editEntry', category: 'surat', nisn: '3003', name: 'Citra', timestamp: new Date(ts).toISOString(), jenis: '-2+3', keterangan: '=HYPERLINK("http://evil")' });
+  assert.equal(res.status, 'success');
+  const row = s.lastRow('Surat_Masuk');
+  assert.equal(row[4], "'-2+3");
+  assert.equal(row[5], "'=HYPERLINK(\"http://evil\")");
+});
+
+test('editEntry: teks normal tidak diubah', () => {
+  const s = loadServer();
+  assert.equal(s.post('guru', { action: 'addPelanggaran', nisn: '2002', name: 'Budi', class_name: 'XI A', jenis_pelanggaran: 'Atribut', sanksi: 'Teguran', catatan: 'ok' }).status, 'success');
+  const ts = s.lastRow('Pelanggaran')[0];
+  const res = s.post('guru', { action: 'editEntry', category: 'pelanggaran', nisn: '2002', name: 'Budi', timestamp: new Date(ts).toISOString(), jenis_pelanggaran: 'Rambut', sanksi: 'Teguran lisan', catatan: 'Sudah dipotong.' });
+  assert.equal(res.status, 'success');
+  const row = s.lastRow('Pelanggaran');
+  assert.equal(row[4], 'Rambut');
+  assert.equal(row[5], 'Teguran lisan');
+  assert.equal(row[6], 'Sudah dipotong.');
+});
+
+// ---- addBimbingan: ALLOWLIST admin/BK, sama seperti getBimbingan
+// (audit 27 Sep 2026 — dulu cuma menolak OSIS, guru biasa bisa menulis). ----
+test('addBimbingan: guru biasa & OSIS ditolak, tidak ada baris yang ditulis', () => {
+  ['guru', 'osis'].forEach((who) => {
+    const s = loadServer();
+    const res = s.post(who, { action: 'addBimbingan', nisn: '3003', name: 'Citra', class_name: 'XII C', catatan: 'coba tulis' });
+    assert.equal(res.status, 'error', who + ' harus ditolak');
+    assert.equal(s.sheets.Bimbingan_Khusus, undefined, who + ': sheet Bimbingan_Khusus tidak boleh terbentuk/terisi');
+  });
+});
+
+test('addBimbingan: admin & BK lolos', () => {
+  ['admin', 'bk'].forEach((who) => {
+    const s = loadServer();
+    const res = s.post(who, { action: 'addBimbingan', nisn: '3003', name: 'Citra', class_name: 'XII C', catatan: 'konseling awal' });
+    assert.equal(res.status, 'success', who + ' harus lolos');
+    assert.equal(s.lastRow('Bimbingan_Khusus')[4], 'konseling awal');
+  });
 });
 
 // ---- Anti false-positive: teks normal (tidak diawali =+-@) tidak boleh

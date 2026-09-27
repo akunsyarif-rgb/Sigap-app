@@ -22,7 +22,7 @@
 // NAIKKAN tanggal/labelnya setiap kali .gs diubah dengan cara yang perlu
 // diverifikasi setelah deploy. Tidak memuat rahasia apa pun, dan tetap
 // digembok API_TOKEN seperti seluruh endpoint lain.
-var BACKEND_VERSION = '2026-09-21-tambah-siswa-fix-role';
+var BACKEND_VERSION = '2026-09-27-fix-sanitize-editentry-bimbingan-rbac';
 var BACKEND_FEATURES = ['exportData', 'scopedLogs', 'scopedSurat', 'scopedPelanggaran', 'adminOnlyAuditLog', 'izinKeluar', 'izinKelompok', 'exportIzin', 'hapusDataPeriode', 'changeMyPassword', 'loginRateLimitPerAkun', 'pushNotifications', 'cetakSuratIzin', 'pelanggaranKelompok', 'changePasswordInvalidatesSessions', 'osisUpacaraFieldTrim', 'scopedPelanggaranCount', 'dedupPelanggaranUpacara', 'tambahSiswa'];
 
 // ===== doPost =====
@@ -1063,7 +1063,9 @@ function doPost(e) {
 
     // ---- Catat perlu bimbingan khusus (bukan untuk OSIS; hanya admin/BK bisa lihat) ----
     if (action === 'addBimbingan') {
-      if (isOsisRole(sessionUser.role)) {
+      // ALLOWLIST admin/BK (isBkRole mencakup admin) -- sama dengan gate
+      // getBimbingan. Dulu cuma menolak OSIS, jadi guru biasa bisa menulis.
+      if (!isBkRole(sessionUser.role)) {
         return jsonOut({ status: 'error', message: 'Tidak punya akses untuk aksi ini.' });
       }
       var sheet = getOrCreateSheet(ss, 'Bimbingan_Khusus', ['Timestamp', 'NISN', 'Nama', 'Kelas', 'Catatan', 'Dicatat_Oleh']);
@@ -1799,15 +1801,16 @@ function doPost(e) {
         }
       }
       var rowIndex = found.rowIndex;
+      // Teks bebas -> sanitizeSheetValue(), sama seperti jalur tambah (PR #81).
       if (data.category === 'terlambat') {
-        sheet.getRange(rowIndex, 5).setValue(data.type || '');
+        sheet.getRange(rowIndex, 5).setValue(sanitizeSheetValue(data.type || ''));
       } else if (data.category === 'pelanggaran') {
-        sheet.getRange(rowIndex, 5).setValue(data.jenis_pelanggaran || '');
-        sheet.getRange(rowIndex, 6).setValue(data.sanksi || '');
-        sheet.getRange(rowIndex, 7).setValue(data.catatan || '');
+        sheet.getRange(rowIndex, 5).setValue(sanitizeSheetValue(data.jenis_pelanggaran || ''));
+        sheet.getRange(rowIndex, 6).setValue(sanitizeSheetValue(data.sanksi || ''));
+        sheet.getRange(rowIndex, 7).setValue(sanitizeSheetValue(data.catatan || ''));
       } else if (data.category === 'surat') {
-        sheet.getRange(rowIndex, 5).setValue(data.jenis || '');
-        sheet.getRange(rowIndex, 6).setValue(data.keterangan || '');
+        sheet.getRange(rowIndex, 5).setValue(sanitizeSheetValue(data.jenis || ''));
+        sheet.getRange(rowIndex, 6).setValue(sanitizeSheetValue(data.keterangan || ''));
       } else {
         return jsonOut({ status: 'error', message: 'Kategori tidak dikenali.' });
       }
