@@ -89,7 +89,7 @@ function fakeFetch(fileTexts, callLog) {
 
 function realFileTexts() {
   const files = [
-    'config.js', 'helpers.js', 'export-format.js', 'ui-common.js', 'admin.js',
+    'config.js', 'api-adapter.js', 'surat-izin-html.js', 'helpers.js', 'export-format.js', 'ui-common.js', 'admin.js',
     'beranda-riwayat.js', 'statistik.js', 'gerbang.js',
     'pelanggaran-bimbingan-upacara.js', 'rekap-kelas.js', 'export-data.js',
     'notifikasi.js', 'app.js',
@@ -124,7 +124,7 @@ test('loader: tanpa cache -> fetch semua file + Babel.transform dipanggil, hasil
 
   await runLoader(sandbox);
 
-  assert.equal(fetchCalls.length, 13, 'tanpa cache, ke-13 file harus di-fetch');
+  assert.equal(fetchCalls.length, 15, 'tanpa cache, ke-15 file harus di-fetch');
   assert.equal(transformCalls, 1, 'Babel.transform harus dipanggil tepat sekali');
   assert.equal(appended.length, 1, 'satu <script> hasil transform harus ditambahkan ke body');
   assert.match(appended[0].textContent, /TRANSFORMED/);
@@ -165,7 +165,7 @@ test('loader: cache versi LAMA (BUILD_VERSION naik) -> dianggap cache miss, fetc
 
   await runLoader(sandbox);
 
-  assert.equal(fetchCalls.length, 13, 'versi cache tidak cocok harus dianggap miss, bukan dipakai apa adanya');
+  assert.equal(fetchCalls.length, 15, 'versi cache tidak cocok harus dianggap miss, bukan dipakai apa adanya');
   assert.equal(transformCalls, 1);
   const saved = JSON.parse(store[cacheKey]);
   assert.equal(saved.version, BUILD_VERSION, 'cache harus ditimpa dengan versi yang baru');
@@ -183,7 +183,7 @@ test('loader: entri cache rusak (bukan JSON valid) -> tidak melempar, jatuh ke f
 
   await runLoader(sandbox);
 
-  assert.equal(fetchCalls.length, 13, 'JSON cache rusak harus diperlakukan sebagai cache miss, bukan error fatal');
+  assert.equal(fetchCalls.length, 15, 'JSON cache rusak harus diperlakukan sebagai cache miss, bukan error fatal');
   assert.equal(transformCalls, 1);
   assert.equal(appended.length, 1, 'app tetap harus berhasil dimuat walau cache rusak');
 });

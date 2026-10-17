@@ -118,7 +118,7 @@
            };
            const approveTL = (t) => {
                setLocallyApproved(prev => ({ ...prev, [t.nisn]: true }));
-               onApproveTindakLanjut({ nisn: t.nisn, timestamp: t.timestamp }, (ok, text) => {
+               onApproveTindakLanjut({ id: t.id, nisn: t.nisn, timestamp: t.timestamp }, (ok, text) => {
                    showMsgTL(text);
                    // Gagal di server → batalkan penyembunyian optimis, siswa
                    // muncul lagi di daftar (bukan hilang diam-diam padahal
@@ -590,7 +590,7 @@
            // dipakai stateOverrides di tests/render-smoke.test.js).
            const submitEdit = () => {
                if (!manageTarget || isSavingOverlayActive()) return;
-               const payload = { category, nisn: manageTarget.nisn, name: manageTarget.name, timestamp: manageTarget.timestamp };
+               const payload = { category, id: manageTarget.id, nisn: manageTarget.nisn, name: manageTarget.name, timestamp: manageTarget.timestamp };
                if (category === 'terlambat') {
                    payload.type = editType;
                } else if (category === 'pelanggaran') {
@@ -609,7 +609,7 @@
 
            const submitDelete = () => {
                if (!confirmDeleteTarget || isSavingOverlayActive()) return;
-               const payload = { category, nisn: confirmDeleteTarget.nisn, name: confirmDeleteTarget.name, timestamp: confirmDeleteTarget.timestamp };
+               const payload = { category, id: confirmDeleteTarget.id, nisn: confirmDeleteTarget.nisn, name: confirmDeleteTarget.name, timestamp: confirmDeleteTarget.timestamp };
                onDeleteEntry(payload, (ok, text) => {
                    // Sama pola dengan submitEdit di atas: tampilkan dulu
                    // keterangannya (dulu di sini modal langsung tertutup TANPA

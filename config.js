@@ -5,7 +5,13 @@
        const { useState, useEffect, useMemo, useRef, useContext } = React;
 
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
-       const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+       // Pilih backend: 'appsscript' (sistem lama, yang dipakai guru sekarang) atau
+       // 'supabase' (sistem baru, sigap-api). Ganti SATU baris ini untuk pindah /
+       // kembali. api-adapter.js (dimuat sesudah file ini) hanya aktif untuk 'supabase'.
+       const API_BACKEND = "supabase";
+       const API_URL_APPSSCRIPT = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+       const API_URL_SUPABASE = "https://htutgpjcynbnyxwgorcb.supabase.co/functions/v1/sigap-api";
+       const API_URL = API_BACKEND === "supabase" ? API_URL_SUPABASE : API_URL_APPSSCRIPT;
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "cd0Tum0Hg4mqgDaXx3MEll8k6loCXJd3";
 
