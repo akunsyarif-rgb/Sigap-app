@@ -204,6 +204,18 @@ test('app.js: polling deteksi update -- dilewati saat tab tersembunyi, pakai cac
   assert.match(appJs, /window\.location\.reload\(\)/);
 });
 
+test('app.js: deteksi update juga dipicu saat app kembali terlihat/online, dengan pagar jeda dan dibersihkan saat unmount', () => {
+  // iOS membekukan PWA di background lalu melanjutkannya tanpa reload; tanpa
+  // pemicu ini guru baru diberi tahu ada versi baru sampai 5 menit kemudian.
+  const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  ['visibilitychange', 'pageshow', 'online'].forEach((evt) => {
+    assert.match(appJs, new RegExp("addEventListener\\('" + evt + "', checkForAppUpdate\\)"), 'harus mendengarkan ' + evt);
+    assert.match(appJs, new RegExp("removeEventListener\\('" + evt + "', checkForAppUpdate\\)"), 'harus dilepas saat unmount: ' + evt);
+  });
+  assert.match(appJs, /MIN_GAP_MS/, 'harus ada pagar jeda supaya beberapa event sekaligus tidak jadi banyak request');
+  assert.match(appJs, /lastCheckAt/);
+});
+
 test('vercel.json memaksa index.html/"/" untuk selalu revalidate (no-cache)', () => {
   const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
   const sources = (vercelConfig.headers || []).map((h) => h.source);
