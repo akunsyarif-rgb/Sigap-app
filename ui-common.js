@@ -682,6 +682,15 @@
                                <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Versi saat ini</div>
                                <div className="text-sm text-slate-800">v2026.09</div>
                            </div>
+                           {typeof window !== 'undefined' && window.SIGAP_BUILD_VERSION ? (
+                               <div>
+                                   {/* Nomor build = BUILD_VERSION di index.html. Berguna saat
+                                       melaporkan "app saya sepertinya masih versi lama": cukup
+                                       bandingkan angka ini dengan yang dipakai perangkat lain. */}
+                                   <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Nomor build</div>
+                                   <div className="text-sm text-slate-800">{window.SIGAP_BUILD_VERSION}</div>
+                               </div>
+                           ) : null}
                        </div>
                    </Card>
 

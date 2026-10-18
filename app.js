@@ -562,12 +562,27 @@
            // catatan carrier-proxy di CLAUDE.md), baca ulang BUILD_VERSION-nya,
            // bandingkan ke punya app yang sedang jalan. Dilewati saat tab tidak
            // terlihat supaya tidak boros request percuma di background.
+           //
+           // Cek juga SEGERA saat app kembali terlihat/online (Okt 2026). Di iPad/
+           // iPhone, PWA yang dibawa ke background lalu dibuka lagi TIDAK dimuat
+           // ulang -- halaman lama dibekukan lalu dilanjutkan apa adanya, dan
+           // timer setInterval ikut tertahan. Tanpa pemicu ini guru baru diberi
+           // tahu ada versi baru sampai 5 menit SESUDAH app dibuka lagi, padahal
+           // saat itulah mereka paling mungkin mulai mencatat dengan versi lama.
+           // Pemicu 'visibilitychange'/'pageshow'/'online' dan timer berbagi satu
+           // pagar jeda (MIN_GAP_MS) supaya satu kali kembali-ke-app yang memicu
+           // beberapa event sekaligus tetap hanya satu request.
            const [updateAvailable, setUpdateAvailable] = useState(false);
            useEffect(() => {
                const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 menit
+               const MIN_GAP_MS = 20 * 1000; // jeda minimum antar pengecekan
+               let lastCheckAt = 0;
                const checkForAppUpdate = () => {
                    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-                   fetch('index.html?_check=' + Date.now(), { cache: 'no-store' })
+                   const nowMs = Date.now();
+                   if (nowMs - lastCheckAt < MIN_GAP_MS) return;
+                   lastCheckAt = nowMs;
+                   fetch('index.html?_check=' + nowMs, { cache: 'no-store' })
                        .then((res) => (res.ok ? res.text() : null))
                        .then((html) => {
                            if (!html) return;
@@ -578,7 +593,24 @@
                        .catch(() => {}); // Koneksi gagal — coba lagi di interval berikutnya, jangan ganggu pemakaian.
                };
                const id = setInterval(checkForAppUpdate, CHECK_INTERVAL_MS);
-               return () => clearInterval(id);
+               // Dijaga typeof: lingkungan bukan-browser (mis. sandbox tes dengan
+               // document/window palsu) tidak punya addEventListener, dan itu
+               // tidak boleh membuat App() gagal render.
+               const hasDocEvents = typeof document !== 'undefined' && typeof document.addEventListener === 'function';
+               const hasWinEvents = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+               if (hasDocEvents) document.addEventListener('visibilitychange', checkForAppUpdate);
+               if (hasWinEvents) {
+                   window.addEventListener('pageshow', checkForAppUpdate);
+                   window.addEventListener('online', checkForAppUpdate);
+               }
+               return () => {
+                   clearInterval(id);
+                   if (hasDocEvents) document.removeEventListener('visibilitychange', checkForAppUpdate);
+                   if (hasWinEvents) {
+                       window.removeEventListener('pageshow', checkForAppUpdate);
+                       window.removeEventListener('online', checkForAppUpdate);
+                   }
+               };
            }, []);
 
            useEffect(() => { pendingPushGoto.current = consumePushGotoParam(); }, []);
