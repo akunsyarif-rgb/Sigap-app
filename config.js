@@ -24,7 +24,10 @@
        // `npx web-push generate-vapid-keys` — subscription yang dibuat dengan
        // kunci publik lama tidak akan pernah bisa dikirimi notifikasi oleh
        // kunci privat yang baru.
-       const VAPID_PUBLIC_KEY = "BB3OFpiSC6bvbLX9rHG94bIRJOZMZswtqQl1oSHFRDoJKv4n6gINf7DxFooQb3r4e61wy4GBPk2sIVs5GjZ0Hfo";
+       // Backend Supabase: pasangan kunci ini dibuat di Supabase (Vault: vapid_public_key /
+       // vapid_private_key) dan dipakai Edge Function push-send. Berbeda dari kunci
+       // Vercel di atas, yang hanya relevan untuk backend Apps Script.
+       const VAPID_PUBLIC_KEY = "BPwKPlDOXbzM8-crYMPlBTUABj-HxzMldwHXQGdgELhfTaPho5CU-FYSBMUrauOvsFnZF5kgUup0JqJzKpyhIyw";
 
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara
