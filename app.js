@@ -593,14 +593,23 @@
                        .catch(() => {}); // Koneksi gagal — coba lagi di interval berikutnya, jangan ganggu pemakaian.
                };
                const id = setInterval(checkForAppUpdate, CHECK_INTERVAL_MS);
-               document.addEventListener('visibilitychange', checkForAppUpdate);
-               window.addEventListener('pageshow', checkForAppUpdate);
-               window.addEventListener('online', checkForAppUpdate);
+               // Dijaga typeof: lingkungan bukan-browser (mis. sandbox tes dengan
+               // document/window palsu) tidak punya addEventListener, dan itu
+               // tidak boleh membuat App() gagal render.
+               const hasDocEvents = typeof document !== 'undefined' && typeof document.addEventListener === 'function';
+               const hasWinEvents = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+               if (hasDocEvents) document.addEventListener('visibilitychange', checkForAppUpdate);
+               if (hasWinEvents) {
+                   window.addEventListener('pageshow', checkForAppUpdate);
+                   window.addEventListener('online', checkForAppUpdate);
+               }
                return () => {
                    clearInterval(id);
-                   document.removeEventListener('visibilitychange', checkForAppUpdate);
-                   window.removeEventListener('pageshow', checkForAppUpdate);
-                   window.removeEventListener('online', checkForAppUpdate);
+                   if (hasDocEvents) document.removeEventListener('visibilitychange', checkForAppUpdate);
+                   if (hasWinEvents) {
+                       window.removeEventListener('pageshow', checkForAppUpdate);
+                       window.removeEventListener('online', checkForAppUpdate);
+                   }
                };
            }, []);
 
