@@ -760,7 +760,7 @@
                            // Lihat catatan bug di findRowByNisnTimestamp/Utils.gs.
                            // Entry optimistic DIGANTI (bukan ditambah lagi)
                            // lewat _optimisticId, supaya tidak dobel di daftar.
-                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: student.nisn, name: student.name, class: student.class, type: finalType, logged_by: user.name };
+                           const newEntry = { id: data.id, timestamp: data.timestamp || new Date(), nisn: student.nisn, name: student.name, class: student.class, type: finalType, logged_by: user.name };
                            setAllLogs(prev => prev.map(item => item._optimisticId === optimisticId ? newEntry : item));
                            setSelectedStudent(null); setCustomReasonInput('');
                            setToast(`✓ ${newEntry.name} berhasil dicatat`);
@@ -965,7 +965,7 @@
                    .then(data => {
                        if (data.status === 'success') {
                            // timestamp dari server, sama alasan seperti handleRecord.
-                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name };
+                           const newEntry = { id: data.id, timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis: payload.jenis, keterangan: payload.keterangan || '', logged_by: user.name };
                            setSuratList(prev => [newEntry, ...prev]);
                            callback(true, 'Surat berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat surat.');
@@ -1090,7 +1090,7 @@
                    .then(data => {
                        if (data.status === 'success') {
                            // timestamp dari server, sama alasan seperti handleRecord.
-                           const newEntry = { timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
+                           const newEntry = { id: data.id, timestamp: data.timestamp || new Date(), nisn: payload.nisn, name: payload.name, class: payload.class_name, jenis_pelanggaran: payload.jenis_pelanggaran, sanksi: payload.sanksi, catatan: payload.catatan || '', logged_by: user.name };
                            setPelanggaranList(prev => [newEntry, ...prev]);
                            callback(true, 'Pelanggaran berhasil dicatat.');
                        } else callback(false, data.message || 'Gagal mencatat pelanggaran.');
@@ -1154,7 +1154,7 @@
 
            // Cocokkan baris lokal lewat NISN + Timestamp (sama seperti server),
            // supaya update/hapus di state tidak butuh fetch ulang seluruh data.
-           const sameEntry = (item, payload) => item.nisn === payload.nisn && parseTimestamp(item.timestamp).getTime() === parseTimestamp(payload.timestamp).getTime();
+           const sameEntry = (item, payload) => (payload.id ? item.id === payload.id : (item.nisn === payload.nisn && parseTimestamp(item.timestamp).getTime() === parseTimestamp(payload.timestamp).getTime()));
 
            const handleEditEntry = (payload, callback) => {
                if (isSavingOverlayActive()) return;
@@ -1309,7 +1309,13 @@
                    .then(data => {
                        if (data.status === 'success') {
                            fetchIzinKeluar();
-                           callback(true, data.data);
+                           // Backend Supabase hanya mengirim suratData; HTML disusun di sini
+                           // (surat-izin-html.js). Backend lama sudah mengirim htmlContent.
+                           const hasil = data.data || {};
+                           if (!hasil.htmlContent && hasil.suratData) {
+                               hasil.htmlContent = renderIzinKeluarSuratHTML(hasil.suratData);
+                           }
+                           callback(true, hasil);
                        } else callback(false, data.message || 'Gagal membuat surat izin.');
                    })
                    .catch(() => callback(false, 'Koneksi gagal, coba lagi.'))

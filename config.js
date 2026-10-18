@@ -5,7 +5,13 @@
        const { useState, useEffect, useMemo, useRef, useContext } = React;
 
        // ⚠️ PASTIKAN LINK INI SESUAI DENGAN WEB APP GOOGLE SCRIPT ANDA
-       const API_URL = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+       // Pilih backend: 'appsscript' (sistem lama, yang dipakai guru sekarang) atau
+       // 'supabase' (sistem baru, sigap-api). Ganti SATU baris ini untuk pindah /
+       // kembali. api-adapter.js (dimuat sesudah file ini) hanya aktif untuk 'supabase'.
+       const API_BACKEND = "supabase";
+       const API_URL_APPSSCRIPT = "https://script.google.com/macros/s/AKfycbxMh_A5xbwfff7GwgojVLyCRXjpl2FyyTSIf8HvkTxOx4w6zasLZ9VDhMNraEux1tAztg/exec";
+       const API_URL_SUPABASE = "https://htutgpjcynbnyxwgorcb.supabase.co/functions/v1/sigap-api";
+       const API_URL = API_BACKEND === "supabase" ? API_URL_SUPABASE : API_URL_APPSSCRIPT;
        // ⚠️ GANTI dengan token yang SAMA PERSIS dengan Script Properties (API_TOKEN) di Apps Script
        const API_TOKEN = "cd0Tum0Hg4mqgDaXx3MEll8k6loCXJd3";
 
@@ -18,7 +24,10 @@
        // `npx web-push generate-vapid-keys` — subscription yang dibuat dengan
        // kunci publik lama tidak akan pernah bisa dikirimi notifikasi oleh
        // kunci privat yang baru.
-       const VAPID_PUBLIC_KEY = "BB3OFpiSC6bvbLX9rHG94bIRJOZMZswtqQl1oSHFRDoJKv4n6gINf7DxFooQb3r4e61wy4GBPk2sIVs5GjZ0Hfo";
+       // Backend Supabase: pasangan kunci ini dibuat di Supabase (Vault: vapid_public_key /
+       // vapid_private_key) dan dipakai Edge Function push-send. Berbeda dari kunci
+       // Vercel di atas, yang hanya relevan untuk backend Apps Script.
+       const VAPID_PUBLIC_KEY = "BPwKPlDOXbzM8-crYMPlBTUABj-HxzMldwHXQGdgELhfTaPho5CU-FYSBMUrauOvsFnZF5kgUup0JqJzKpyhIyw";
 
        // 4 tingkat akses:
        // - admin: semua menu + ekspor + Kelola Guru + Bimbingan Khusus + Pelanggaran Upacara

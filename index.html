@@ -140,7 +140,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 83;
+           var BUILD_VERSION = 86;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.
@@ -165,6 +165,8 @@
            var JS_BUNDLE_CACHE_KEY = 'sigap_js_bundle_cache';
            var files = [
                'config.js',
+               'api-adapter.js',
+               'surat-izin-html.js',
                'helpers.js',
                'export-format.js',
                'ui-common.js',
