@@ -560,6 +560,39 @@
            );
        }
 
+       // Pemilih segmen bergaya sama dengan BottomNav: pil kaca meluncur (pegas) ke
+       // item aktif. DIPAKAI HANYA untuk pemilih tab berlebar SAMA yang aktifnya
+       // berpindah satu per satu (Riwayat, Statistik, Catat/Rekap Upacara). SENGAJA
+       // tidak dipakai di chip periode (lebar berbeda-beda, bisa digeser) dan di mode
+       // Gerbang (punya warna pembeda per mode yang dikunci tes). Tanpa pengukuran JS:
+       // slot flex-1 sama lebar, pil selebar satu slot, translateX(indeks * 100%).
+       function GlassSegment({ items, value, onChange, itemClass = 'py-2.5 text-xs', ariaLabel }) {
+           const count = items.length;
+           const activeIndex = items.findIndex(it => it.key === value);
+           return (
+               <div role="group" aria-label={ariaLabel} className="relative flex bg-white border border-slate-200 rounded-2xl p-1.5">
+                   <span
+                       aria-hidden="true"
+                       className="nav-glass-pill seg-glass-pill absolute top-1.5 bottom-1.5 left-1.5 pointer-events-none"
+                       style={{
+                           width: `calc((100% - 0.75rem) / ${count})`,
+                           transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
+                           opacity: activeIndex < 0 ? 0 : 1,
+                       }}
+                   />
+                   {items.map(it => {
+                       const active = it.key === value;
+                       return (
+                           <button
+                               key={it.key} type="button" onClick={() => onChange(it.key)} aria-pressed={active}
+                               className={`relative flex-1 min-w-0 px-1 rounded-xl font-bold leading-tight transition-colors duration-200 ${itemClass} ${active ? 'text-sky-dim' : 'text-slate-500 hover:text-slate-600'}`}
+                           >{it.label}</button>
+                       );
+                   })}
+               </div>
+           );
+       }
+
        function BottomNav({ menus, primaryMenus, activeTab, setActiveTab }) {
            const [showMore, setShowMore] = useState(false);
            const secondaryMenus = menus.filter(m => !primaryMenus.includes(m));

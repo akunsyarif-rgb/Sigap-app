@@ -123,6 +123,7 @@
            transition: transform .5s cubic-bezier(.34,1.45,.5,1), opacity .2s ease;
            will-change: transform;
        }
+       .seg-glass-pill { border-radius: .85rem; }
        .nav-icon-active { display: inline-block; animation: navBounce .5s cubic-bezier(.34,1.56,.64,1); }
        @keyframes navBounce { 0% { transform: scale(.82) translateY(3px); } 55% { transform: scale(1.2) translateY(-2px); } 100% { transform: scale(1.08) translateY(0); } }
        @media (prefers-reduced-motion: reduce) {
@@ -156,7 +157,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 89;
+           var BUILD_VERSION = 90;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.

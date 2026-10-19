@@ -738,16 +738,7 @@
                    </h2>
 
                    {canSeeRekap && (
-                       <div className="flex gap-1 bg-white border border-slate-200 rounded-2xl p-1">
-                           {[{ key: 'catat', label: 'Catat' }, { key: 'rekap', label: 'Rekap' }].map(v => (
-                               <button
-                                   key={v.key} type="button" onClick={() => setView(v.key)}
-                                   className={`flex-1 min-h-[44px] rounded-xl text-xs font-bold transition ${view === v.key ? 'bg-sky text-white' : 'text-slate-500'}`}
-                               >
-                                   {v.label}
-                               </button>
-                           ))}
-                       </div>
+                       <GlassSegment items={[{ key: 'catat', label: 'Catat' }, { key: 'rekap', label: 'Rekap' }]} value={view} onChange={setView} itemClass="min-h-[44px] text-xs" ariaLabel="Mode Upacara" />
                    )}
 
                    {rekapAktif && <RekapUpacara upacaraList={upacaraList} />}
