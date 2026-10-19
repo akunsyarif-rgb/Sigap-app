@@ -606,7 +606,12 @@
                            Tanpa pengukuran JS: setiap slot flex-1 sama lebar, pil selebar satu
                            slot, posisinya translateX(indeks * 100%) — tetap benar saat layar
                            diputar/di-resize. */}
-                       <div className="max-w-2xl mx-auto relative flex py-2 px-1 pb-safe" style={navCount <= 2 ? { maxWidth: navCount * 104 } : undefined}>
+                       {/* Lapisan luar memegang pb-safe (area aman iPhone); pil dan tombol ada di
+                           lapisan dalam yang `relative`, supaya `bottom` pil dihitung dari
+                           bawah tombol, bukan dari bawah area aman (kalau tidak, pil turun
+                           menutupi garis Home di iPhone). */}
+                       <div className="max-w-2xl mx-auto px-1 pb-safe" style={navCount <= 2 ? { maxWidth: navCount * 104 } : undefined}>
+                       <div className="relative flex py-2">
                            <span
                                aria-hidden="true"
                                className="nav-glass-pill absolute top-1.5 bottom-1.5 left-1 pointer-events-none"
@@ -640,6 +645,7 @@
                                    <span className="text-[10px] font-bold">Lainnya</span>
                                </button>
                            )}
+                       </div>
                        </div>
                    </div>
                </div>
