@@ -235,11 +235,18 @@ test('Rekap: daftar kosong tidak error dan memberi pesan', () => {
 test('UpacaraTab: admin/BK/OSIS mendapat sakelar Rekap, guru biasa tidak', () => {
   const base = { students: [], upacaraList: UPACARA, onAddUpacara: () => {}, isOsis: false };
 
-  const denganRekap = allText(render('UpacaraTab', { ...base, canSeeRekap: true }));
-  assert.match(denganRekap, /Rekap/, 'yang berhak harus melihat sakelar Rekap');
+  // Sakelar Catat/Rekap sekarang komponen GlassSegment (pil kaca bersama dengan
+  // Riwayat/Statistik); createElement palsu tidak merendernya, jadi sakelarnya
+  // dicari sebagai elemen dan isinya dibaca dari prop `items`.
+  const sakelar = (tree) => findAll(tree, (n) => n.type === get('GlassSegment'))[0];
 
-  const tanpaRekap = allText(render('UpacaraTab', { ...base, canSeeRekap: false }));
-  assert.doesNotMatch(tanpaRekap, /\bRekap\b/, 'guru biasa tidak boleh melihat sakelar Rekap');
+  const denganRekap = sakelar(render('UpacaraTab', { ...base, canSeeRekap: true }));
+  assert.ok(denganRekap, 'yang berhak harus melihat sakelar Rekap');
+  assert.ok(denganRekap.props.items.some((it) => it.key === 'rekap' && it.label === 'Rekap'));
+
+  const tanpaRekapTree = render('UpacaraTab', { ...base, canSeeRekap: false });
+  assert.equal(sakelar(tanpaRekapTree), undefined, 'guru biasa tidak boleh melihat sakelar Rekap');
+  assert.doesNotMatch(allText(tanpaRekapTree), /\bRekap\b/, 'guru biasa tidak boleh melihat sakelar Rekap');
 });
 
 test('UpacaraTab: menekan Rekap menampilkan rekap, bukan menambah menu baru', () => {
@@ -247,7 +254,7 @@ test('UpacaraTab: menekan Rekap menampilkan rekap, bukan menambah menu baru', ()
   let tree = render('UpacaraTab', props);
   assert.match(allText(tree), /Catat Pelanggaran Upacara/);
 
-  buttonWithText(tree, 'Rekap').props.onClick();
+  findAll(tree, (n) => n.type === get('GlassSegment'))[0].props.onChange('rekap');
   tree = rerender('UpacaraTab', props);
   assert.match(allText(tree), /Rekap Pelanggaran Upacara/);
 

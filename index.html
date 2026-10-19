@@ -113,6 +113,23 @@
        }
        @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
        .animate-rise { animation: riseIn .28s ease-out; }
+       /* BottomNav: pil kaca gaya iOS 26 yang meluncur ke tab aktif (lihat BottomNav di ui-common.js). */
+       .nav-glass-pill {
+           border-radius: 1.1rem;
+           background: linear-gradient(180deg, rgba(31,82,120,.15), rgba(31,82,120,.07));
+           border: 1px solid rgba(31,82,120,.20);
+           box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 4px 14px rgba(31,82,120,.16);
+           -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+           transition: transform .5s cubic-bezier(.34,1.45,.5,1), opacity .2s ease;
+           will-change: transform;
+       }
+       .seg-glass-pill { border-radius: .85rem; }
+       .nav-icon-active { display: inline-block; animation: navBounce .5s cubic-bezier(.34,1.56,.64,1); }
+       @keyframes navBounce { 0% { transform: scale(.82) translateY(3px); } 55% { transform: scale(1.2) translateY(-2px); } 100% { transform: scale(1.08) translateY(0); } }
+       @media (prefers-reduced-motion: reduce) {
+           .nav-glass-pill { transition: opacity .2s ease; }
+           .nav-icon-active { animation: none; }
+       }
        @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
        .animate-pop { animation: popIn .18s ease-out; }
        /* Overlay "Menyimpan..." global (SavingOverlay, ui-common.js) -- logo
@@ -140,7 +157,7 @@
            // Sengaja bukan Date.now() (berubah tiap milidetik): itu bikin browser
            // TIDAK PERNAH bisa cache file-file ini, jadi download ulang total
            // setiap kali aplikasi dibuka, walau isinya belum berubah sama sekali.
-           var BUILD_VERSION = 87;
+           var BUILD_VERSION = 90;
            // Dibaca app.js (checkForAppUpdate) supaya app yang SEDANG terbuka
            // bisa membandingkan versinya sendiri terhadap index.html terbaru di
            // server — lihat "Deteksi ada versi baru" di helpers.js.

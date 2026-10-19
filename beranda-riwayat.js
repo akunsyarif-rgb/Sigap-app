@@ -625,11 +625,7 @@
                <div className="space-y-4 animate-rise">
                    <p className="text-[11px] text-slate-500 text-center">Bulan ini: <span className="font-semibold text-slate-600">{monthLateCount} terlambat</span> • <span className="font-semibold text-slate-600">{monthPelanggaranCount} pelanggaran</span> • <span className="font-semibold text-slate-600">{monthSuratCount} surat</span> • <span className="font-semibold text-slate-600">{monthIzinCount} izin keluar</span></p>
 
-                   <div className="grid grid-cols-4 gap-1.5 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       {categories.map(c => (
-                           <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 px-1 rounded-xl text-[11px] font-bold transition leading-tight ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
-                       ))}
-                   </div>
+                   <GlassSegment items={categories} value={category} onChange={setCategory} itemClass="py-2.5 text-[11px]" ariaLabel="Kategori riwayat" />
 
                    {/* Periode aktif SELALU kelihatan di sini, termasuk tanggal spesifik dari
                        drawer Filter — supaya tidak ada state filter yang "tersembunyi". */}

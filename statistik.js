@@ -62,11 +62,7 @@
 
            return (
                <div className="space-y-5 animate-rise">
-                   <div className="grid grid-cols-3 gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
-                       {categories.map(c => (
-                           <button key={c.key} onClick={() => setCategory(c.key)} className={`py-2 rounded-xl text-xs font-bold transition ${category === c.key ? 'bg-sky text-white shadow-md' : 'text-slate-500'}`}>{c.label}</button>
-                       ))}
-                   </div>
+                   <GlassSegment items={categories} value={category} onChange={setCategory} itemClass="py-2.5 text-xs" ariaLabel="Kategori statistik" />
 
                    <ScrollFadeRow>
                        {periods.map(p => (
