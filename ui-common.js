@@ -564,6 +564,12 @@
            const [showMore, setShowMore] = useState(false);
            const secondaryMenus = menus.filter(m => !primaryMenus.includes(m));
            const isSecondaryActive = secondaryMenus.includes(activeTab);
+           const moreActive = secondaryMenus.length > 0 && (isSecondaryActive || showMore);
+           const navCount = primaryMenus.length + (secondaryMenus.length > 0 ? 1 : 0);
+           // Indeks slot aktif: tab primer, atau "Lainnya" (slot terakhir) bila menu
+           // sekunder aktif / panelnya terbuka; -1 (pil disembunyikan) bila tidak ada.
+           const primaryIndex = primaryMenus.indexOf(activeTab);
+           const activeIndex = moreActive ? navCount - 1 : primaryIndex;
 
            return (
                <div className="fixed bottom-0 inset-x-0 z-40">
@@ -590,13 +596,34 @@
                        keluar layar. px-3 -> px-2 supaya 5 item (4 primer + Lainnya) lebih
                        rapat dan tidak mepet di layar sempit. */}
                    <div className="bg-white/95 backdrop-blur-md border-t border-slate-200">
-                       <div className="max-w-2xl mx-auto flex justify-around py-3 px-1 pb-safe">
+                       {/* Pil kaca bergaya iOS 26 yang meluncur ke tab aktif (terinspirasi
+                           animasi "iOS 26 tab menu" yang dipilih pemilik). SENGAJA dibuat
+                           ulang secara native (CSS transform), bukan memutar file Lottie-nya:
+                           label/ikon di file itu sudah "dipanggang" (Power/Winner/...), kanvasnya
+                           800x600 dan 449 KB + pemutar ~250 KB akan terunduh di setiap buka
+                           aplikasi (HP guru banyak Android murah, tanpa build step — lihat
+                           CLAUDE.md), dan jumlah tab SIGAP berbeda per peran.
+                           Tanpa pengukuran JS: setiap slot flex-1 sama lebar, pil selebar satu
+                           slot, posisinya translateX(indeks * 100%) — tetap benar saat layar
+                           diputar/di-resize. */}
+                       <div className="max-w-2xl mx-auto relative flex py-2 px-1 pb-safe" style={navCount <= 2 ? { maxWidth: navCount * 104 } : undefined}>
+                           <span
+                               aria-hidden="true"
+                               className="nav-glass-pill absolute top-1.5 bottom-1.5 left-1 pointer-events-none"
+                               style={{
+                                   width: `calc((100% - 0.5rem) / ${navCount})`,
+                                   transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
+                                   opacity: activeIndex < 0 ? 0 : 1,
+                               }}
+                           />
                            {primaryMenus.map((key) => {
                                const item = NAV_ITEMS[key];
                                const active = activeTab === key;
                                return (
-                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${active ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
-                                       <Icon path={item.icon()} filled={active} className="h-6 w-6" />
+                                   <button key={key} onClick={() => { setActiveTab(key); setShowMore(false); }} aria-current={active ? 'page' : undefined} className={`relative flex-1 flex flex-col items-center space-y-1 py-1.5 px-1 min-w-0 transition-colors duration-200 ${active ? 'text-sky-dim' : 'text-slate-500 hover:text-slate-600'}`}>
+                                       <span key={active ? key + '-on' : key + '-off'} className={active ? 'nav-icon-active' : ''}>
+                                           <Icon path={item.icon()} filled={active} className="h-6 w-6" />
+                                       </span>
                                        {/* break-words -- label seperti "Pelanggaran" satu kata tanpa
                                            spasi, tidak bisa pindah baris secara alami; tanpa ini teks
                                            akan meluber dari tombolnya yang sudah disempitkan (min-w-0)
@@ -606,8 +633,10 @@
                                );
                            })}
                            {secondaryMenus.length > 0 && (
-                               <button onClick={() => setShowMore(v => !v)} className={`flex flex-col items-center space-y-1 transition-all duration-200 px-2 min-w-0 ${isSecondaryActive || showMore ? 'text-sky-dim scale-110' : 'text-slate-500 hover:text-slate-600'}`}>
-                                   <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
+                               <button onClick={() => setShowMore(v => !v)} aria-expanded={showMore} className={`relative flex-1 flex flex-col items-center space-y-1 py-1.5 px-1 min-w-0 transition-colors duration-200 ${moreActive ? 'text-sky-dim' : 'text-slate-500 hover:text-slate-600'}`}>
+                                   <span key={moreActive ? 'more-on' : 'more-off'} className={moreActive ? 'nav-icon-active' : ''}>
+                                       <Icon path={<React.Fragment><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></React.Fragment>} filled={isSecondaryActive} className="h-6 w-6" />
+                                   </span>
                                    <span className="text-[10px] font-bold">Lainnya</span>
                                </button>
                            )}
