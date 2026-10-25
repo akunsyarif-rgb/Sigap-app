@@ -1,7 +1,7 @@
 # Skema database Supabase SIGAP (schema `sigap`)
 
 Diambil dari database live 25 Okt 2026 (proyek "Workflow", ref `htutgpjcynbnyxwgorcb`). **Hanya struktur, tanpa data.**
-Fungsi, trigger, indeks, dan cron ada di [`objek_database.sql`](objek_database.sql). `SCHEMA.md` di root repo masih menjelaskan Google Sheet lama.
+Fungsi, trigger, indeks, dan cron ada di [`objek_database.sql`](objek_database.sql). Skrip pemulihan lengkap: [`pemulihan/001_skema_lengkap.sql`](pemulihan/001_skema_lengkap.sql). `SCHEMA.md` di root repo masih menjelaskan Google Sheet lama.
 
 Catatan umum:
 - Semua tabel **RLS aktif tanpa policy sama sekali**: hanya koneksi server (edge function lewat `SUPABASE_DB_URL`) yang bisa membaca/menulis. Klien tidak boleh mengakses tabel langsung.
