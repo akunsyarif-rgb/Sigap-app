@@ -25,18 +25,18 @@ Fitur lengkap per 14 Sep ada di `SIGAP_STATUS.md`. Setelah itu (commit 15 Sep–
 
 ## Belum / terbuka
 - Backlog teknis lama ada di bagian 3 `SIGAP_STATUS.md` (per 14 Sep). Belum saya cocokkan satu per satu dengan kondisi sekarang.
-- Nasib backend Apps Script setelah cutover tidak tertulis: dimatikan, dijadikan cadangan, atau masih dipakai untuk fungsi tertentu.
+- Keputusan pemilik (25 Okt 2026): **backend SIGAP adalah Supabase.** Apps Script/Sheets = arsip/jalan mundur (PR #104 menyebutnya "tetap utuh sebagai arsip"); tidak dihapus. Kode `sigap-api` belum ada di repo ini; sebaiknya dimasukkan agar bisa ditinjau dan diuji.
 
 ## Hal yang perlu diwaspadai
 - **`SIGAP_STATUS.md`, `README.md`, `CLAUDE.md`, `API.md`, dan `SCHEMA.md` masih menjelaskan backend Apps Script + Google Sheet.** `SIGAP_STATUS.md` disusun 14 Sep dan mencatat versi live `2026-09-14-dedup-pelanggaran-upacara`. Itu sebelum cutover dan sudah 58 commit tertinggal.
-- Workflow `check-backend-drift.yml` memeriksa backend Apps Script. Setelah cutover, hasilnya tidak lagi menggambarkan backend yang dipakai. Apakah workflow itu masih berjalan atau gagal tidak saya cek.
+- Workflow `check-backend-drift.yml` memeriksa backend Apps Script. Setelah cutover, hasilnya tidak lagi menggambarkan backend yang dipakai. Per 25 Okt: **gagal setiap hari sejak 20 Okt** (jadwal harian). `deploy-gas.yml` terakhir dijalankan 18 Sep dan gagal. Keduanya tidak relevan lagi bagi backend aktif; menonaktifkannya adalah langkah terpisah (belum dilakukan).
 - Setiap push ke `main` men-deploy frontend (Vercel, menurut `SIGAP_STATUS.md`); nomor build perlu dinaikkan agar pengguna mendapat versi baru.
 
 ## Dokumen penting
 `SIGAP_STATUS.md` (riwayat per 14 Sep), `CLAUDE.md`, `README.md`, `API.md`, `SCHEMA.md`, `DEPLOYMENT_CHECKLIST.md`, `docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md`.
 
 ## Langkah berikutnya (usulan, bukan dari repo)
-Putuskan nasib backend Apps Script, lalu perbarui README dan CLAUDE.md agar menjelaskan backend Supabase. Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
+Masukkan kode `sigap-api` (Supabase) ke repo atau repo terpisah yang dicatat di sini, lalu nonaktifkan `check-backend-drift.yml` yang gagal tiap hari. Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
 
 ---
 Perbarui file ini di akhir tiap sesi kerja: tanggal, apa yang selesai, apa yang terbuka.

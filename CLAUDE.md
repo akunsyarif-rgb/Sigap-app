@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> **PEMBARUAN 25 Okt 2026 — baca dulu:** backend aktif adalah **Supabase** (`sigap-api`), keputusan pemilik; frontend dialihkan lewat `API_BACKEND = "supabase"` (PR #104). Kode `sigap-api` tidak ada di repo ini. Seluruh bagian di bawah tentang Apps Script (`Code.gs`, `Auth.gs`, `Utils.gs`, `Notifikasi.gs`), `clasp`, deploy GAS, `check-backend-drift.yml`, dan `Push_Queue`/trigger GAS menjelaskan backend **lama (arsip/jalan mundur)**: jangan dipakai sebagai acuan perilaku produksi dan jangan mengubahnya tanpa diminta. Aturan frontend (bundle Babel, `BUILD_VERSION` wajib dinaikkan, RBAC di sisi server) tetap berlaku. Lihat `STATUS.md`.
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is

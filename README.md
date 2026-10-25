@@ -1,5 +1,7 @@
 # SIGAP — Sistem Informasi Gerbang, Absensi, dan Pelanggaran
 
+> **Status backend (25 Okt 2026):** backend aktif SIGAP sekarang **Supabase** (fungsi `sigap-api`; `API_BACKEND = "supabase"` di `config.js`, sejak PR #104). Bagian di bawah yang membahas Google Apps Script/Google Sheet, `clasp`, `API.md`, dan `SCHEMA.md` menjelaskan backend **lama yang kini jadi arsip/jalan mundur**. Ringkasan terkini ada di **[STATUS.md](STATUS.md)**.
+
 [![Test](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/akunsyarif-rgb/Sigap-app/actions/workflows/test.yml)
 
 Aplikasi web internal **SMAN 2 Tarakan** untuk mencatat keterlambatan siswa,
