@@ -25,7 +25,7 @@ Fitur lengkap per 14 Sep ada di `SIGAP_STATUS.md`. Setelah itu (commit 15 Sep–
 
 ## Belum / terbuka
 - Backlog teknis lama ada di bagian 3 `SIGAP_STATUS.md` (per 14 Sep). Belum saya cocokkan satu per satu dengan kondisi sekarang.
-- Keputusan pemilik (25 Okt 2026): **backend SIGAP adalah Supabase.** Apps Script/Sheets = arsip/jalan mundur (PR #104 menyebutnya "tetap utuh sebagai arsip"); tidak dihapus. Cadangan kode `sigap-api` (v23) dan `push-send` (v2) ada di `supabase/` (25 Okt); skema database belum.
+- Keputusan pemilik (25 Okt 2026): **backend SIGAP adalah Supabase.** Apps Script/Sheets = arsip/jalan mundur (PR #104 menyebutnya "tetap utuh sebagai arsip"); tidak dihapus. Cadangan kode `sigap-api` (v23) dan `push-send` (v2) ada di `supabase/` (25 Okt); struktur database (tabel, fungsi, trigger, indeks, cron) juga sudah dicadangkan di `supabase/SCHEMA.md` dan `supabase/objek_database.sql`.
 
 ## Hal yang perlu diwaspadai
 - **`SIGAP_STATUS.md`, `README.md`, `CLAUDE.md`, `API.md`, dan `SCHEMA.md` masih menjelaskan backend Apps Script + Google Sheet.** `SIGAP_STATUS.md` disusun 14 Sep dan mencatat versi live `2026-09-14-dedup-pelanggaran-upacara`. Itu sebelum cutover dan sudah 58 commit tertinggal.
@@ -36,7 +36,7 @@ Fitur lengkap per 14 Sep ada di `SIGAP_STATUS.md`. Setelah itu (commit 15 Sep–
 `SIGAP_STATUS.md` (riwayat per 14 Sep), `CLAUDE.md`, `README.md`, `API.md`, `SCHEMA.md`, `DEPLOYMENT_CHECKLIST.md`, `docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md`.
 
 ## Langkah berikutnya (usulan, bukan dari repo)
-Simpan skema database Supabase (schema `sigap`) ke repo seperti kode fungsinya. Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
+Latih pemulihan: bangun ulang backend di proyek Supabase kosong dari folder `supabase/`. Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
 
 ---
 Perbarui file ini di akhir tiap sesi kerja: tanggal, apa yang selesai, apa yang terbuka.

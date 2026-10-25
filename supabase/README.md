@@ -12,6 +12,8 @@ ditinjau; **tidak otomatis ter-deploy dari repo ini**.
 Tidak disalin:
 - `sigap-login` (v2): tidak dipakai `config.js` (login lewat `sigap-api`), kemungkinan peninggalan.
 - `sigap-selftest-tmp`: fungsi uji sementara.
-- Skema database (`sigap.*`) dan isi Vault: belum ada di repo. Tidak ada rahasia di folder ini; kode hanya membaca `SUPABASE_DB_URL` dan Vault saat berjalan.
+- Isi Vault: sengaja tidak disimpan. Tidak ada rahasia di folder ini; kode hanya membaca `SUPABASE_DB_URL` dan Vault saat berjalan.
+
+Skema database: [`SCHEMA.md`](SCHEMA.md) (tabel) dan [`objek_database.sql`](objek_database.sql) (fungsi, trigger, indeks, cron). Riwayat migrasi asli belum ada di repo.
 
 Bila kode live diubah, perbarui folder ini agar tidak melenceng.
