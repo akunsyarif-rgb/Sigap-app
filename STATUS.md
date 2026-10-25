@@ -36,7 +36,7 @@ Fitur lengkap per 14 Sep ada di `SIGAP_STATUS.md`. Setelah itu (commit 15 Sep–
 `SIGAP_STATUS.md` (riwayat per 14 Sep), `CLAUDE.md`, `README.md`, `API.md`, `SCHEMA.md`, `DEPLOYMENT_CHECKLIST.md`, `docs/PANDUAN-FITUR-DAN-ALUR-KERJA.md`.
 
 ## Langkah berikutnya (usulan, bukan dari repo)
-Latih pemulihan: bangun ulang backend di proyek Supabase kosong dari folder `supabase/`. Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
+Latih pemulihan penuh di proyek Supabase kosong (skema sudah lolos uji di Postgres lokal: `supabase/pemulihan/`; sisanya pg_cron, pg_net, Vault, deploy fungsi, data guru/siswa). Setelah itu `SIGAP_STATUS.md` bisa digabung atau diganti file ini.
 
 ---
 Perbarui file ini di akhir tiap sesi kerja: tanggal, apa yang selesai, apa yang terbuka.
