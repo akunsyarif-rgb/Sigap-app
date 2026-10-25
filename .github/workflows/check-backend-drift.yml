@@ -16,19 +16,12 @@ name: Cek sinkronisasi backend
 # atau dicek", bukan bug kode, dan tidak menghalangi merge PR mana pun --
 # dipicu terpisah dari test.yml (push ke main sendiri + jadwal), bukan dari
 # pull_request.
+# DINONAKTIFKAN 25 Okt 2026: backend aktif sudah Supabase (PR #104), jadi
+# pemeriksaan ke Apps Script ini gagal tiap hari dan tidak lagi bermakna.
+# Pemicu push dan jadwal harian dimatikan; hanya tombol manual yang tersisa.
+# Bila kembali ke Apps Script, pulihkan pemicu push (Code.gs/Auth.gs/Utils.gs)
+# dan cron '0 3 * * *' dari riwayat git.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'Code.gs'
-      - 'Auth.gs'
-      - 'Utils.gs'
-  schedule:
-    # 03:00 UTC tiap hari -- cukup jarang untuk tidak berisik, cukup sering
-    # supaya drift yang lolos dari trigger push (mis. ditambahkan belakangan,
-    # atau backend sempat di-deploy manual ke versi yang salah) tidak terus
-    # tidak ketahuan berminggu-minggu.
-    - cron: '0 3 * * *'
   workflow_dispatch: {}
 
 jobs:
