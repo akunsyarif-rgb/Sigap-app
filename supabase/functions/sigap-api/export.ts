@@ -150,6 +150,14 @@ order by dicatat_pada asc
 limit ${MAX_ROWS + 1}`;
 const r = await sql.unsafe(q, [iso(a), iso(b), kelasFilter]);
 rows = r.map((x: any) => def.select!.map((_e, i) => String(x["c" + i] ?? "")));
+// Urutan laporan: per kelas dulu (natural: X-2 sebelum X-10), baru tanggal.
+// SQL sudah mengurutkan menurut dicatat_pada dan Array.sort stabil, jadi
+// urutan waktu dalam satu kelas tetap terjaga.
+const kolKelas = def.columns.indexOf("Kelas");
+if (kolKelas >= 0) {
+const kolator = new Intl.Collator("id", { numeric: true, sensitivity: "base" });
+rows.sort((p, q) => kolator.compare(String(p[kolKelas]), String(q[kolKelas])));
+}
 }
 if (rows.length > MAX_ROWS) {
 await audit(sql, user.name, user.id, "Export Data Gagal", detail(jenis, periode, scope, format, rows.length, "melebihi batas baris"));
