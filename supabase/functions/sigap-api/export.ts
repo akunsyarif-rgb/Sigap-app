@@ -4,6 +4,7 @@ import { isAdmin, isBk } from "./data.ts";
 export const EXPORT_SEKOLAH = "SMAN 2 Tarakan";
 const MAX_ROWS = 5000;
 const MAX_DAYS = 366;
+const REKAP_TERLAMBAT_MIN = 3; // tampil bila jumlah terlambat > 3
 const RATE_MAX = 20;
 const RATE_WINDOW_MIN = 5;
 const TZ = "Asia/Makassar";
@@ -150,10 +151,39 @@ order by dicatat_pada asc
 limit ${MAX_ROWS + 1}`;
 const r = await sql.unsafe(q, [iso(a), iso(b), kelasFilter]);
 rows = r.map((x: any) => def.select!.map((_e, i) => String(x["c" + i] ?? "")));
+// Urutan laporan: per kelas dulu (natural: X-2 sebelum X-10), baru tanggal.
+// SQL sudah mengurutkan menurut dicatat_pada dan Array.sort stabil, jadi
+// urutan waktu dalam satu kelas tetap terjaga.
+const kolKelas = def.columns.indexOf("Kelas");
+if (kolKelas >= 0) {
+const kolator = new Intl.Collator("id", { numeric: true, sensitivity: "base" });
+rows.sort((p, q) => kolator.compare(String(p[kolKelas]), String(q[kolKelas])));
+}
 }
 if (rows.length > MAX_ROWS) {
 await audit(sql, user.name, user.id, "Export Data Gagal", detail(jenis, periode, scope, format, rows.length, "melebihi batas baris"));
 return { status: "error", message: `Data terlalu banyak (lebih dari ${MAX_ROWS} baris, batas ${MAX_ROWS}). Persempit periode atau pilih satu kelas.` };
+}
+// Keterlambatan: lampirkan rekap siswa yang terlambat lebih dari 3x pada
+// periode & cakupan yang sama. Dihitung per NISN (nama kembar tidak tergabung);
+// NISN sendiri tidak ikut keluar, sama seperti Rekap Siswa.
+let tambahan: { judul: string; columns: string[]; rows: (string | number)[][] } | undefined;
+if (jenis === "keterlambatan") {
+const rt = await sql.unsafe(`
+select max(nama) as nama, max(kelas) as kelas, count(*)::int as n
+from sigap.terlambat
+where ${TGL("dicatat_pada")} between $1::date and $2::date
+and ($3::text = '' or sigap.norm_kelas(kelas) = sigap.norm_kelas($3::text))
+group by coalesce(nullif(nisn,''), 'nama:' || coalesce(nama,'') || '|' || coalesce(kelas,''))
+having count(*) > ${REKAP_TERLAMBAT_MIN}
+limit ${MAX_ROWS}`, [iso(a), iso(b), kelasFilter]);
+const kolator = new Intl.Collator("id", { numeric: true, sensitivity: "base" });
+rt.sort((p: any, q: any) => kolator.compare(String(p.kelas ?? ""), String(q.kelas ?? "")) || kolator.compare(String(p.nama ?? ""), String(q.nama ?? "")));
+tambahan = {
+judul: `REKAP SISWA TERLAMBAT LEBIH DARI ${REKAP_TERLAMBAT_MIN}X`,
+columns: ["Nama", "Kelas", "Jumlah Terlambat"],
+rows: rt.map((x: any) => [x.nama ?? "", x.kelas ?? "", x.n]),
+};
 }
 await audit(sql, user.name, user.id, rows.length ? "Export Data" : "Export Data Kosong",
 detail(jenis, periode, scope, format, rows.length, rows.length ? "berhasil" : "tidak ada data"));
@@ -162,7 +192,7 @@ return {
 status: "success",
 report: {
 jenis, jenisLabel: def.label, judul: def.judul, sekolah: EXPORT_SEKOLAH,
-columns: def.columns, rows, total: rows.length,
+columns: def.columns, rows, total: rows.length, tambahan,
 periodeLabel: periode, scopeLabel: scope, format, dibuatPada: now[0].t,
 },
 };

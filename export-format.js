@@ -194,6 +194,20 @@
                const cells = (row || []).map((v, i) => xlsxCell(`${columnLetter(i)}${rowNum}`, v, 0));
                xmlRows.push(`<row r="${rowNum}">${cells.join('')}</row>`);
            });
+           // Lampiran tabel kedua (mis. rekap siswa terlambat > 3x), di bawah tabel utama.
+           const extra = report && report.tambahan;
+           if (extra && (extra.rows || []).length) {
+               rowNum += 2;
+               xmlRows.push(`<row r="${rowNum}">${xlsxCell(`A${rowNum}`, extra.judul || '', 1)}</row>`);
+               rowNum++;
+               const extraHead = rowNum;
+               xmlRows.push(`<row r="${extraHead}">${(extra.columns || []).map((c, i) => xlsxCell(`${columnLetter(i)}${extraHead}`, c, 1)).join('')}</row>`);
+               extra.rows.forEach((row) => {
+                   rowNum++;
+                   const cells = (row || []).map((v, i) => xlsxCell(`${columnLetter(i)}${rowNum}`, v, 0));
+                   xmlRows.push(`<row r="${rowNum}">${cells.join('')}</row>`);
+               });
+           }
 
            const widths = columns.map((c, i) => {
                let max = String(c || '').length;
@@ -350,20 +364,34 @@
            };
 
            // ---- Bagi baris ke halaman ----
+           // Item halaman: baris tabel utama ('r'), lalu (opsional) satu blok judul
+           // + header tabel lampiran ('s', setinggi 3 baris) dan baris lampiran ('x').
+           const extra = report && report.tambahan;
+           const extraRows = (extra && extra.rows) || [];
+           const extraColumns = (extra && extra.columns) || [];
+           const extraWidths = extraRows.length ? pdfColumnWidths(extraColumns, extraRows, avail, fontSize.body) : [];
+           const items = rows.map((row) => ({ k: 'r', row, h: 1 }));
+           if (extraRows.length) {
+               items.push({ k: 's', h: 3 });
+               extraRows.forEach((row) => items.push({ k: 'x', row, h: 1 }));
+           }
            const firstPageTop = PDF_PAGE_H - PDF_MARGIN - 96; // sisakan ruang kop + metadata
            const nextPageTop = PDF_PAGE_H - PDF_MARGIN - 28;
            const bottom = PDF_MARGIN + 24;
            const capacity = (top) => Math.max(1, Math.floor((top - bottom) / PDF_ROW_H) - 1);
            const pagesRows = [];
-           if (!rows.length) {
+           if (!items.length) {
                pagesRows.push([]);
            } else {
                let index = 0;
-               while (index < rows.length) {
-                   const top = pagesRows.length === 0 ? firstPageTop : nextPageTop;
-                   const take = capacity(top);
-                   pagesRows.push(rows.slice(index, index + take));
-                   index += take;
+               while (index < items.length) {
+                   let left = capacity(pagesRows.length === 0 ? firstPageTop : nextPageTop);
+                   const page = [];
+                   while (index < items.length && (left >= items[index].h || !page.length)) {
+                       left -= items[index].h;
+                       page.push(items[index++]);
+                   }
+                   pagesRows.push(page);
                }
            }
 
@@ -405,19 +433,35 @@
                if (!pageRows.length && pageIndex === 0) {
                    drawText(parts, 'Tidak ada data pada periode & cakupan ini.', PDF_MARGIN + 3, y, 9, false);
                }
-               pageRows.forEach((row) => {
+               pageRows.forEach((item) => {
+                   if (item.k === 's') {
+                       y -= PDF_ROW_H;
+                       drawText(parts, extra.judul || '', PDF_MARGIN + 3, y, 10, true);
+                       y -= PDF_ROW_H;
+                       drawRect(parts, PDF_MARGIN, y - 4, avail, PDF_ROW_H + 2, 0.87);
+                       let hx = PDF_MARGIN;
+                       extraColumns.forEach((c, i) => {
+                           drawText(parts, fitPdfText(c, extraWidths[i] - 6, fontSize.head), hx + 3, y, fontSize.head, true);
+                           hx += extraWidths[i];
+                       });
+                       y -= PDF_ROW_H;
+                       return;
+                   }
+                   const row = item.row;
+                   const cols = item.k === 'x' ? extraColumns : columns;
+                   const w = item.k === 'x' ? extraWidths : widths;
                    let x = PDF_MARGIN;
-                   columns.forEach((c, i) => {
+                   cols.forEach((c, i) => {
                        const value = (row && row[i]) == null ? '' : row[i];
-                       const text = fitPdfText(value, widths[i] - 6, fontSize.body);
+                       const text = fitPdfText(value, w[i] - 6, fontSize.body);
                        if (typeof value === 'number') {
                            // Angka (Rekap Siswa) rata kanan supaya mudah dibaca menurun.
-                           const w = String(value).length * fontSize.body * PDF_CHAR_RATIO;
-                           drawText(parts, text, x + widths[i] - 3 - w, y, fontSize.body, false);
+                           const tw = String(value).length * fontSize.body * PDF_CHAR_RATIO;
+                           drawText(parts, text, x + w[i] - 3 - tw, y, fontSize.body, false);
                        } else {
                            drawText(parts, text, x + 3, y, fontSize.body, false);
                        }
-                       x += widths[i];
+                       x += w[i];
                    });
                    drawRect(parts, PDF_MARGIN, y - 4, avail, 0.4, 0.8);
                    y -= PDF_ROW_H;
